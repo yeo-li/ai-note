@@ -1,12 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-
-const memoChannels = {
-  list: "memo:list",
-  get: "memo:get",
-  create: "memo:create",
-  update: "memo:update",
-  delete: "memo:delete"
-};
+import { memoChannels } from "./memo-channels.mjs";
 
 const memoAPI = {
   list() {

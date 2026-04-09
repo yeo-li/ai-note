@@ -1,4 +1,4 @@
-export type MemoRecord = {
+export type Memo = {
   id: string;
   title: string;
   body: string;

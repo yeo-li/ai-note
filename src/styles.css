@@ -404,6 +404,12 @@ textarea {
   gap: 10px;
 }
 
+.inline-error {
+  margin: 16px 0 0;
+  color: var(--danger);
+  font-size: 0.92rem;
+}
+
 @media (max-width: 1280px) {
   .workspace__shell {
     grid-template-columns: 300px minmax(0, 1fr);

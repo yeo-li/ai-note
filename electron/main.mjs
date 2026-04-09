@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell } from "electron";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { memoChannels } from "./memo-channels.mjs";
+import { createLocalOrganizer } from "./organize/local-organizer.mjs";
 import { createMemoStore } from "./store/memo-store.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -26,7 +27,29 @@ function normalizeMemoInput(value) {
   };
 }
 
-function registerMemoHandlers(memoStore) {
+function normalizeOrganizeInput(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const memoId = normalizeMemoId(value.memoId);
+  const intent = value.intent === "polish" || value.intent === "polite" ? value.intent : null;
+  const body = typeof value.body === "string" ? value.body : "";
+  const title = typeof value.title === "string" ? value.title : "";
+
+  if (!memoId || !intent) {
+    return null;
+  }
+
+  return {
+    memoId,
+    intent,
+    title,
+    body
+  };
+}
+
+function registerMemoHandlers(memoStore, organizer) {
   ipcMain.handle(memoChannels.list, async () => memoStore.list());
 
   ipcMain.handle(memoChannels.get, async (_event, id) => {
@@ -46,6 +69,16 @@ function registerMemoHandlers(memoStore) {
   ipcMain.handle(memoChannels.delete, async (_event, id) => {
     const memoId = normalizeMemoId(id);
     return memoId ? memoStore.delete(memoId) : false;
+  });
+
+  ipcMain.handle(memoChannels.organize, async (_event, input) => {
+    const organizeInput = normalizeOrganizeInput(input);
+
+    if (!organizeInput) {
+      throw new Error("Invalid organize request.");
+    }
+
+    return organizer.organize(organizeInput);
   });
 }
 
@@ -85,8 +118,9 @@ app.whenReady().then(() => {
   const memoStore = createMemoStore({
     userDataPath: app.getPath("userData")
   });
+  const organizer = createLocalOrganizer();
 
-  registerMemoHandlers(memoStore);
+  registerMemoHandlers(memoStore, organizer);
   createWindow();
 
   app.on("activate", () => {

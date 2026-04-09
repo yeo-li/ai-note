@@ -3,5 +3,6 @@ export const memoChannels = {
   get: "memo:get",
   create: "memo:create",
   update: "memo:update",
-  delete: "memo:delete"
+  delete: "memo:delete",
+  organize: "memo:organize"
 };

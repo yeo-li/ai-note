@@ -1,6 +1,12 @@
 /// <reference types="vite/client" />
 
-import type { Memo, MemoCreateInput, MemoUpdateInput } from "./shared/memo";
+import type {
+  Memo,
+  MemoCreateInput,
+  MemoOrganizeInput,
+  MemoOrganizeResult,
+  MemoUpdateInput
+} from "./shared/memo";
 
 type DesktopAPI = {
   platform: string;
@@ -17,6 +23,7 @@ type MemoAPI = {
   create(input?: MemoCreateInput): Promise<Memo>;
   update(id: string, patch?: MemoUpdateInput): Promise<Memo | null>;
   delete(id: string): Promise<boolean>;
+  organize(input: MemoOrganizeInput): Promise<MemoOrganizeResult>;
 };
 
 declare global {

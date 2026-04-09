@@ -1,5 +1,11 @@
 import { startTransition, useEffect, useState } from "react";
-import type { Memo, MemoCreateInput, MemoUpdateInput } from "../shared/memo";
+import type {
+  Memo,
+  MemoCreateInput,
+  MemoOrganizeIntent,
+  MemoOrganizeResult,
+  MemoUpdateInput
+} from "../shared/memo";
 
 const platformName: Record<string, string> = {
   darwin: "macOS",
@@ -98,6 +104,9 @@ export function MemoWorkspace() {
   const [isLoading, setIsLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState(getInitialStatus());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [organizeResult, setOrganizeResult] = useState<MemoOrganizeResult | null>(null);
+  const [isOrganizing, setIsOrganizing] = useState<MemoOrganizeIntent | null>(null);
+  const [isApplyingSuggestion, setIsApplyingSuggestion] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -135,12 +144,21 @@ export function MemoWorkspace() {
     };
   }, []);
 
+  useEffect(() => {
+    setOrganizeResult(null);
+    setIsOrganizing(null);
+  }, [activeMemoId]);
+
   const orderedMemos = sortMemosByRecency(memos);
   const activeMemo = orderedMemos.find((memo) => memo.id === activeMemoId) ?? orderedMemos[0] ?? null;
   const runtimeLabel = window.desktopAPI ? formatPlatform(window.desktopAPI.platform) : "Browser";
   const runtimeDetail = window.desktopAPI
     ? `${window.desktopAPI.versions.electron} / ${window.desktopAPI.versions.chrome}`
     : "No preload bridge";
+
+  function replaceMemo(nextMemo: Memo) {
+    setMemos((current) => [nextMemo, ...current.filter((memo) => memo.id !== nextMemo.id)]);
+  }
 
   async function createMemo() {
     const input: MemoCreateInput = {
@@ -151,10 +169,11 @@ export function MemoWorkspace() {
     try {
       const nextMemo = window.memoAPI ? await window.memoAPI.create(input) : createFallbackMemo(input);
 
-      setMemos((current) => [nextMemo, ...current.filter((memo) => memo.id !== nextMemo.id)]);
+      replaceMemo(nextMemo);
       setActiveMemoId(nextMemo.id);
       setStatusMessage(window.memoAPI ? "Saved to local desktop store" : "Created in renderer preview");
       setErrorMessage(null);
+      setOrganizeResult(null);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to create memo.");
       setStatusMessage("Create failed");
@@ -163,18 +182,10 @@ export function MemoWorkspace() {
 
   async function persistMemoUpdate(memoId: string, updates: MemoUpdateInput) {
     if (!window.memoAPI) {
-      return;
+      return null;
     }
 
-    const persisted = await window.memoAPI.update(memoId, updates);
-
-    if (!persisted) {
-      throw new Error("The selected memo no longer exists.");
-    }
-
-    setMemos((current) =>
-      current.map((memo) => (memo.id === persisted.id ? persisted : memo))
-    );
+    return window.memoAPI.update(memoId, updates);
   }
 
   function updateActiveMemo(field: keyof Pick<Memo, "title" | "body">, value: string) {
@@ -197,9 +208,14 @@ export function MemoWorkspace() {
     );
     setStatusMessage(window.memoAPI ? "Saving to local desktop store..." : "Renderer preview only");
     setErrorMessage(null);
+    setOrganizeResult(null);
 
     void persistMemoUpdate(activeMemo.id, { [field]: value }).then(
-      () => {
+      (persisted) => {
+        if (persisted) {
+          replaceMemo(persisted);
+        }
+
         setStatusMessage(window.memoAPI ? "Saved to local desktop store" : "Renderer preview only");
       },
       (error) => {
@@ -228,9 +244,76 @@ export function MemoWorkspace() {
       setActiveMemoId(fallback?.id ?? null);
       setStatusMessage(window.memoAPI ? "Deleted from local desktop store" : "Removed in renderer preview");
       setErrorMessage(null);
+      setOrganizeResult(null);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to delete memo.");
       setStatusMessage("Delete failed");
+    }
+  }
+
+  async function runOrganize(intent: MemoOrganizeIntent) {
+    if (!activeMemo || !window.memoAPI) {
+      return;
+    }
+
+    setIsOrganizing(intent);
+    setErrorMessage(null);
+    setStatusMessage(intent === "polite" ? "Converting tone..." : "Polishing draft...");
+
+    try {
+      const result = await window.memoAPI.organize({
+        memoId: activeMemo.id,
+        title: activeMemo.title,
+        body: activeMemo.body,
+        intent
+      });
+
+      setOrganizeResult(result);
+      setStatusMessage(result.summary);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to organize memo.");
+      setStatusMessage("Organize failed");
+    } finally {
+      setIsOrganizing(null);
+    }
+  }
+
+  async function applyOrganizeSuggestion() {
+    if (!activeMemo || !organizeResult) {
+      return;
+    }
+
+    const nextBody = organizeResult.suggested;
+    const updatedAt = new Date().toISOString();
+
+    setIsApplyingSuggestion(true);
+    setMemos((current) =>
+      current.map((memo) =>
+        memo.id === activeMemo.id
+          ? {
+              ...memo,
+              body: nextBody,
+              updatedAt
+            }
+          : memo
+      )
+    );
+
+    try {
+      const persisted = await persistMemoUpdate(activeMemo.id, { body: nextBody });
+
+      if (persisted) {
+        replaceMemo(persisted);
+      }
+
+      setOrganizeResult(null);
+      setStatusMessage("Applied organized draft to memo");
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to apply suggestion.");
+      setStatusMessage("Apply failed");
+    } finally {
+      setIsApplyingSuggestion(false);
     }
   }
 
@@ -241,8 +324,8 @@ export function MemoWorkspace() {
           <p className="workspace__eyebrow">Desktop memo workspace</p>
           <h1>AI Note</h1>
           <p className="workspace__lede">
-            Capture quickly, store locally, and prepare the editor for AI organize and context
-            search. Sprint 1 keeps the desktop memo loop concrete before smarter retrieval lands.
+            Capture quickly, store locally, and use a deterministic organize pass to clean rough
+            text before search lands.
           </p>
         </div>
 
@@ -303,8 +386,21 @@ export function MemoWorkspace() {
               >
                 Delete
               </button>
-              <button className="button button--ghost" type="button" disabled={!activeMemo}>
-                AI organize
+              <button
+                className="button button--ghost"
+                type="button"
+                onClick={() => void runOrganize("polish")}
+                disabled={!activeMemo || !window.memoAPI || isOrganizing !== null}
+              >
+                {isOrganizing === "polish" ? "Polishing..." : "Polish"}
+              </button>
+              <button
+                className="button button--ghost"
+                type="button"
+                onClick={() => void runOrganize("polite")}
+                disabled={!activeMemo || !window.memoAPI || isOrganizing !== null}
+              >
+                {isOrganizing === "polite" ? "Rewriting..." : "Make polite"}
               </button>
             </div>
           </div>
@@ -337,6 +433,48 @@ export function MemoWorkspace() {
                 />
               </label>
 
+              {organizeResult ? (
+                <section className="organize-preview" aria-label="AI organize preview">
+                  <div className="organize-preview__header">
+                    <div>
+                      <p className="panel__kicker">Organize preview</p>
+                      <h3>{organizeResult.intent === "polite" ? "Polite tone" : "Sentence polish"}</h3>
+                    </div>
+                    <div className="panel__actions">
+                      <button
+                        className="button button--primary"
+                        type="button"
+                        onClick={() => void applyOrganizeSuggestion()}
+                        disabled={isApplyingSuggestion || organizeResult.suggested.length === 0}
+                      >
+                        {isApplyingSuggestion ? "Applying..." : "Apply suggestion"}
+                      </button>
+                      <button
+                        className="button button--ghost"
+                        type="button"
+                        onClick={() => setOrganizeResult(null)}
+                        disabled={isApplyingSuggestion}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="organize-preview__summary">{organizeResult.summary}</p>
+
+                  <div className="organize-preview__grid">
+                    <div className="organize-preview__panel">
+                      <span className="field__label">Original</span>
+                      <pre>{organizeResult.original || "No content to organize."}</pre>
+                    </div>
+                    <div className="organize-preview__panel organize-preview__panel--accent">
+                      <span className="field__label">Suggested</span>
+                      <pre>{organizeResult.suggested || "Organizer could not improve blank content."}</pre>
+                    </div>
+                  </div>
+                </section>
+              ) : null}
+
               <div className="editor__meta">
                 <span>Created {formatMemoTimestamp(activeMemo.createdAt)}</span>
                 <span>Updated {formatMemoTimestamp(activeMemo.updatedAt)}</span>
@@ -347,8 +485,8 @@ export function MemoWorkspace() {
             <div className="empty-state">
               <h3>No memo selected</h3>
               <p>
-                Start with a quick note. Sprint 1 already stores CRUD changes locally through the
-                desktop bridge, and later iterations will layer AI organize and context search on top.
+                Start with a quick note. The current desktop flow stores memos locally and can now
+                preview a polished or polite rewrite for the active draft.
               </p>
               <button className="button button--primary" type="button" onClick={() => void createMemo()}>
                 + Create memo
@@ -376,25 +514,24 @@ export function MemoWorkspace() {
 
           <div className="tool-card tool-card--accent">
             <p className="panel__kicker">Organize</p>
-            <h2>Polish rough drafts</h2>
+            <h2>Active memo only</h2>
             <p>
-              This slot will rewrite fragments, convert tone, and prepare cleaner text without leaving the app.
+              Run a deterministic local organize pass for sentence polish or polite tone, then apply
+              the suggested body when it looks right.
             </p>
             <div className="tool-tags">
-              <span className="badge">Rewrite</span>
-              <span className="badge">Polish tone</span>
-              <span className="badge">Auto-title later</span>
+              <span className="badge">Polish</span>
+              <span className="badge">Polite tone</span>
+              <span className="badge">Local only</span>
             </div>
-            <button className="button button--ghost" type="button" disabled>
-              Organize later
-            </button>
           </div>
 
           <div className="tool-card tool-card--summary">
             <p className="panel__kicker">Build note</p>
             <h2>{runtimeDetail}</h2>
             <p>
-              The desktop shell is now wired to a local memo store. Search and AI organize can build on this foundation next.
+              The organize service is deterministic and local today, but the Electron boundary is now
+              shaped so a real provider can replace it later.
             </p>
           </div>
         </aside>

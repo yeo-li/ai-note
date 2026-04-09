@@ -4,7 +4,9 @@ const koreanPattern = /[가-힣]/u;
 function normalizeWhitespace(text) {
   return text
     .replace(/\r\n/g, "\n")
-    .replace(/[ \t]+\n/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }

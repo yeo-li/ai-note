@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 
 const MEMO_STORE_VERSION = 1;
 const MEMO_STORE_FILENAME = "memos.json";
+const LEGACY_NOTE_STORE_FILENAME = "notes.json";
 
 function normalizeTimestamp(value) {
   return typeof value === "string" && value.length > 0 ? value : new Date().toISOString();
@@ -53,18 +54,44 @@ async function ensureParentDirectory(filePath) {
   await mkdir(dirname(filePath), { recursive: true });
 }
 
-async function readStore(filePath) {
-  try {
-    const fileContents = await readFile(filePath, "utf8");
-    const parsed = JSON.parse(fileContents);
-    const memos = Array.isArray(parsed.memos) ? parsed.memos.map(normalizeMemo) : [];
-
+function parseStorePayload(parsed) {
+  if (Array.isArray(parsed.memos)) {
     return {
       version: MEMO_STORE_VERSION,
-      memos: sortMemosByUpdatedAt(memos)
+      memos: sortMemosByUpdatedAt(parsed.memos.map(normalizeMemo))
     };
+  }
+
+  if (Array.isArray(parsed.notes)) {
+    return {
+      version: MEMO_STORE_VERSION,
+      memos: sortMemosByUpdatedAt(parsed.notes.map(normalizeMemo))
+    };
+  }
+
+  return {
+    version: MEMO_STORE_VERSION,
+    memos: []
+  };
+}
+
+async function readStore(filePath, legacyFilePath) {
+  try {
+    const fileContents = await readFile(filePath, "utf8");
+    return parseStorePayload(JSON.parse(fileContents));
   } catch (error) {
     if (error.code === "ENOENT") {
+      if (legacyFilePath) {
+        try {
+          const legacyContents = await readFile(legacyFilePath, "utf8");
+          return parseStorePayload(JSON.parse(legacyContents));
+        } catch (legacyError) {
+          if (legacyError.code !== "ENOENT") {
+            throw legacyError;
+          }
+        }
+      }
+
       return {
         version: MEMO_STORE_VERSION,
         memos: []
@@ -93,6 +120,7 @@ async function writeStore(filePath, store) {
 
 export function createMemoStore({ userDataPath }) {
   const filePath = join(userDataPath, MEMO_STORE_FILENAME);
+  const legacyFilePath = join(userDataPath, LEGACY_NOTE_STORE_FILENAME);
   let operationQueue = Promise.resolve();
 
   function runSerialized(task) {
@@ -109,14 +137,14 @@ export function createMemoStore({ userDataPath }) {
 
     async list() {
       return runSerialized(async () => {
-        const store = await readStore(filePath);
+        const store = await readStore(filePath, legacyFilePath);
         return store.memos.map(cloneMemo);
       });
     },
 
     async get(memoId) {
       return runSerialized(async () => {
-        const store = await readStore(filePath);
+        const store = await readStore(filePath, legacyFilePath);
         const memo = store.memos.find((currentMemo) => currentMemo.id === memoId);
         return memo ? cloneMemo(memo) : null;
       });
@@ -132,7 +160,7 @@ export function createMemoStore({ userDataPath }) {
           createdAt: now,
           updatedAt: now
         });
-        const store = await readStore(filePath);
+        const store = await readStore(filePath, legacyFilePath);
 
         store.memos = [memo, ...store.memos.filter((currentMemo) => currentMemo.id !== memo.id)];
         await writeStore(filePath, store);
@@ -143,7 +171,7 @@ export function createMemoStore({ userDataPath }) {
 
     async update(memoId, updates = {}) {
       return runSerialized(async () => {
-        const store = await readStore(filePath);
+        const store = await readStore(filePath, legacyFilePath);
         const currentMemo = store.memos.find((memo) => memo.id === memoId);
 
         if (!currentMemo) {
@@ -166,7 +194,7 @@ export function createMemoStore({ userDataPath }) {
 
     async delete(memoId) {
       return runSerialized(async () => {
-        const store = await readStore(filePath);
+        const store = await readStore(filePath, legacyFilePath);
         const nextMemos = store.memos.filter((memo) => memo.id !== memoId);
 
         if (nextMemos.length === store.memos.length) {

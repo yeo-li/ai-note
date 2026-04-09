@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -91,6 +91,53 @@ test("memo store preserves the last concurrent update", async () => {
     assert.equal(lastResolved?.body, "v3");
     assert.equal(reloaded?.body, "v3");
   });
+});
+
+test("memo store reads legacy notes.json data and migrates on write", async () => {
+  const userDataPath = await mkdtemp(join(tmpdir(), "ai-note-memo-store-"));
+  const legacyFilePath = join(userDataPath, "notes.json");
+  const legacyMemo = {
+    id: "legacy-note-1",
+    title: "Legacy note",
+    body: "Stored before the memo rename.",
+    createdAt: "2026-01-01T09:00:00.000Z",
+    updatedAt: "2026-01-01T10:00:00.000Z"
+  };
+
+  try {
+    await writeFile(
+      legacyFilePath,
+      JSON.stringify(
+        {
+          version: 1,
+          notes: [legacyMemo]
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+
+    const store = createMemoStore({ userDataPath });
+    const listed = await store.list();
+
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0]?.id, legacyMemo.id);
+    assert.equal(listed[0]?.body, legacyMemo.body);
+
+    await store.create({
+      title: "New memo",
+      body: "Created after migration."
+    });
+
+    const migratedPayload = JSON.parse(await readFile(join(userDataPath, "memos.json"), "utf8"));
+
+    assert.equal(Array.isArray(migratedPayload.memos), true);
+    assert.equal(migratedPayload.memos.length, 2);
+    assert.equal(migratedPayload.memos.some((memo) => memo.id === legacyMemo.id), true);
+  } finally {
+    await rm(userDataPath, { recursive: true, force: true });
+  }
 });
 
 test("memo store sorts updated memos ahead of older entries", async () => {

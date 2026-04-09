@@ -9,6 +9,19 @@ import type {
 } from "../shared/memo";
 
 const UNTITLED_MEMO_LABEL = "제목 없는 메모";
+const DELETE_UNDO_MS = 5000;
+
+type OrganizePreviewState = {
+  memoId: string;
+  baseBody: string;
+  result: MemoOrganizeResult;
+};
+
+type PendingDeleteState = {
+  memo: Memo;
+  fallbackMemoId: string | null;
+  timerId: number;
+};
 
 const platformName: Record<string, string> = {
   darwin: "macOS",
@@ -166,12 +179,13 @@ async function loadInitialMemos() {
 }
 
 export function MemoWorkspace() {
+  const isMacOS = window.desktopAPI?.platform === "darwin";
   const [memos, setMemos] = useState<Memo[]>([]);
   const [activeMemoId, setActiveMemoId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState(getInitialStatus());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [organizeResult, setOrganizeResult] = useState<MemoOrganizeResult | null>(null);
+  const [organizePreview, setOrganizePreview] = useState<OrganizePreviewState | null>(null);
   const [isOrganizing, setIsOrganizing] = useState<MemoOrganizeIntent | null>(null);
   const [isApplyingSuggestion, setIsApplyingSuggestion] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -179,8 +193,12 @@ export function MemoWorkspace() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchMessage, setSearchMessage] = useState("자연어로 메모 제목과 내용을 검색해 보세요.");
   const [searchErrorMessage, setSearchErrorMessage] = useState<string | null>(null);
+  const [deleteIntentId, setDeleteIntentId] = useState<string | null>(null);
+  const [pendingDeletion, setPendingDeletion] = useState<PendingDeleteState | null>(null);
   const activeMemoIdRef = useRef<string | null>(null);
   const organizeRequestRef = useRef(0);
+  const latestEditVersionRef = useRef<Record<string, number>>({});
+  const latestSaveSequenceRef = useRef<Record<string, number>>({});
   const deferredSearchQuery = useDeferredValue(searchQuery.trim());
 
   useEffect(() => {
@@ -199,6 +217,8 @@ export function MemoWorkspace() {
           setActiveMemoId(initialMemos[0]?.id ?? null);
           setStatusMessage(window.memoAPI ? "로컬 메모 저장소가 연결되었습니다" : "브라우저 미리보기 데이터를 불러왔습니다");
           setErrorMessage(null);
+          setDeleteIntentId(null);
+          setPendingDeletion(null);
           setIsLoading(false);
         });
       } catch (error) {
@@ -225,9 +245,18 @@ export function MemoWorkspace() {
 
   useEffect(() => {
     organizeRequestRef.current += 1;
-    setOrganizeResult(null);
+    setOrganizePreview(null);
     setIsOrganizing(null);
+    setDeleteIntentId(null);
   }, [activeMemoId]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingDeletion?.timerId) {
+        window.clearTimeout(pendingDeletion.timerId);
+      }
+    };
+  }, [pendingDeletion]);
 
   useEffect(() => {
     if (!deferredSearchQuery) {
@@ -288,9 +317,40 @@ export function MemoWorkspace() {
     ? `${window.desktopAPI.versions.electron} / ${window.desktopAPI.versions.chrome}`
     : "프리로드 브리지 없음";
   const isSearchActive = deferredSearchQuery.length > 0;
+  const orderedMemoById = new Map(orderedMemos.map((memo) => [memo.id, memo]));
+  const visibleMemos = isSearchActive
+    ? searchResults.reduce<Memo[]>((collection, result) => {
+        const currentMemo = orderedMemoById.get(result.memo.id);
+
+        if (!currentMemo || collection.some((memo) => memo.id === currentMemo.id)) {
+          return collection;
+        }
+
+        collection.push(currentMemo);
+        return collection;
+      }, [])
+    : orderedMemos;
+  const activeMemoInSearch = activeMemo ? visibleMemos.some((memo) => memo.id === activeMemo.id) : false;
+  const activeOrganizePreview =
+    organizePreview && activeMemo && organizePreview.memoId === activeMemo.id ? organizePreview : null;
+  const isEditorLocked = Boolean(activeOrganizePreview) || isApplyingSuggestion;
 
   function replaceMemo(nextMemo: Memo) {
+    latestEditVersionRef.current[nextMemo.id] = latestEditVersionRef.current[nextMemo.id] ?? 0;
+    latestSaveSequenceRef.current[nextMemo.id] = latestSaveSequenceRef.current[nextMemo.id] ?? 0;
     setMemos((current) => [nextMemo, ...current.filter((memo) => memo.id !== nextMemo.id)]);
+  }
+
+  function bumpEditVersion(memoId: string) {
+    const nextVersion = (latestEditVersionRef.current[memoId] ?? 0) + 1;
+    latestEditVersionRef.current[memoId] = nextVersion;
+    return nextVersion;
+  }
+
+  function startSaveSequence(memoId: string) {
+    const nextSequence = (latestSaveSequenceRef.current[memoId] ?? 0) + 1;
+    latestSaveSequenceRef.current[memoId] = nextSequence;
+    return nextSequence;
   }
 
   async function createMemo() {
@@ -306,7 +366,8 @@ export function MemoWorkspace() {
       setActiveMemoId(nextMemo.id);
       setStatusMessage(window.memoAPI ? "메모를 저장했습니다" : "브라우저 미리보기 메모를 만들었습니다");
       setErrorMessage(null);
-      setOrganizeResult(null);
+      setDeleteIntentId(null);
+      setOrganizePreview(null);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "메모를 만들지 못했습니다.");
       setStatusMessage("메모 생성에 실패했습니다");
@@ -326,11 +387,14 @@ export function MemoWorkspace() {
       return;
     }
 
+    const memoId = activeMemo.id;
     const updatedAt = new Date().toISOString();
+    const editVersion = bumpEditVersion(memoId);
+    const saveSequence = startSaveSequence(memoId);
 
     setMemos((current) =>
       current.map((memo) =>
-        memo.id === activeMemo.id
+        memo.id === memoId
           ? {
               ...memo,
               [field]: value,
@@ -341,15 +405,26 @@ export function MemoWorkspace() {
     );
     setStatusMessage(window.memoAPI ? "메모 저장 중..." : "브라우저 미리보기 모드");
     setErrorMessage(null);
-    setOrganizeResult(null);
+    setDeleteIntentId(null);
 
-    void persistMemoUpdate(activeMemo.id, { [field]: value }).then(
+    if (field === "body") {
+      setOrganizePreview(null);
+    }
+
+    void persistMemoUpdate(memoId, { [field]: value }).then(
       (persisted) => {
         if (!persisted && window.memoAPI) {
           throw new Error("선택한 메모를 찾을 수 없습니다.");
         }
 
         if (persisted) {
+          const latestSequence = latestSaveSequenceRef.current[memoId] ?? 0;
+          const latestVersion = latestEditVersionRef.current[memoId] ?? 0;
+
+          if (saveSequence !== latestSequence || editVersion !== latestVersion) {
+            return;
+          }
+
           replaceMemo(persisted);
         }
 
@@ -363,29 +438,79 @@ export function MemoWorkspace() {
   }
 
   async function deleteActiveMemo() {
+    if (!activeMemo || pendingDeletion) {
+      return;
+    }
+
+    setDeleteIntentId(activeMemo.id);
+    setStatusMessage("이 메모를 삭제할까요?");
+  }
+
+  function cancelDeleteActiveMemo() {
+    setDeleteIntentId(null);
+    setStatusMessage("삭제를 취소했습니다.");
+  }
+
+  async function finalizeDeleteMemo(deleteState: PendingDeleteState) {
+    try {
+      const removed = window.memoAPI ? await window.memoAPI.delete(deleteState.memo.id) : true;
+
+      if (!removed) {
+        throw new Error("선택한 메모를 삭제하지 못했습니다.");
+      }
+
+      setPendingDeletion((current) => (current?.memo.id === deleteState.memo.id ? null : current));
+      setStatusMessage(window.memoAPI ? "메모를 삭제했습니다" : "브라우저 미리보기 메모를 삭제했습니다");
+      setErrorMessage(null);
+    } catch (error) {
+      setMemos((current) => [deleteState.memo, ...current.filter((memo) => memo.id !== deleteState.memo.id)]);
+      setActiveMemoId(deleteState.memo.id);
+      setPendingDeletion((current) => (current?.memo.id === deleteState.memo.id ? null : current));
+      setErrorMessage(error instanceof Error ? error.message : "메모를 삭제하지 못했습니다.");
+      setStatusMessage("메모 삭제에 실패했습니다");
+    }
+  }
+
+  function confirmDeleteActiveMemo() {
     if (!activeMemo) {
       return;
     }
 
     const currentIndex = orderedMemos.findIndex((memo) => memo.id === activeMemo.id);
     const fallback = orderedMemos[currentIndex + 1] ?? orderedMemos[currentIndex - 1] ?? null;
+    const memoToDelete = activeMemo;
+    const timerId = window.setTimeout(() => {
+      void finalizeDeleteMemo({
+        memo: memoToDelete,
+        fallbackMemoId: fallback?.id ?? null,
+        timerId
+      });
+    }, DELETE_UNDO_MS);
 
-    try {
-      const removed = window.memoAPI ? await window.memoAPI.delete(activeMemo.id) : true;
+    setDeleteIntentId(null);
+    setOrganizePreview(null);
+    setMemos((current) => current.filter((memo) => memo.id !== memoToDelete.id));
+    setActiveMemoId(fallback?.id ?? null);
+    setPendingDeletion({
+      memo: memoToDelete,
+      fallbackMemoId: fallback?.id ?? null,
+      timerId
+    });
+    setStatusMessage("삭제 대기 상태입니다. 잠시 동안 되돌릴 수 있습니다.");
+    setErrorMessage(null);
+  }
 
-      if (!removed) {
-        throw new Error("선택한 메모를 삭제하지 못했습니다.");
-      }
-
-      setMemos((current) => current.filter((memo) => memo.id !== activeMemo.id));
-      setActiveMemoId(fallback?.id ?? null);
-      setStatusMessage(window.memoAPI ? "메모를 삭제했습니다" : "브라우저 미리보기 메모를 삭제했습니다");
-      setErrorMessage(null);
-      setOrganizeResult(null);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "메모를 삭제하지 못했습니다.");
-      setStatusMessage("메모 삭제에 실패했습니다");
+  function undoDeleteMemo() {
+    if (!pendingDeletion) {
+      return;
     }
+
+    window.clearTimeout(pendingDeletion.timerId);
+    setMemos((current) => [pendingDeletion.memo, ...current.filter((memo) => memo.id !== pendingDeletion.memo.id)]);
+    setActiveMemoId(pendingDeletion.memo.id);
+    setPendingDeletion(null);
+    setStatusMessage("메모 삭제를 되돌렸습니다.");
+    setErrorMessage(null);
   }
 
   async function runOrganize(intent: MemoOrganizeIntent) {
@@ -413,7 +538,11 @@ export function MemoWorkspace() {
         return;
       }
 
-      setOrganizeResult(result);
+      setOrganizePreview({
+        memoId,
+        baseBody: activeMemo.body,
+        result
+      });
       setStatusMessage(result.summary);
     } catch (error) {
       if (organizeRequestRef.current !== requestId || activeMemoIdRef.current !== memoId) {
@@ -430,12 +559,20 @@ export function MemoWorkspace() {
   }
 
   async function applyOrganizeSuggestion() {
-    if (!activeMemo || !organizeResult) {
+    if (!activeMemo || !activeOrganizePreview) {
       return;
     }
 
-    const nextBody = organizeResult.suggested;
+    if (activeMemo.body !== activeOrganizePreview.baseBody) {
+      setOrganizePreview(null);
+      setStatusMessage("본문이 바뀌어서 미리보기가 오래되었습니다. 다시 실행해 주세요.");
+      return;
+    }
+
+    const nextBody = activeOrganizePreview.result.suggested;
     const updatedAt = new Date().toISOString();
+    const editVersion = bumpEditVersion(activeMemo.id);
+    const saveSequence = startSaveSequence(activeMemo.id);
 
     setIsApplyingSuggestion(true);
     setMemos((current) =>
@@ -458,10 +595,17 @@ export function MemoWorkspace() {
       }
 
       if (persisted) {
+        const latestSequence = latestSaveSequenceRef.current[activeMemo.id] ?? 0;
+        const latestVersion = latestEditVersionRef.current[activeMemo.id] ?? 0;
+
+        if (saveSequence !== latestSequence || editVersion !== latestVersion) {
+          return;
+        }
+
         replaceMemo(persisted);
       }
 
-      setOrganizeResult(null);
+      setOrganizePreview(null);
       setStatusMessage("정리된 문장을 메모에 반영했습니다");
       setErrorMessage(null);
     } catch (error) {
@@ -473,7 +617,7 @@ export function MemoWorkspace() {
   }
 
   return (
-    <main className="workspace">
+    <main className={`workspace${isMacOS ? " is-macos" : ""}`}>
       <header className="workspace__header">
         <div className="workspace__brand">
           <p className="workspace__eyebrow">데스크톱 메모 워크스페이스</p>
@@ -496,8 +640,8 @@ export function MemoWorkspace() {
         <aside className="panel panel--sidebar">
           <div className="panel__header">
             <div>
-              <p className="panel__kicker">메모 보관함</p>
-              <h2>최근 메모</h2>
+              <p className="panel__kicker">{isSearchActive ? "문맥 검색" : "메모 보관함"}</p>
+              <h2>{isSearchActive ? "관련 메모" : "최근 메모"}</h2>
             </div>
             <button className="button button--primary" type="button" onClick={() => void createMemo()}>
               + 새 메모
@@ -505,7 +649,8 @@ export function MemoWorkspace() {
           </div>
 
           <div className="memo-list" role="list" aria-label="메모 목록">
-            {orderedMemos.map((memo) => {
+            {visibleMemos.length > 0 ? (
+              visibleMemos.map((memo) => {
               const isActive = memo.id === activeMemo?.id;
 
               return (
@@ -522,7 +667,17 @@ export function MemoWorkspace() {
                   <span className="memo-card__preview">{getMemoPreview(memo.body)}</span>
                 </button>
               );
-            })}
+              })
+            ) : (
+              <div className="memo-list__empty">
+                <strong>{isSearchActive ? "검색 결과가 없습니다" : "메모가 없습니다"}</strong>
+                <p>
+                  {isSearchActive
+                    ? "다른 검색어를 입력하거나 검색을 지우면 전체 메모를 다시 볼 수 있습니다."
+                    : "새 메모를 만들면 바로 목록에 나타납니다."}
+                </p>
+              </div>
+            )}
           </div>
         </aside>
 
@@ -534,14 +689,25 @@ export function MemoWorkspace() {
             </div>
 
             <div className="panel__actions">
-              <button
-                className="button button--ghost"
-                type="button"
-                onClick={() => void deleteActiveMemo()}
-                disabled={!activeMemo}
-              >
-                삭제
-              </button>
+              {deleteIntentId === activeMemo?.id ? (
+                <>
+                  <button className="button button--ghost" type="button" onClick={cancelDeleteActiveMemo}>
+                    취소
+                  </button>
+                  <button className="button button--ghost" type="button" onClick={confirmDeleteActiveMemo}>
+                    정말 삭제
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="button button--ghost"
+                  type="button"
+                  onClick={() => void deleteActiveMemo()}
+                  disabled={!activeMemo || Boolean(pendingDeletion)}
+                >
+                  삭제
+                </button>
+              )}
               <button
                 className="button button--ghost"
                 type="button"
@@ -561,6 +727,41 @@ export function MemoWorkspace() {
             </div>
           </div>
 
+          {pendingDeletion ? (
+            <section className="inline-banner" aria-label="삭제 되돌리기">
+              <div>
+                <strong>{pendingDeletion.memo.title || UNTITLED_MEMO_LABEL} 삭제 대기 중</strong>
+                <p>{Math.round(DELETE_UNDO_MS / 1000)}초 안에 되돌릴 수 있습니다.</p>
+              </div>
+              <button className="button button--primary" type="button" onClick={undoDeleteMemo}>
+                되돌리기
+              </button>
+            </section>
+          ) : null}
+
+          {isSearchActive && activeMemo && !activeMemoInSearch ? (
+            <section className="inline-banner inline-banner--muted" aria-label="검색 결과 바깥 메모 안내">
+              <div>
+                <strong>현재 메모는 검색 결과에 없습니다</strong>
+                <p>현재 편집을 유지한 채 다른 결과를 선택하거나 검색을 지울 수 있습니다.</p>
+              </div>
+              <div className="panel__actions">
+                {visibleMemos[0] ? (
+                  <button
+                    className="button button--ghost"
+                    type="button"
+                    onClick={() => setActiveMemoId(visibleMemos[0].id)}
+                  >
+                    첫 결과 열기
+                  </button>
+                ) : null}
+                <button className="button button--ghost" type="button" onClick={() => setSearchQuery("")}>
+                  검색 지우기
+                </button>
+              </div>
+            </section>
+          ) : null}
+
           {isLoading ? (
             <div className="empty-state">
               <h3>메모를 불러오는 중입니다</h3>
@@ -574,6 +775,7 @@ export function MemoWorkspace() {
                   className="input"
                   type="text"
                   value={activeMemo.title}
+                  readOnly={isEditorLocked}
                   onChange={(event) => updateActiveMemo("title", event.target.value)}
                   placeholder="메모 제목"
                 />
@@ -582,33 +784,34 @@ export function MemoWorkspace() {
               <label className="field field--grow">
                 <span className="field__label">본문</span>
                 <textarea
-                  className="textarea"
+                  className={`textarea${isEditorLocked ? " textarea--readonly" : ""}`}
                   value={activeMemo.body}
+                  readOnly={isEditorLocked}
                   onChange={(event) => updateActiveMemo("body", event.target.value)}
                   placeholder="메모, 전화 내용, 회의 정리, 교수님께 보낼 초안을 자유롭게 적어보세요..."
                 />
               </label>
 
-              {organizeResult ? (
+              {activeOrganizePreview ? (
                 <section className="organize-preview" aria-label="AI 정리 미리보기">
                   <div className="organize-preview__header">
                     <div>
                       <p className="panel__kicker">AI 정리 미리보기</p>
-                      <h3>{organizeResult.intent === "polite" ? "공손한 문체" : "문장 다듬기"}</h3>
+                      <h3>{activeOrganizePreview.result.intent === "polite" ? "공손한 문체" : "문장 다듬기"}</h3>
                     </div>
                     <div className="panel__actions">
                       <button
                         className="button button--primary"
                         type="button"
                         onClick={() => void applyOrganizeSuggestion()}
-                        disabled={isApplyingSuggestion || organizeResult.suggested.length === 0}
+                        disabled={isApplyingSuggestion || activeOrganizePreview.result.suggested.length === 0}
                       >
                         {isApplyingSuggestion ? "적용 중..." : "적용하기"}
                       </button>
                       <button
                         className="button button--ghost"
                         type="button"
-                        onClick={() => setOrganizeResult(null)}
+                        onClick={() => setOrganizePreview(null)}
                         disabled={isApplyingSuggestion}
                       >
                         닫기
@@ -616,16 +819,16 @@ export function MemoWorkspace() {
                     </div>
                   </div>
 
-                  <p className="organize-preview__summary">{organizeResult.summary}</p>
+                  <p className="organize-preview__summary">{activeOrganizePreview.result.summary}</p>
 
                   <div className="organize-preview__grid">
                     <div className="organize-preview__panel">
                       <span className="field__label">원문</span>
-                      <pre>{organizeResult.original || "정리할 내용이 없습니다."}</pre>
+                      <pre>{activeOrganizePreview.result.original || "정리할 내용이 없습니다."}</pre>
                     </div>
                     <div className="organize-preview__panel organize-preview__panel--accent">
                       <span className="field__label">제안 결과</span>
-                      <pre>{organizeResult.suggested || "비어 있는 메모는 정리할 수 없습니다."}</pre>
+                      <pre>{activeOrganizePreview.result.suggested || "비어 있는 메모는 정리할 수 없습니다."}</pre>
                     </div>
                   </div>
                 </section>
@@ -668,7 +871,7 @@ export function MemoWorkspace() {
             </label>
 
             <div className="tool-card__toolbar">
-              <span className="badge">{isSearching ? "검색 중..." : "관련 메모 목록만 표시"}</span>
+              <span className="badge">{isSearching ? "검색 중..." : "좌측 목록과 같은 결과"}</span>
               <button
                 className="button button--ghost"
                 type="button"

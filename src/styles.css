@@ -70,12 +70,19 @@ textarea {
 }
 
 .workspace {
+  --titlebar-safe-top: 0px;
+  --titlebar-safe-left: 0px;
   min-height: 100vh;
   padding: 28px;
   background:
     linear-gradient(180deg, rgba(11, 17, 23, 0.78) 0%, rgba(11, 17, 23, 0.92) 100%),
     radial-gradient(circle at 20% 20%, rgba(122, 215, 201, 0.09), transparent 28%),
     radial-gradient(circle at 80% 10%, rgba(255, 197, 116, 0.08), transparent 26%);
+}
+
+.workspace.is-macos {
+  --titlebar-safe-top: 26px;
+  --titlebar-safe-left: 84px;
 }
 
 .workspace__header {
@@ -85,10 +92,12 @@ textarea {
   gap: 24px;
   max-width: 1600px;
   margin: 0 auto 20px;
+  padding-top: var(--titlebar-safe-top);
 }
 
 .workspace__brand {
   max-width: 760px;
+  padding-left: var(--titlebar-safe-left);
 }
 
 .workspace__eyebrow,
@@ -239,6 +248,25 @@ textarea {
   gap: 12px;
 }
 
+.memo-list__empty {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px dashed rgba(158, 176, 197, 0.22);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.memo-list__empty strong,
+.memo-list__empty p {
+  margin: 0;
+}
+
+.memo-list__empty p {
+  color: var(--muted-strong);
+  font-size: 0.9rem;
+}
+
 .memo-card {
   display: grid;
   gap: 8px;
@@ -332,6 +360,37 @@ textarea {
   min-height: 100%;
   resize: none;
   line-height: 1.65;
+}
+
+.textarea--readonly {
+  opacity: 0.72;
+}
+
+.inline-banner {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 197, 116, 0.24);
+  background: rgba(255, 197, 116, 0.08);
+}
+
+.inline-banner--muted {
+  border-color: rgba(122, 215, 201, 0.22);
+  background: rgba(122, 215, 201, 0.08);
+}
+
+.inline-banner strong,
+.inline-banner p {
+  margin: 0;
+}
+
+.inline-banner p {
+  margin-top: 4px;
+  color: var(--muted-strong);
 }
 
 .editor__meta {
@@ -565,6 +624,11 @@ textarea {
     padding: 18px;
   }
 
+  .workspace.is-macos {
+    --titlebar-safe-top: 18px;
+    --titlebar-safe-left: 68px;
+  }
+
   .workspace__header {
     align-items: start;
     flex-direction: column;
@@ -599,7 +663,8 @@ textarea {
 
   .panel__header,
   .memo-card__title-row,
-  .organize-preview__header {
+  .organize-preview__header,
+  .inline-banner {
     flex-direction: column;
   }
 

@@ -1,10 +1,100 @@
-import { app, BrowserWindow, shell } from "electron";
+import { app, BrowserWindow, ipcMain, shell } from "electron";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { memoChannels } from "./memo-channels.mjs";
+import { createMemoSearchService } from "./search/memo-search-service.mjs";
+import { createLocalOrganizer } from "./organize/local-organizer.mjs";
+import { createMemoStore } from "./store/memo-store.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rendererUrl = process.env.VITE_DEV_SERVER_URL;
 const rendererPath = join(__dirname, "../dist/index.html");
+function normalizeMemoId(value) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    return null;
+  }
+
+  return value.trim();
+}
+
+function normalizeMemoInput(value) {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+
+  return {
+    title: typeof value.title === "string" ? value.title : undefined,
+    body: typeof value.body === "string" ? value.body : undefined
+  };
+}
+
+function normalizeSearchQuery(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.trim();
+}
+
+function normalizeOrganizeInput(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const memoId = normalizeMemoId(value.memoId);
+  const intent = value.intent === "polish" || value.intent === "polite" ? value.intent : null;
+  const body = typeof value.body === "string" ? value.body : "";
+  const title = typeof value.title === "string" ? value.title : "";
+
+  if (!memoId || !intent) {
+    return null;
+  }
+
+  return {
+    memoId,
+    intent,
+    title,
+    body
+  };
+}
+
+function registerMemoHandlers(memoStore, memoSearchService, organizer) {
+  ipcMain.handle(memoChannels.list, async () => memoStore.list());
+
+  ipcMain.handle(memoChannels.get, async (_event, id) => {
+    const memoId = normalizeMemoId(id);
+    return memoId ? memoStore.get(memoId) : null;
+  });
+
+  ipcMain.handle(memoChannels.create, async (_event, input) => {
+    return memoStore.create(normalizeMemoInput(input));
+  });
+
+  ipcMain.handle(memoChannels.update, async (_event, id, patch) => {
+    const memoId = normalizeMemoId(id);
+    return memoId ? memoStore.update(memoId, normalizeMemoInput(patch)) : null;
+  });
+
+  ipcMain.handle(memoChannels.delete, async (_event, id) => {
+    const memoId = normalizeMemoId(id);
+    return memoId ? memoStore.delete(memoId) : false;
+  });
+
+  ipcMain.handle(memoChannels.search, async (_event, query) => {
+    const normalizedQuery = normalizeSearchQuery(query);
+    return normalizedQuery ? memoSearchService.search(normalizedQuery) : [];
+  });
+
+  ipcMain.handle(memoChannels.organize, async (_event, input) => {
+    const organizeInput = normalizeOrganizeInput(input);
+
+    if (!organizeInput) {
+      throw new Error("잘못된 정리 요청입니다.");
+    }
+
+    return organizer.organize(organizeInput);
+  });
+}
 
 function createWindow() {
   const windowOptions = {
@@ -39,6 +129,17 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  const memoStore = createMemoStore({
+    userDataPath: app.getPath("userData")
+  });
+  const memoSearchService = createMemoSearchService({
+    listMemos() {
+      return memoStore.list();
+    }
+  });
+  const organizer = createLocalOrganizer();
+
+  registerMemoHandlers(memoStore, memoSearchService, organizer);
   createWindow();
 
   app.on("activate", () => {

@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import type {
   Memo,
   MemoCreateInput,
@@ -107,6 +107,8 @@ export function MemoWorkspace() {
   const [organizeResult, setOrganizeResult] = useState<MemoOrganizeResult | null>(null);
   const [isOrganizing, setIsOrganizing] = useState<MemoOrganizeIntent | null>(null);
   const [isApplyingSuggestion, setIsApplyingSuggestion] = useState(false);
+  const activeMemoIdRef = useRef<string | null>(null);
+  const organizeRequestRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -145,6 +147,11 @@ export function MemoWorkspace() {
   }, []);
 
   useEffect(() => {
+    activeMemoIdRef.current = activeMemoId;
+  }, [activeMemoId]);
+
+  useEffect(() => {
+    organizeRequestRef.current += 1;
     setOrganizeResult(null);
     setIsOrganizing(null);
   }, [activeMemoId]);
@@ -256,25 +263,39 @@ export function MemoWorkspace() {
       return;
     }
 
+    const memoId = activeMemo.id;
+    const requestId = organizeRequestRef.current + 1;
+
+    organizeRequestRef.current = requestId;
     setIsOrganizing(intent);
     setErrorMessage(null);
     setStatusMessage(intent === "polite" ? "Converting tone..." : "Polishing draft...");
 
     try {
       const result = await window.memoAPI.organize({
-        memoId: activeMemo.id,
+        memoId,
         title: activeMemo.title,
         body: activeMemo.body,
         intent
       });
 
+      if (organizeRequestRef.current !== requestId || activeMemoIdRef.current !== memoId) {
+        return;
+      }
+
       setOrganizeResult(result);
       setStatusMessage(result.summary);
     } catch (error) {
+      if (organizeRequestRef.current !== requestId || activeMemoIdRef.current !== memoId) {
+        return;
+      }
+
       setErrorMessage(error instanceof Error ? error.message : "Failed to organize memo.");
       setStatusMessage("Organize failed");
     } finally {
-      setIsOrganizing(null);
+      if (organizeRequestRef.current === requestId && activeMemoIdRef.current === memoId) {
+        setIsOrganizing(null);
+      }
     }
   }
 
@@ -301,6 +322,10 @@ export function MemoWorkspace() {
 
     try {
       const persisted = await persistMemoUpdate(activeMemo.id, { body: nextBody });
+
+      if (!persisted && window.memoAPI) {
+        throw new Error("The selected memo no longer exists.");
+      }
 
       if (persisted) {
         replaceMemo(persisted);

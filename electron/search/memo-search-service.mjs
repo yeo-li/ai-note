@@ -18,7 +18,7 @@ function createPreview(text, matchedTerms) {
   const compact = text.replace(/\s+/g, " ").trim();
 
   if (!compact) {
-    return "No content yet";
+    return "아직 내용이 없습니다";
   }
 
   const normalizedCompact = normalizeText(compact);

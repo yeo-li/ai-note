@@ -17,6 +17,14 @@ npm install
 npm run dev
 ```
 
+## Korean Preview
+
+이 브랜치는 한국어 UI 미리보기 버전입니다.
+
+- 메모 작성/수정/삭제
+- AI 정리: 문장 다듬기, 공손한 문체 변환
+- 문맥 검색: 자연어 질의로 관련 메모 목록 표시
+
 ## Test
 
 ```bash

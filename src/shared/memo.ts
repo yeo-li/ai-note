@@ -22,3 +22,19 @@ export type MemoSearchResult = {
   preview: string;
   matchedTerms: string[];
 };
+
+export type MemoOrganizeIntent = "polish" | "polite";
+
+export type MemoOrganizeInput = {
+  memoId: string;
+  title?: string;
+  body: string;
+  intent: MemoOrganizeIntent;
+};
+
+export type MemoOrganizeResult = {
+  intent: MemoOrganizeIntent;
+  original: string;
+  suggested: string;
+  summary: string;
+};

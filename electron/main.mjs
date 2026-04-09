@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { memoChannels } from "./memo-channels.mjs";
 import { createMemoSearchService } from "./search/memo-search-service.mjs";
+import { createLocalOrganizer } from "./organize/local-organizer.mjs";
 import { createMemoStore } from "./store/memo-store.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -35,7 +36,29 @@ function normalizeSearchQuery(value) {
   return value.trim();
 }
 
-function registerMemoHandlers(memoStore, memoSearchService) {
+function normalizeOrganizeInput(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const memoId = normalizeMemoId(value.memoId);
+  const intent = value.intent === "polish" || value.intent === "polite" ? value.intent : null;
+  const body = typeof value.body === "string" ? value.body : "";
+  const title = typeof value.title === "string" ? value.title : "";
+
+  if (!memoId || !intent) {
+    return null;
+  }
+
+  return {
+    memoId,
+    intent,
+    title,
+    body
+  };
+}
+
+function registerMemoHandlers(memoStore, memoSearchService, organizer) {
   ipcMain.handle(memoChannels.list, async () => memoStore.list());
 
   ipcMain.handle(memoChannels.get, async (_event, id) => {
@@ -60,6 +83,16 @@ function registerMemoHandlers(memoStore, memoSearchService) {
   ipcMain.handle(memoChannels.search, async (_event, query) => {
     const normalizedQuery = normalizeSearchQuery(query);
     return normalizedQuery ? memoSearchService.search(normalizedQuery) : [];
+  });
+
+  ipcMain.handle(memoChannels.organize, async (_event, input) => {
+    const organizeInput = normalizeOrganizeInput(input);
+
+    if (!organizeInput) {
+      throw new Error("잘못된 정리 요청입니다.");
+    }
+
+    return organizer.organize(organizeInput);
   });
 }
 
@@ -104,8 +137,9 @@ app.whenReady().then(() => {
       return memoStore.list();
     }
   });
+  const organizer = createLocalOrganizer();
 
-  registerMemoHandlers(memoStore, memoSearchService);
+  registerMemoHandlers(memoStore, memoSearchService, organizer);
   createWindow();
 
   app.on("activate", () => {

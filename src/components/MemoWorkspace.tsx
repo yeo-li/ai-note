@@ -1,5 +1,5 @@
-import { startTransition, useEffect, useState } from "react";
-import type { Memo, MemoCreateInput, MemoUpdateInput } from "../shared/memo";
+import { startTransition, useDeferredValue, useEffect, useState } from "react";
+import type { Memo, MemoCreateInput, MemoSearchResult, MemoUpdateInput } from "../shared/memo";
 
 const platformName: Record<string, string> = {
   darwin: "macOS",
@@ -84,6 +84,70 @@ function getInitialStatus() {
   return window.memoAPI ? "Connecting to local desktop store" : "Renderer preview";
 }
 
+function normalizeSearchText(value: string) {
+  return value.normalize("NFKC").toLowerCase().trim();
+}
+
+function tokenizeSearchQuery(value: string) {
+  return [...new Set(normalizeSearchText(value).match(/[\p{L}\p{N}]+/gu) ?? [])];
+}
+
+function searchFallbackMemos(memos: Memo[], query: string): MemoSearchResult[] {
+  const normalizedQuery = normalizeSearchText(query);
+
+  if (!normalizedQuery) {
+    return [];
+  }
+
+  const queryTokens = tokenizeSearchQuery(normalizedQuery);
+
+  if (queryTokens.length === 0) {
+    return [];
+  }
+
+  return sortMemosByRecency(memos)
+    .map((memo) => {
+      const title = normalizeSearchText(memo.title);
+      const body = normalizeSearchText(memo.body);
+      let score = 0;
+      const matchedTerms: string[] = [];
+
+      if (title.includes(normalizedQuery)) {
+        score += 100;
+      }
+
+      if (body.includes(normalizedQuery)) {
+        score += 56;
+      }
+
+      for (const token of queryTokens) {
+        if (title.includes(token)) {
+          score += 28;
+          matchedTerms.push(token);
+          continue;
+        }
+
+        if (body.includes(token)) {
+          score += 12;
+          matchedTerms.push(token);
+        }
+      }
+
+      if (score <= 0) {
+        return null;
+      }
+
+      return {
+        memo,
+        score,
+        preview: getMemoPreview(memo.body || memo.title),
+        matchedTerms: [...new Set(matchedTerms)]
+      };
+    })
+    .filter((result): result is MemoSearchResult => Boolean(result))
+    .sort((left, right) => right.score - left.score);
+}
+
 async function loadInitialMemos() {
   if (!window.memoAPI) {
     return getFallbackSeed();
@@ -98,6 +162,12 @@ export function MemoWorkspace() {
   const [isLoading, setIsLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState(getInitialStatus());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<MemoSearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchMessage, setSearchMessage] = useState("Search titles and memo bodies with natural phrasing.");
+  const [searchErrorMessage, setSearchErrorMessage] = useState<string | null>(null);
+  const deferredSearchQuery = useDeferredValue(searchQuery.trim());
 
   useEffect(() => {
     let cancelled = false;
@@ -135,12 +205,65 @@ export function MemoWorkspace() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!deferredSearchQuery) {
+      setSearchResults([]);
+      setSearchErrorMessage(null);
+      setSearchMessage("Search titles and memo bodies with natural phrasing.");
+      setIsSearching(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timeoutId = window.setTimeout(() => {
+      setIsSearching(true);
+      setSearchErrorMessage(null);
+
+      const searchPromise = window.memoAPI?.search
+        ? window.memoAPI.search(deferredSearchQuery)
+        : Promise.resolve(searchFallbackMemos(memos, deferredSearchQuery));
+
+      void searchPromise.then(
+        (results) => {
+          if (cancelled) {
+            return;
+          }
+
+          startTransition(() => {
+            setSearchResults(results);
+            setSearchMessage(
+              results.length > 0
+                ? `${results.length} related memo${results.length > 1 ? "s" : ""} found`
+                : "No related memos yet. Try names, intents, or topic words."
+            );
+            setIsSearching(false);
+          });
+        },
+        (error) => {
+          if (cancelled) {
+            return;
+          }
+
+          setSearchErrorMessage(error instanceof Error ? error.message : "Search failed.");
+          setSearchMessage("Could not run context search");
+          setIsSearching(false);
+        }
+      );
+    }, 140);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [deferredSearchQuery, memos]);
+
   const orderedMemos = sortMemosByRecency(memos);
   const activeMemo = orderedMemos.find((memo) => memo.id === activeMemoId) ?? orderedMemos[0] ?? null;
   const runtimeLabel = window.desktopAPI ? formatPlatform(window.desktopAPI.platform) : "Browser";
   const runtimeDetail = window.desktopAPI
     ? `${window.desktopAPI.versions.electron} / ${window.desktopAPI.versions.chrome}`
     : "No preload bridge";
+  const isSearchActive = deferredSearchQuery.length > 0;
 
   async function createMemo() {
     const input: MemoCreateInput = {
@@ -172,9 +295,7 @@ export function MemoWorkspace() {
       throw new Error("The selected memo no longer exists.");
     }
 
-    setMemos((current) =>
-      current.map((memo) => (memo.id === persisted.id ? persisted : memo))
-    );
+    setMemos((current) => current.map((memo) => (memo.id === persisted.id ? persisted : memo)));
   }
 
   function updateActiveMemo(field: keyof Pick<Memo, "title" | "body">, value: string) {
@@ -241,8 +362,8 @@ export function MemoWorkspace() {
           <p className="workspace__eyebrow">Desktop memo workspace</p>
           <h1>AI Note</h1>
           <p className="workspace__lede">
-            Capture quickly, store locally, and prepare the editor for AI organize and context
-            search. Sprint 1 keeps the desktop memo loop concrete before smarter retrieval lands.
+            Capture quickly, store locally, and retrieve by context before full AI synthesis lands.
+            Sprint 1 now turns natural-language queries into a ranked related memo list.
           </p>
         </div>
 
@@ -250,6 +371,7 @@ export function MemoWorkspace() {
           <span className="badge badge--soft">{runtimeLabel}</span>
           <span className="badge">{statusMessage}</span>
           <span className="badge">{orderedMemos.length} memos</span>
+          <span className="badge">{isSearchActive ? `${searchResults.length} matches` : "Search ready"}</span>
         </div>
       </header>
 
@@ -348,7 +470,7 @@ export function MemoWorkspace() {
               <h3>No memo selected</h3>
               <p>
                 Start with a quick note. Sprint 1 already stores CRUD changes locally through the
-                desktop bridge, and later iterations will layer AI organize and context search on top.
+                desktop bridge, and context search can now pull related memos from that same store.
               </p>
               <button className="button button--primary" type="button" onClick={() => void createMemo()}>
                 + Create memo
@@ -363,15 +485,75 @@ export function MemoWorkspace() {
           <div className="tool-card">
             <p className="panel__kicker">Context search</p>
             <h2>Find by meaning</h2>
-            <p>
-              The next cycle will let you search memos by natural phrasing and return a related list.
-            </p>
-            <div className="placeholder-input" aria-hidden="true">
-              Search memos with AI
+            <p>{searchMessage}</p>
+
+            <label className="field">
+              <span className="field__label">Search memos</span>
+              <input
+                className="input"
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="today call procurement, polite professor email..."
+              />
+            </label>
+
+            <div className="tool-card__toolbar">
+              <span className="badge">{isSearching ? "Searching…" : "Related list only"}</span>
+              <button
+                className="button button--ghost"
+                type="button"
+                onClick={() => setSearchQuery("")}
+                disabled={!searchQuery}
+              >
+                Clear
+              </button>
             </div>
-            <button className="button button--ghost" type="button" disabled>
-              AI search coming soon
-            </button>
+
+            {searchErrorMessage ? <p className="inline-error">{searchErrorMessage}</p> : null}
+
+            {isSearchActive ? (
+              searchResults.length > 0 ? (
+                <div className="search-results" role="list" aria-label="Context search results">
+                  {searchResults.map((result) => {
+                    const isSelected = result.memo.id === activeMemo?.id;
+
+                    return (
+                      <button
+                        key={result.memo.id}
+                        type="button"
+                        className={`search-result${isSelected ? " search-result--active" : ""}`}
+                        onClick={() => setActiveMemoId(result.memo.id)}
+                      >
+                        <span className="search-result__title-row">
+                          <strong>{result.memo.title || "Untitled memo"}</strong>
+                          <span className="search-result__score">{Math.round(result.score)}</span>
+                        </span>
+                        <span className="search-result__preview">{result.preview}</span>
+                        <span className="search-result__meta">
+                          <span>{formatMemoTimestamp(result.memo.updatedAt)}</span>
+                          {result.matchedTerms.map((term) => (
+                            <span key={`${result.memo.id}-${term}`} className="search-chip">
+                              {term}
+                            </span>
+                          ))}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="empty-state empty-state--compact">
+                  <h3>No related memos</h3>
+                  <p>Try who, what, or intent words. The first version returns ranked memo matches only.</p>
+                </div>
+              )
+            ) : (
+              <div className="empty-state empty-state--compact">
+                <h3>Search with natural phrasing</h3>
+                <p>Examples: “today call procurement”, “polite professor email”, “meeting recap draft”.</p>
+              </div>
+            )}
           </div>
 
           <div className="tool-card tool-card--accent">
@@ -394,7 +576,7 @@ export function MemoWorkspace() {
             <p className="panel__kicker">Build note</p>
             <h2>{runtimeDetail}</h2>
             <p>
-              The desktop shell is now wired to a local memo store. Search and AI organize can build on this foundation next.
+              Search runs locally and deterministically on top of the desktop memo store, leaving a clean seam for semantic retrieval later.
             </p>
           </div>
         </aside>

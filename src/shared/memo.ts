@@ -15,3 +15,10 @@ export type MemoUpdateInput = {
   title?: string;
   body?: string;
 };
+
+export type MemoSearchResult = {
+  memo: Memo;
+  score: number;
+  preview: string;
+  matchedTerms: string[];
+};

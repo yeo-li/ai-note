@@ -10,7 +10,7 @@
     "dev:renderer": "vite",
     "dev:electron": "wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
     "start": "electron .",
-    "test": "node --test electron/store/*.test.mjs",
+    "test": "node --test electron/**/*.test.mjs",
     "build": "npm run build:renderer && electron-builder",
     "build:renderer": "tsc --noEmit && vite build",
     "dist:mac": "npm run build:renderer && electron-builder --mac",

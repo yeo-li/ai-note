@@ -16,6 +16,9 @@ const memoAPI = {
   },
   delete(id) {
     return ipcRenderer.invoke(memoChannels.delete, id);
+  },
+  search(query) {
+    return ipcRenderer.invoke(memoChannels.search, query);
   }
 };
 

@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell } from "electron";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { memoChannels } from "./memo-channels.mjs";
+import { createMemoSearchService } from "./search/memo-search-service.mjs";
 import { createMemoStore } from "./store/memo-store.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -26,7 +27,15 @@ function normalizeMemoInput(value) {
   };
 }
 
-function registerMemoHandlers(memoStore) {
+function normalizeSearchQuery(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.trim();
+}
+
+function registerMemoHandlers(memoStore, memoSearchService) {
   ipcMain.handle(memoChannels.list, async () => memoStore.list());
 
   ipcMain.handle(memoChannels.get, async (_event, id) => {
@@ -46,6 +55,11 @@ function registerMemoHandlers(memoStore) {
   ipcMain.handle(memoChannels.delete, async (_event, id) => {
     const memoId = normalizeMemoId(id);
     return memoId ? memoStore.delete(memoId) : false;
+  });
+
+  ipcMain.handle(memoChannels.search, async (_event, query) => {
+    const normalizedQuery = normalizeSearchQuery(query);
+    return normalizedQuery ? memoSearchService.search(normalizedQuery) : [];
   });
 }
 
@@ -85,8 +99,13 @@ app.whenReady().then(() => {
   const memoStore = createMemoStore({
     userDataPath: app.getPath("userData")
   });
+  const memoSearchService = createMemoSearchService({
+    listMemos() {
+      return memoStore.list();
+    }
+  });
 
-  registerMemoHandlers(memoStore);
+  registerMemoHandlers(memoStore, memoSearchService);
   createWindow();
 
   app.on("activate", () => {

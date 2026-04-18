@@ -230,7 +230,7 @@ function createWindow() {
     height: bounds.height,
     minWidth: minimumSize.width,
     minHeight: minimumSize.height,
-    backgroundColor: "#fcf7dd",
+    backgroundColor: "#ffffff",
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),
       contextIsolation: true,

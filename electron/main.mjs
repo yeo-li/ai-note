@@ -5,6 +5,7 @@ import { memoChannels } from "./memo-channels.mjs";
 import { createMemoSearchService } from "./search/memo-search-service.mjs";
 import { createLocalOrganizer } from "./organize/local-organizer.mjs";
 import { createMemoStore } from "./store/memo-store.mjs";
+import { createMemoSqliteStore } from "./store/memo-sqlite-store.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rendererUrl = process.env.VITE_DEV_SERVER_URL;
@@ -154,6 +155,20 @@ function registerMemoHandlers(memoStore, memoSearchService, organizer) {
   });
 }
 
+function createPrimaryMemoStore(userDataPath) {
+  try {
+    return createMemoSqliteStore({
+      userDataPath
+    });
+  } catch (error) {
+    console.error("[memo-store] SQLite initialization failed. Falling back to JSON store.", error);
+
+    return createMemoStore({
+      userDataPath
+    });
+  }
+}
+
 function createWindow() {
   const { bounds, minimumSize } = getWindowMetrics();
   const windowOptions = {
@@ -205,9 +220,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  const memoStore = createMemoStore({
-    userDataPath: app.getPath("userData")
-  });
+  const memoStore = createPrimaryMemoStore(app.getPath("userData"));
   const memoSearchService = createMemoSearchService({
     listMemos() {
       return memoStore.list();
@@ -217,6 +230,12 @@ app.whenReady().then(() => {
 
   registerMemoHandlers(memoStore, memoSearchService, organizer);
   createWindow();
+
+  app.on("before-quit", () => {
+    if (typeof memoStore.close === "function") {
+      memoStore.close();
+    }
+  });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

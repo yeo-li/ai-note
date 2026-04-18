@@ -1,17 +1,16 @@
 # Persistence Strategy
 
-## Sprint 1 Decision
+## Current Decision
 
-Sprint 1의 기본 저장소는 `userData/notes.json` 단일 파일 기반으로 시작한다.
+기본 저장소는 SQLite(`userData/memos.db`)를 사용한다.
 
 ## 이유
 
-- 현재 우선순위는 빠른 CRUD 구현과 데스크톱 MVP 검증이다.
-- 메모 수가 매우 많지 않은 초기 단계에서는 JSON 파일 저장이 가장 단순하다.
-- Electron main process에서 파일 저장을 직접 제어하기 쉽다.
-- preload / IPC 계약 위에 올리기 쉽고, 나중에 SQLite로 교체해도 renderer 계약을 유지할 수 있다.
+- 메모 수가 증가해도 CRUD를 파일 전체 재기록 없이 처리할 수 있다.
+- 인덱스/트랜잭션 기반으로 조회/수정 성능과 정합성을 유지하기 쉽다.
+- renderer IPC 계약은 유지하면서 main process 저장소만 교체 가능하다.
 
-## 현재 데이터 모델
+## 데이터 모델
 
 메모는 아래 필드를 가진다.
 
@@ -21,15 +20,16 @@ Sprint 1의 기본 저장소는 `userData/notes.json` 단일 파일 기반으로
 - `createdAt`
 - `updatedAt`
 
-## 저장 규칙
+## 저장 및 마이그레이션 규칙
 
-- 저장 파일 위치: `app.getPath("userData")/notes.json`
-- 파일 구조: `version` + `notes[]`
-- 정렬 기준: `updatedAt` 내림차순
-- 쓰기 방식: 임시 파일 쓰기 후 rename
+- 기본 DB 파일 위치: `app.getPath("userData")/memos.db`
+- 테이블: `memos`, `schema_migrations`, `app_metadata`
+- 기본 정렬: `updated_at` 내림차순
+- 첫 실행 시 `memos.json` 또는 레거시 `notes.json`가 존재하면 SQLite로 자동 마이그레이션한다.
+- JSON 원본 파일은 자동 삭제하지 않는다.
 
-## 후속 확장 포인트
+## 확장 포인트
 
-- context search를 위한 별도 인덱스 저장
-- AI organize 결과 이력 저장
-- SQLite 전환 시 repository 계층 유지
+- 검색 성능 고도화를 위한 SQLite FTS 테이블 추가
+- AI organize 결과 이력/버전 테이블 추가
+- 태그/노트북 등 관계형 확장 모델 도입

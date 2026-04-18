@@ -4,7 +4,6 @@ test.describe("AI Note desktop smoke", () => {
   test("creates and edits a note without leaving the workspace", async ({ appWindow }) => {
     const noteList = appWindow.getByTestId("note-list");
     const createButton = appWindow.getByTestId("sidebar-create-note-button");
-    const titleInput = appWindow.getByTestId("note-title-input");
     const bodyInput = appWindow.getByTestId("note-body-input");
 
     const initialCount = await noteList.locator('[data-testid^="note-list-item-"]').count();
@@ -12,23 +11,22 @@ test.describe("AI Note desktop smoke", () => {
     await createButton.click();
 
     await expect(noteList.locator('[data-testid^="note-list-item-"]')).toHaveCount(initialCount + 1);
-    await expect(titleInput).toHaveValue(/새 메모/);
+    await expect(bodyInput).toHaveValue("");
 
-    await titleInput.fill("QA smoke note");
-    await bodyInput.fill("Playwright smoke coverage for Electron.");
+    await bodyInput.fill("QA smoke note\nPlaywright smoke coverage for Electron.");
 
-    await expect(titleInput).toHaveValue("QA smoke note");
-    await expect(bodyInput).toHaveValue("Playwright smoke coverage for Electron.");
+    await expect(bodyInput).toHaveValue("QA smoke note\nPlaywright smoke coverage for Electron.");
+    await expect(noteList.locator('[data-testid^="note-list-item-"]').first()).toContainText("QA smoke note");
   });
 
   test("keeps selection separate from search when no result matches", async ({ appWindow }) => {
     const firstNote = appWindow.getByTestId("note-list").locator('[data-testid^="note-list-item-"]').first();
     const searchInput = appWindow.getByTestId("note-search-input");
-    const titleInput = appWindow.getByTestId("note-title-input");
+    const bodyInput = appWindow.getByTestId("note-body-input");
 
     await firstNote.click();
     await expect(firstNote).toHaveAttribute("aria-current", "true");
-    const selectedTitle = await titleInput.inputValue();
+    const selectedBody = await bodyInput.inputValue();
 
     await searchInput.fill("does-not-match-anything");
 
@@ -38,17 +36,15 @@ test.describe("AI Note desktop smoke", () => {
 
     await searchInput.clear();
 
-    await expect(titleInput).toHaveValue(selectedTitle);
+    await expect(bodyInput).toHaveValue(selectedBody);
   });
 
-  test("restores the original body without overwriting a later title edit", async ({ appWindow }) => {
+  test("restores the original body after a later edit", async ({ appWindow }) => {
     const createButton = appWindow.getByTestId("sidebar-create-note-button");
-    const titleInput = appWindow.getByTestId("note-title-input");
     const bodyInput = appWindow.getByTestId("note-body-input");
     const originalBody = "첫 항목 - 두 번째 항목";
 
     await createButton.click();
-    await titleInput.fill("Original title");
     await bodyInput.fill(originalBody);
 
     await appWindow.getByTestId("organize-note-button").click();
@@ -59,26 +55,23 @@ test.describe("AI Note desktop smoke", () => {
 
     await expect(bodyInput).toHaveValue("첫 항목, 두 번째 항목 입니다.");
 
-    await titleInput.fill("Retitled after AI");
+    await bodyInput.fill("변환 이후 추가 편집");
     await appWindow.getByTestId("restore-note-button").click();
 
-    await expect(titleInput).toHaveValue("Retitled after AI");
     await expect(bodyInput).toHaveValue(originalBody);
   });
 
   test("keeps the adjacent visible note selected after deleting inside filtered results", async ({ appWindow }) => {
     const createButton = appWindow.getByTestId("sidebar-create-note-button");
     const noteList = appWindow.getByTestId("note-list");
-    const titleInput = appWindow.getByTestId("note-title-input");
     const bodyInput = appWindow.getByTestId("note-body-input");
     const searchInput = appWindow.getByTestId("note-search-input");
 
-    const titles = ["qa filter set 1", "qa filter set 2", "qa filter set 3", "qa filler note"];
+    const labels = ["qa filter set 1", "qa filter set 2", "qa filter set 3", "qa filler note"];
 
-    for (const title of titles) {
+    for (const label of labels) {
       await createButton.click();
-      await titleInput.fill(title);
-      await bodyInput.fill(`${title} body`);
+      await bodyInput.fill(`${label}\n${label} body`);
     }
 
     await searchInput.fill("qa filter set");
@@ -87,25 +80,23 @@ test.describe("AI Note desktop smoke", () => {
     const filteredItems = noteList.locator('[data-testid^="note-list-item-"]');
 
     await filteredItems.first().click();
-    await expect(titleInput).toHaveValue("qa filter set 3");
+    await expect(bodyInput).toHaveValue(/qa filter set 3/);
 
     await appWindow.getByTestId("begin-delete-button").click();
     await expect(appWindow.getByTestId("delete-confirm-modal")).toBeVisible();
     await appWindow.getByTestId("confirm-delete-button").click();
 
     await expect(filteredItems).toHaveCount(2);
-    await expect(titleInput).toHaveValue("qa filter set 2");
+    await expect(bodyInput).toHaveValue(/qa filter set 2/);
   });
 
   test("opens transform preview and supports delete undo flow", async ({ appWindow }) => {
     const createButton = appWindow.getByTestId("sidebar-create-note-button");
     const noteList = appWindow.getByTestId("note-list");
-    const titleInput = appWindow.getByTestId("note-title-input");
     const bodyInput = appWindow.getByTestId("note-body-input");
 
     await createButton.click();
-    await titleInput.fill("Preview and delete");
-    await bodyInput.fill("첫 문장입니다.\n\n두 번째 문장입니다.");
+    await bodyInput.fill("Preview and delete\n\n첫 문장입니다.\n\n두 번째 문장입니다.");
 
     await appWindow.getByTestId("organize-note-button").click();
     await expect(appWindow.getByTestId("ai-prompt-form")).toBeVisible();
@@ -135,13 +126,11 @@ test.describe("AI Note desktop smoke", () => {
 
   test("restores AI original backup after delete undo", async ({ appWindow }) => {
     const createButton = appWindow.getByTestId("sidebar-create-note-button");
-    const titleInput = appWindow.getByTestId("note-title-input");
     const bodyInput = appWindow.getByTestId("note-body-input");
     const restoreButton = appWindow.getByTestId("restore-note-button");
-    const originalBody = "삭제 전 원문 - 복원 확인";
+    const originalBody = "Undo keeps restore path\n삭제 전 원문 - 복원 확인";
 
     await createButton.click();
-    await titleInput.fill("Undo keeps restore path");
     await bodyInput.fill(originalBody);
 
     await appWindow.getByTestId("organize-note-button").click();
@@ -150,14 +139,14 @@ test.describe("AI Note desktop smoke", () => {
     await appWindow.getByTestId("apply-transform-button").click();
 
     await expect(restoreButton).toBeEnabled();
-    await expect(bodyInput).toHaveValue("삭제 전 원문, 복원 확인 입니다.");
+    await expect(bodyInput).toHaveValue("Undo keeps restore path 삭제 전 원문, 복원 확인 입니다.");
 
     await appWindow.getByTestId("begin-delete-button").click();
     await expect(appWindow.getByTestId("delete-confirm-modal")).toBeVisible();
     await appWindow.getByTestId("confirm-delete-button").click();
     await appWindow.getByRole("button", { name: "되돌리기" }).first().click();
 
-    await expect(titleInput).toHaveValue("Undo keeps restore path");
+    await expect(bodyInput).toHaveValue("Undo keeps restore path 삭제 전 원문, 복원 확인 입니다.");
     await expect(restoreButton).toBeEnabled();
 
     await restoreButton.click();

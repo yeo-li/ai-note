@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Memo, MemoCreateInput, MemoStoreHealth, MemoUpdateInput } from "./shared/memo";
+import { buildMemoTitleFromBody, deriveNoteHeadline } from "./note-content";
 
 type TransformMode = "default" | "organized";
 
 type Note = {
   id: string;
-  title: string;
   body: string;
   updatedAt: string;
   dateLabel: string;
@@ -32,7 +32,6 @@ type TransformDraft = {
 const initialNotes: Note[] = [
   {
     id: "note-1",
-    title: "TDD를 늦숙하게 리드해주셨습니다.",
     updatedAt: "오후 5:16",
     dateLabel: "2026. 4. 1.",
     mode: "default",
@@ -41,7 +40,6 @@ const initialNotes: Note[] = [
   },
   {
     id: "note-2",
-    title: "src/main/java",
     updatedAt: "오후 4:48",
     dateLabel: "이제",
     mode: "default",
@@ -50,7 +48,6 @@ const initialNotes: Note[] = [
   },
   {
     id: "note-3",
-    title: "DROP DATABASE IF EXISTS JA...",
     updatedAt: "오후 4:10",
     dateLabel: "이제",
     mode: "default",
@@ -59,7 +56,6 @@ const initialNotes: Note[] = [
   },
   {
     id: "note-4",
-    title: "좋은 설계 -> 추상적인 조금 더 구체...",
     updatedAt: "오후 3:32",
     dateLabel: "2026. 3. 31.",
     mode: "default",
@@ -68,7 +64,6 @@ const initialNotes: Note[] = [
   },
   {
     id: "note-5",
-    title: "이력서 및 포폴에서 중요한건 내용 예...",
     updatedAt: "오후 1:12",
     dateLabel: "2026. 3. 31.",
     mode: "default",
@@ -77,7 +72,6 @@ const initialNotes: Note[] = [
   },
   {
     id: "note-6",
-    title: "팀 협업 및 코드 컨벤션 규칙",
     updatedAt: "오전 11:03",
     dateLabel: "2026. 3. 27.",
     mode: "default",
@@ -86,7 +80,6 @@ const initialNotes: Note[] = [
   },
   {
     id: "note-7",
-    title: "VO",
     updatedAt: "오전 9:54",
     dateLabel: "2026. 3. 9.",
     mode: "default",
@@ -95,7 +88,6 @@ const initialNotes: Note[] = [
   },
   {
     id: "note-8",
-    title: "이런 주 인상 깊었던 순간",
     updatedAt: "오전 9:20",
     dateLabel: "2026. 2. 27.",
     mode: "default",
@@ -104,20 +96,6 @@ const initialNotes: Note[] = [
   }
 ];
 
-function buildPreview(body: string) {
-  const compact = body.replace(/\s+/g, " ").trim();
-
-  if (!compact) {
-    return "내용이 비어 있는 메모";
-  }
-
-  if (compact.length <= 56) {
-    return compact;
-  }
-
-  return `${compact.slice(0, 56)}...`;
-}
-
 function matchesQuery(note: Note, query: string) {
   const normalizedQuery = query.trim().toLowerCase();
 
@@ -125,7 +103,7 @@ function matchesQuery(note: Note, query: string) {
     return true;
   }
 
-  return [note.title, note.body, note.dateLabel, note.updatedAt]
+  return [note.body, note.dateLabel, note.updatedAt]
     .join(" ")
     .toLowerCase()
     .includes(normalizedQuery);
@@ -143,10 +121,9 @@ function nowStamp() {
   };
 }
 
-function createNote(count: number): Note {
+function createNote(): Note {
   return {
     id: `note-${Date.now()}`,
-    title: `새 메모 ${count + 1}`,
     body: "",
     mode: "default",
     ...nowStamp()
@@ -179,7 +156,6 @@ function formatUpdatedAtFromIso(iso: string) {
 function toNoteFromMemo(memo: Memo, mode: TransformMode = "default"): Note {
   return {
     id: memo.id,
-    title: memo.title,
     body: memo.body,
     updatedAt: formatUpdatedAtFromIso(memo.updatedAt),
     dateLabel: formatDateLabelFromIso(memo.updatedAt),
@@ -207,6 +183,18 @@ function toErrorMessage(error: unknown) {
   }
 
   return "알 수 없는 저장소 오류";
+}
+
+function toMemoUpdateInput(update: Partial<Note>): MemoUpdateInput {
+  if (typeof update.body !== "string") {
+    return {};
+  }
+
+  return {
+    body: update.body,
+    // 저장소/검색 계층과의 호환성을 위해 title은 본문 첫 줄에서 파생한다.
+    title: buildMemoTitleFromBody(update.body)
+  };
 }
 
 function normalizeParagraphs(text: string) {
@@ -437,7 +425,7 @@ function App() {
 
         for (const seedNote of [...initialNotes].reverse()) {
           const createdMemo = await window.memoAPI.create({
-            title: seedNote.title,
+            title: buildMemoTitleFromBody(seedNote.body),
             body: seedNote.body
           });
 
@@ -530,6 +518,7 @@ function App() {
       : `${notes.length}개의 메모`;
   const activeModeLabel = activeNote?.mode === "organized" ? "AI 정리" : "원문";
   const deleteTargetNote = deleteIntentId ? notes.find((note) => note.id === deleteIntentId) ?? null : null;
+  const deleteTargetHeadline = deleteTargetNote ? deriveNoteHeadline(deleteTargetNote.body) : "";
   const isDeleteModalOpen = Boolean(deleteTargetNote);
   const isMutationLocked = isStorageLocked || !storageHealth?.ready;
   const storageKindLabel = storageHealth ? getStorageKindLabel(storageHealth.storeKind) : "확인 중";
@@ -644,15 +633,7 @@ function App() {
     setDeleteIntentId(null);
     setDraftTransform(null);
 
-    const persistencePatch: MemoUpdateInput = {};
-
-    if (typeof update.title === "string") {
-      persistencePatch.title = update.title;
-    }
-
-    if (typeof update.body === "string") {
-      persistencePatch.body = update.body;
-    }
+    const persistencePatch = toMemoUpdateInput(update);
 
     if (window.memoAPI && Object.keys(persistencePatch).length > 0) {
       void window.memoAPI
@@ -677,13 +658,13 @@ function App() {
       return;
     }
 
-    let nextNote = createNote(notes.length);
+    let nextNote = createNote();
 
     if (window.memoAPI) {
       try {
         const createInput: MemoCreateInput = {
-          title: `새 메모 ${notes.length + 1}`,
-          body: ""
+          title: buildMemoTitleFromBody(nextNote.body),
+          body: nextNote.body
         };
         const createdMemo = await window.memoAPI.create(createInput);
 
@@ -952,7 +933,7 @@ function App() {
     if (window.memoAPI) {
       try {
         const recreatedMemo = await window.memoAPI.create({
-          title: deletedSnapshot.note.title,
+          title: buildMemoTitleFromBody(deletedSnapshot.note.body),
           body: deletedSnapshot.note.body
         });
 
@@ -990,7 +971,7 @@ function App() {
       return;
     }
 
-    const text = `${activeNote.title}\n\n${activeNote.body}`.trim();
+    const text = activeNote.body;
 
     try {
       if (window.desktopAPI?.clipboard?.writeText) {
@@ -1090,7 +1071,7 @@ function App() {
               {!isCollectionEmpty && filteredNotes.length > 0 ? (
                 filteredNotes.map((note) => {
                   const isSelected = activeNote?.id === note.id;
-                  const noteLabel = note.title.trim() || buildPreview(note.body);
+                  const noteLabel = deriveNoteHeadline(note.body);
 
                   return (
                     <button
@@ -1110,12 +1091,10 @@ function App() {
                     >
                       <span className="note-list-copy">
                         <span className="note-list-meta">
-                          <span>{note.updatedAt}</span>
-                          <span>{note.dateLabel}</span>
                           <span className="note-list-state">{note.mode === "default" ? "원문" : "AI 정리"}</span>
                         </span>
-                        <strong>{note.title}</strong>
-                        <span className="note-list-preview">{buildPreview(note.body)}</span>
+                        <strong>{noteLabel}</strong>
+                        <span className="note-list-preview">{note.dateLabel}</span>
                       </span>
                     </button>
                   );
@@ -1287,7 +1266,7 @@ function App() {
                       <div className="transform-original" data-testid="transform-original-note">
                         <div className="transform-original-head">
                           <strong>원본 메모</strong>
-                          <span>{activeNote.title.trim() || "제목 없는 메모"}</span>
+                          <span>{deriveNoteHeadline(activeNote.body)}</span>
                         </div>
                         <pre className="transform-original-body" data-testid="transform-original-body">
                           {activeNote.body}
@@ -1316,25 +1295,6 @@ function App() {
                   ) : null}
 
                   <div className="editor-card">
-                    <label className="editor-field">
-                      <input
-                        className="paper-title"
-                        type="text"
-                        data-testid="note-title-input"
-                        value={activeNote.title}
-                        placeholder="제목 없는 메모"
-                        disabled={isMutationLocked}
-                        onChange={(event) =>
-                          patchActiveNote(
-                            {
-                              title: event.target.value
-                            },
-                            "메모 제목을 수정했다."
-                          )
-                        }
-                      />
-                    </label>
-
                     <label className="editor-field editor-field-body">
                       <textarea
                         className={`paper-editor${activeDraft ? " is-readonly" : ""}`}
@@ -1451,9 +1411,7 @@ function App() {
             >
               <h2 id="delete-modal-title">메모를 삭제할까요?</h2>
               <p id="delete-modal-description">
-                {deleteTargetNote.title.trim()
-                  ? `"${deleteTargetNote.title.trim()}" 메모를 삭제하면 되돌리기 전까지 사라집니다.`
-                  : "이 메모를 삭제하면 되돌리기 전까지 사라집니다."}
+                "{deleteTargetHeadline}" 메모를 삭제하면 되돌리기 전까지 사라집니다.
               </p>
               <div className="delete-modal-actions">
                 <button className="paper-button" type="button" data-testid="cancel-delete-button" onClick={cancelDeleteNote}>

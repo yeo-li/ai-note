@@ -1,6 +1,7 @@
 :root {
   --page-gutter: clamp(10px, 1.4vw, 24px);
   --mac-titlebar-safe-left: 84px;
+  --mac-titlebar-safe-top: 28px;
   --page-bg: #fcf7dd;
   --surface: #ffffff;
   --surface-alt: #fffdf0;
@@ -22,8 +23,11 @@
   --success: #15be53;
   --warning: #9b6829;
   --border: #e5edf5;
+  --focus-ring: rgba(242, 222, 123, 0.78);
+  --focus-shadow: 0 0 0 4px rgba(242, 222, 123, 0.2);
   --shadow-1: 0 20px 48px rgba(6, 27, 49, 0.08);
   --shadow-2: 0 26px 72px rgba(31, 51, 91, 0.12);
+  --editor-measure: 920px;
   font-family:
     "Avenir Next",
     "SF Pro Display",
@@ -120,12 +124,12 @@ textarea:focus-visible {
 }
 
 .app-shell.is-macos .sidebar-head {
-  padding-top: 12px;
+  padding-top: 14px;
   padding-left: 18px;
 }
 
 .app-shell.is-macos .paper-head {
-  padding-top: 30px;
+  padding-top: calc(8px + var(--mac-titlebar-safe-top));
 }
 
 .app-shell.is-macos .app-body.is-sidebar-hidden .paper-head,
@@ -247,8 +251,9 @@ textarea:focus-visible {
 
 .sidebar-search:focus-within,
 .paper-search:focus-within {
-  border-color: var(--border);
-  box-shadow: none;
+  border-color: var(--focus-ring);
+  background: #ffffff;
+  box-shadow: var(--focus-shadow);
 }
 
 .sidebar-search input,
@@ -269,13 +274,17 @@ textarea:focus-visible {
 
 .sidebar-search-button {
   flex: 0 0 auto;
-  min-height: 28px;
+  min-height: 32px;
   padding: 0 10px;
   border-radius: 999px;
   background: rgba(242, 222, 123, 0.24);
   color: var(--brand-dark);
   font-size: 0.72rem;
   font-weight: 600;
+}
+
+.sidebar-search-button:hover {
+  background: rgba(242, 222, 123, 0.34);
 }
 
 .sidebar-summary {
@@ -335,6 +344,12 @@ textarea:focus-visible {
   background: rgba(234, 34, 97, 0.04);
 }
 
+.paper-button-danger:hover {
+  border-color: rgba(234, 34, 97, 0.26);
+  background: rgba(234, 34, 97, 0.1);
+  box-shadow: 0 10px 24px rgba(234, 34, 97, 0.1);
+}
+
 .status-button {
   border-color: rgba(21, 190, 83, 0.16);
   background: rgba(21, 190, 83, 0.08);
@@ -344,6 +359,7 @@ textarea:focus-visible {
 .note-list {
   min-height: 0;
   overflow: auto;
+  scrollbar-gutter: stable;
   padding: 0;
   display: grid;
   align-content: start;
@@ -353,10 +369,10 @@ textarea:focus-visible {
 
 .note-list-item {
   width: 100%;
-  height: 132px;
+  min-height: 132px;
   display: flex;
-  align-items: stretch;
-  padding: 14px 18px;
+  align-items: flex-start;
+  padding: 16px 18px;
   border-radius: 0;
   border: 0;
   border-bottom: 1px solid rgba(229, 237, 245, 0.9);
@@ -380,7 +396,17 @@ textarea:focus-visible {
   border-color: var(--brand-border);
   background:
     linear-gradient(90deg, rgba(242, 222, 123, 0.24) 0%, rgba(242, 222, 123, 0.1) 68%, transparent 100%);
-  box-shadow: none;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.note-list-item:focus-visible {
+  position: relative;
+  z-index: 1;
+  background:
+    linear-gradient(90deg, rgba(242, 222, 123, 0.18) 0%, rgba(242, 222, 123, 0.08) 68%, transparent 100%);
+  box-shadow:
+    inset 3px 0 0 var(--accent),
+    inset 0 0 0 1px rgba(242, 222, 123, 0.4);
 }
 
 .note-list-item[data-mode="organized"] .note-list-state {
@@ -394,7 +420,7 @@ textarea:focus-visible {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
   align-items: start;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -402,20 +428,21 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: nowrap;
-  overflow: hidden;
+  flex-wrap: wrap;
   color: var(--text-faint);
   font-size: 0.74rem;
 }
 
 .note-list-copy strong {
+  display: -webkit-box;
   font-size: 1rem;
   font-weight: 600;
   line-height: 1.25;
   letter-spacing: -0.02em;
-  white-space: nowrap;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .note-list-preview {
@@ -432,6 +459,9 @@ textarea:focus-visible {
 .sidebar-empty {
   margin: 0;
   padding: 18px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
   border-radius: 0;
   background: transparent;
   border: 0;
@@ -469,8 +499,8 @@ textarea:focus-visible {
 
 .paper-head {
   display: grid;
-  gap: 8px;
-  padding: 12px 20px 10px;
+  gap: 12px;
+  padding: 14px 24px 12px;
   border-bottom: 1px solid rgba(229, 237, 245, 0.9);
   background:
     radial-gradient(circle at top right, rgba(242, 222, 123, 0.18), transparent 28%),
@@ -495,8 +525,8 @@ textarea:focus-visible {
 .paper-utility-bar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
+  gap: 14px;
+  align-items: start;
 }
 
 .paper-meta,
@@ -508,11 +538,13 @@ textarea:focus-visible {
 
 .paper-meta {
   gap: 6px;
+  row-gap: 8px;
 }
 
 .paper-actions {
   justify-content: flex-end;
   gap: 8px;
+  row-gap: 10px;
 }
 
 .ai-prompt-form {
@@ -533,8 +565,9 @@ textarea:focus-visible {
 }
 
 .ai-prompt-input:focus-within {
-  border-color: var(--border);
-  box-shadow: none;
+  border-color: var(--focus-ring);
+  background: #ffffff;
+  box-shadow: var(--focus-shadow);
 }
 
 .ai-prompt-input input {
@@ -553,10 +586,11 @@ textarea:focus-visible {
 .paper-body {
   min-height: 0;
   overflow: auto;
-  padding: 0;
+  padding: 0 clamp(16px, 2vw, 28px) clamp(18px, 2.8vw, 28px);
+  scrollbar-gutter: stable both-edges;
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 18px;
 }
 
 .transform-preview,
@@ -577,6 +611,14 @@ textarea:focus-visible {
   border-bottom: 1px solid var(--brand-border);
   border-left: 0;
   box-shadow: none;
+}
+
+.transform-preview-head,
+.transform-preview-body,
+.transform-original,
+.transform-preview-actions {
+  width: min(100%, var(--editor-measure));
+  margin: 0 auto;
 }
 
 .transform-preview-head,
@@ -657,8 +699,8 @@ textarea:focus-visible {
   min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: 18px;
-  padding: 22px 24px 24px;
+  gap: 20px;
+  padding: 24px clamp(20px, 2.4vw, 32px) 28px;
   border: 0;
   border-radius: 0;
   background: rgba(255, 255, 255, 0.98);
@@ -668,6 +710,7 @@ textarea:focus-visible {
 .editor-field {
   display: grid;
   gap: 10px;
+  width: min(100%, var(--editor-measure));
 }
 
 .editor-field-body {
@@ -678,12 +721,14 @@ textarea:focus-visible {
   width: 100%;
   padding: 0;
   border: 0;
+  border-bottom: 1px solid transparent;
   background: transparent;
   outline: none;
   font-size: clamp(1.8rem, 3.2vw, 2.4rem);
   font-weight: 350;
   line-height: 1.05;
   letter-spacing: -0.05em;
+  transition: border-color 160ms ease;
 }
 
 .paper-title:focus,
@@ -691,7 +736,17 @@ textarea:focus-visible {
 .paper-editor:focus,
 .paper-editor:focus-visible {
   outline: none;
-  box-shadow: none;
+}
+
+.paper-title:focus,
+.paper-title:focus-visible {
+  border-color: rgba(242, 222, 123, 0.9);
+}
+
+.paper-editor:focus,
+.paper-editor:focus-visible {
+  background: rgba(255, 253, 240, 0.84);
+  box-shadow: inset 0 0 0 1px rgba(242, 222, 123, 0.68);
 }
 
 .paper-editor {
@@ -702,10 +757,15 @@ textarea:focus-visible {
   background: transparent;
   outline: none;
   resize: none;
-  padding: 0;
+  padding: 14px 16px;
+  margin: -14px -16px;
+  border-radius: 20px;
   font-size: 1rem;
   line-height: 1.75;
   color: var(--text-main);
+  transition:
+    background-color 160ms ease,
+    box-shadow 160ms ease;
 }
 
 .paper-editor.is-readonly {
@@ -722,6 +782,7 @@ textarea:focus-visible {
   display: grid;
   gap: 14px;
   padding: 32px;
+  width: min(100%, 720px);
   border-radius: 28px;
   border: 1px solid var(--brand-border);
   background: rgba(255, 255, 255, 0.98);
@@ -751,11 +812,6 @@ textarea:focus-visible {
 }
 
 @media (max-width: 760px) {
-  .paper-topline {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
   .paper-utility-bar {
     grid-template-columns: 1fr;
   }
@@ -784,6 +840,10 @@ textarea:focus-visible {
     justify-content: flex-start;
   }
 
+  .app-shell.is-macos .sidebar-brand {
+    padding-left: calc(var(--mac-titlebar-safe-left) - 28px);
+  }
+
   .paper-head,
   .paper-body {
     padding-left: 18px;
@@ -802,5 +862,4 @@ textarea:focus-visible {
     min-height: 300px;
     line-height: 1.7;
   }
-
 }

@@ -129,4 +129,35 @@ test.describe("AI Note desktop smoke", () => {
 
     await expect(noteList.locator('[data-testid^="note-list-item-"]')).toHaveCount(countBeforeDelete);
   });
+
+  test("restores AI original backup after delete undo", async ({ appWindow }) => {
+    const createButton = appWindow.getByTestId("sidebar-create-note-button");
+    const titleInput = appWindow.getByTestId("note-title-input");
+    const bodyInput = appWindow.getByTestId("note-body-input");
+    const restoreButton = appWindow.getByTestId("restore-note-button");
+    const originalBody = "삭제 전 원문 - 복원 확인";
+
+    await createButton.click();
+    await titleInput.fill("Undo keeps restore path");
+    await bodyInput.fill(originalBody);
+
+    await appWindow.getByTestId("organize-note-button").click();
+    await appWindow.getByTestId("ai-prompt-input").fill("존댓말로 정리해줘");
+    await appWindow.getByTestId("submit-ai-prompt-button").click();
+    await appWindow.getByTestId("apply-transform-button").click();
+
+    await expect(restoreButton).toBeEnabled();
+    await expect(bodyInput).toHaveValue("삭제 전 원문, 복원 확인 입니다.");
+
+    await appWindow.getByTestId("begin-delete-button").click();
+    await appWindow.getByTestId("confirm-delete-button").click();
+    await appWindow.getByRole("button", { name: "되돌리기" }).first().click();
+
+    await expect(titleInput).toHaveValue("Undo keeps restore path");
+    await expect(restoreButton).toBeEnabled();
+
+    await restoreButton.click();
+
+    await expect(bodyInput).toHaveValue(originalBody);
+  });
 });

@@ -19,6 +19,7 @@ type NoteBackup = {
 type DeletedNoteState = {
   note: Note;
   index: number;
+  backup: NoteBackup | null;
 };
 
 type TransformDraft = {
@@ -600,6 +601,7 @@ function App() {
       return;
     }
 
+    const deletedBackup = backups[activeNote.id] ?? null;
     const currentVisibleNotes = hasQuery ? filteredNotes : notes;
     const deletedIndex = notes.findIndex((note) => note.id === activeNote.id);
     const deletedVisibleIndex = currentVisibleNotes.findIndex((note) => note.id === activeNote.id);
@@ -618,7 +620,8 @@ function App() {
     setAiPrompt("");
     setRecentlyDeleted({
       note: activeNote,
-      index: deletedIndex
+      index: deletedIndex,
+      backup: deletedBackup
     });
     setBackups((currentBackups) => {
       const nextBackups = { ...currentBackups };
@@ -638,6 +641,16 @@ function App() {
       const restoreIndex = Math.min(recentlyDeleted.index, nextNotes.length);
       nextNotes.splice(restoreIndex, 0, recentlyDeleted.note);
       return nextNotes;
+    });
+    setBackups((currentBackups) => {
+      if (!recentlyDeleted.backup) {
+        return currentBackups;
+      }
+
+      return {
+        ...currentBackups,
+        [recentlyDeleted.note.id]: recentlyDeleted.backup
+      };
     });
     setSelectedNoteId(recentlyDeleted.note.id);
     setRecentlyDeleted(null);
@@ -688,7 +701,7 @@ function App() {
           {statusMessage}
         </div>
         <section className={`app-body${isSidebarOpen ? "" : " is-sidebar-hidden"}`}>
-          <aside className="sidebar">
+          <aside className="sidebar" id="memo-sidebar">
             <div className="sidebar-head">
               <div className="sidebar-brand">
                 <strong>AI Note</strong>
@@ -732,7 +745,7 @@ function App() {
               </div>
             </div>
 
-            <div className="note-list" aria-label="메모 목록" data-testid="note-list">
+            <div className="note-list" role="listbox" aria-label="메모 목록" data-testid="note-list">
               {!isCollectionEmpty && filteredNotes.length > 0 ? (
                 filteredNotes.map((note) => {
                   const isSelected = activeNote?.id === note.id;
@@ -745,6 +758,8 @@ function App() {
                       data-mode={note.mode}
                       data-testid={`note-list-item-${note.id}`}
                       type="button"
+                      role="option"
+                      aria-selected={isSelected}
                       aria-current={isSelected ? "true" : undefined}
                       aria-label={`${noteLabel} 메모`}
                       onClick={() => {
@@ -789,6 +804,8 @@ function App() {
                           className="paper-button"
                           type="button"
                           data-testid="editor-toggle-sidebar-button"
+                          aria-controls="memo-sidebar"
+                          aria-expanded={isSidebarOpen}
                           onClick={() => {
                             setIsSidebarOpen((current) => !current);
                           }}
@@ -813,7 +830,7 @@ function App() {
                       <div className="paper-meta">
                         <span>{activeNote.updatedAt}</span>
                         <span>{activeModeLabel}</span>
-                        {hasQuery ? <span>{filteredNotes.length} results</span> : null}
+                        {hasQuery ? <span>{filteredNotes.length}개 결과</span> : null}
                       </div>
                     </div>
 

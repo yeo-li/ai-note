@@ -4,3 +4,7 @@ dist-electron
 release
 *.log
 .DS_Store
+allure-report
+allure-results
+playwright-report
+test-results

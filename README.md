@@ -26,6 +26,34 @@ npm run dist:win
 
 Windows 설치 파일은 보통 Windows 러너가 있는 CI에서 만드는 편이 더 안정적입니다.
 
+## QA
+
+Playwright 기반 Electron E2E, visual snapshot, Allure 리포트 기본 설정이 포함되어 있습니다.
+
+```bash
+npm run test:e2e
+npm run test:e2e:smoke
+npm run test:e2e:visual
+npm run test:e2e:update
+npm run test:e2e:report
+```
+
+Allure 리포트 생성 및 열기:
+
+```bash
+npm run allure:generate
+npm run allure:open
+```
+
+참고:
+
+- E2E는 `npm run build:renderer` 후 dist 기반 Electron 앱을 직접 실행합니다.
+- 현재 메모 상태는 renderer 세션 메모리에 머물며 앱 재시작 후에는 유지되지 않습니다.
+- visual snapshot baseline은 OS별로 관리되며, 현재 OS의 baseline이 없으면 visual spec은 자동으로 skip 됩니다.
+- 현재 OS baseline을 만들거나 갱신할 때는 `npm run test:e2e:update`를 사용합니다.
+- Electron E2E는 GUI가 가능한 로컬 데스크톱 환경에서 실행하는 편이 안전합니다.
+- Allure HTML 생성은 로컬 Java 런타임이 필요할 수 있습니다.
+
 ## Structure
 
 - `electron/`: main process / preload

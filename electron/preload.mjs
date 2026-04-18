@@ -1,4 +1,4 @@
-import { contextBridge } from "electron";
+import { clipboard, contextBridge } from "electron";
 
 contextBridge.exposeInMainWorld("desktopAPI", {
   platform: process.platform,
@@ -6,5 +6,10 @@ contextBridge.exposeInMainWorld("desktopAPI", {
     node: process.versions.node,
     chrome: process.versions.chrome,
     electron: process.versions.electron
+  },
+  clipboard: {
+    writeText(text) {
+      clipboard.writeText(text);
+    }
   }
 });

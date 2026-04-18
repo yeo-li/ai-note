@@ -22,12 +22,13 @@ test.describe("AI Note desktop smoke", () => {
   });
 
   test("keeps selection separate from search when no result matches", async ({ appWindow }) => {
-    const firstNote = appWindow.getByTestId("note-list-item-note-1");
+    const firstNote = appWindow.getByTestId("note-list").locator('[data-testid^="note-list-item-"]').first();
     const searchInput = appWindow.getByTestId("note-search-input");
+    const titleInput = appWindow.getByTestId("note-title-input");
 
     await firstNote.click();
     await expect(firstNote).toHaveAttribute("aria-current", "true");
-    await expect(appWindow.getByTestId("note-title-input")).toHaveValue(/TDD/);
+    const selectedTitle = await titleInput.inputValue();
 
     await searchInput.fill("does-not-match-anything");
 
@@ -37,7 +38,7 @@ test.describe("AI Note desktop smoke", () => {
 
     await searchInput.clear();
 
-    await expect(appWindow.getByTestId("note-title-input")).toHaveValue(/TDD/);
+    await expect(titleInput).toHaveValue(selectedTitle);
   });
 
   test("restores the original body without overwriting a later title edit", async ({ appWindow }) => {
@@ -89,6 +90,7 @@ test.describe("AI Note desktop smoke", () => {
     await expect(titleInput).toHaveValue("qa filter set 3");
 
     await appWindow.getByTestId("begin-delete-button").click();
+    await expect(appWindow.getByTestId("delete-confirm-modal")).toBeVisible();
     await appWindow.getByTestId("confirm-delete-button").click();
 
     await expect(filteredItems).toHaveCount(2);
@@ -121,6 +123,7 @@ test.describe("AI Note desktop smoke", () => {
     const countBeforeDelete = await noteList.locator('[data-testid^="note-list-item-"]').count();
 
     await appWindow.getByTestId("begin-delete-button").click();
+    await expect(appWindow.getByTestId("delete-confirm-modal")).toBeVisible();
     await appWindow.getByTestId("confirm-delete-button").click();
 
     await expect(noteList.locator('[data-testid^="note-list-item-"]')).toHaveCount(countBeforeDelete - 1);
@@ -150,6 +153,7 @@ test.describe("AI Note desktop smoke", () => {
     await expect(bodyInput).toHaveValue("삭제 전 원문, 복원 확인 입니다.");
 
     await appWindow.getByTestId("begin-delete-button").click();
+    await expect(appWindow.getByTestId("delete-confirm-modal")).toBeVisible();
     await appWindow.getByTestId("confirm-delete-button").click();
     await appWindow.getByRole("button", { name: "되돌리기" }).first().click();
 

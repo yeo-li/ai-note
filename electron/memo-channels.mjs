@@ -1,4 +1,5 @@
 export const memoChannels = {
+  health: "memo:health",
   list: "memo:list",
   get: "memo:get",
   create: "memo:create",

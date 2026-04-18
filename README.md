@@ -62,7 +62,8 @@ npm run allure:open
 참고:
 
 - E2E는 `npm run build:renderer` 후 dist 기반 Electron 앱을 직접 실행합니다.
-- 현재 메모 상태는 renderer 세션 메모리에 머물며 앱 재시작 후에는 유지되지 않습니다.
+- 실제 앱 실행 시 메모는 Electron main process의 로컬 SQLite(`userData/memos.db`)에 저장되어 앱 재시작 후에도 유지됩니다.
+- 기존 `memos.json` 또는 레거시 `notes.json` 데이터가 있으면 첫 실행 시 SQLite로 자동 마이그레이션됩니다.
 - visual snapshot baseline은 OS별로 관리되며, 현재 OS의 baseline이 없으면 visual spec은 자동으로 skip 됩니다.
 - 현재 OS baseline을 만들거나 갱신할 때는 `npm run test:e2e:update`를 사용합니다.
 - Electron E2E는 GUI가 가능한 로컬 데스크톱 환경에서 실행하는 편이 안전합니다.

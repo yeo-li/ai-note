@@ -5,6 +5,7 @@ import { memoChannels } from "./memo-channels.mjs";
 import { createMemoSearchService } from "./search/memo-search-service.mjs";
 import { createLocalOrganizer } from "./organize/local-organizer.mjs";
 import { createMemoStore } from "./store/memo-store.mjs";
+import { createMemoSqliteStore } from "./store/memo-sqlite-store.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rendererUrl = process.env.VITE_DEV_SERVER_URL;
@@ -14,6 +15,11 @@ const defaultMinimumSize = {
   height: 720
 };
 const isPlaywrightE2E = process.env.PLAYWRIGHT_E2E === "1";
+const userDataPathOverride = process.env.AI_NOTE_USER_DATA_PATH;
+
+if (userDataPathOverride) {
+  app.setPath("userData", userDataPathOverride);
+}
 
 function parseDimension(value) {
   if (!value) {
@@ -94,6 +100,18 @@ function normalizeSearchQuery(value) {
   return value.trim();
 }
 
+function getErrorMessage(error) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim().length > 0) {
+    return error.trim();
+  }
+
+  return "알 수 없는 저장소 오류";
+}
+
 function normalizeOrganizeInput(value) {
   if (!value || typeof value !== "object") {
     return null;
@@ -116,7 +134,28 @@ function normalizeOrganizeInput(value) {
   };
 }
 
-function registerMemoHandlers(memoStore, memoSearchService, organizer) {
+function registerMemoHandlers(memoStore, memoSearchService, organizer, memoStoreContext) {
+  ipcMain.handle(memoChannels.health, async () => {
+    const baseHealth = {
+      bridgeConnected: true,
+      ready: true,
+      storeKind: memoStoreContext.kind,
+      filePath: memoStoreContext.filePath,
+      fallbackReason: memoStoreContext.fallbackReason
+    };
+
+    try {
+      await memoStore.list();
+      return baseHealth;
+    } catch (error) {
+      return {
+        ...baseHealth,
+        ready: false,
+        errorMessage: getErrorMessage(error)
+      };
+    }
+  });
+
   ipcMain.handle(memoChannels.list, async () => memoStore.list());
 
   ipcMain.handle(memoChannels.get, async (_event, id) => {
@@ -154,6 +193,34 @@ function registerMemoHandlers(memoStore, memoSearchService, organizer) {
   });
 }
 
+function createPrimaryMemoStore(userDataPath) {
+  try {
+    const memoStore = createMemoSqliteStore({
+      userDataPath
+    });
+
+    return {
+      store: memoStore,
+      kind: "sqlite",
+      filePath: memoStore.filePath,
+      fallbackReason: null
+    };
+  } catch (error) {
+    console.error("[memo-store] SQLite initialization failed. Falling back to JSON store.", error);
+
+    const memoStore = createMemoStore({
+      userDataPath
+    });
+
+    return {
+      store: memoStore,
+      kind: "json",
+      filePath: memoStore.filePath,
+      fallbackReason: getErrorMessage(error)
+    };
+  }
+}
+
 function createWindow() {
   const { bounds, minimumSize } = getWindowMetrics();
   const windowOptions = {
@@ -163,9 +230,9 @@ function createWindow() {
     height: bounds.height,
     minWidth: minimumSize.width,
     minHeight: minimumSize.height,
-    backgroundColor: "#fcf7dd",
+    backgroundColor: "#ffffff",
     webPreferences: {
-      preload: join(__dirname, "preload.mjs"),
+      preload: join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false
     }
@@ -205,9 +272,8 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  const memoStore = createMemoStore({
-    userDataPath: app.getPath("userData")
-  });
+  const primaryMemoStore = createPrimaryMemoStore(app.getPath("userData"));
+  const memoStore = primaryMemoStore.store;
   const memoSearchService = createMemoSearchService({
     listMemos() {
       return memoStore.list();
@@ -215,8 +281,14 @@ app.whenReady().then(() => {
   });
   const organizer = createLocalOrganizer();
 
-  registerMemoHandlers(memoStore, memoSearchService, organizer);
+  registerMemoHandlers(memoStore, memoSearchService, organizer, primaryMemoStore);
   createWindow();
+
+  app.on("before-quit", () => {
+    if (typeof memoStore.close === "function") {
+      memoStore.close();
+    }
+  });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

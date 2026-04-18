@@ -1,7 +1,22 @@
-import { clipboard, contextBridge, ipcRenderer } from "electron";
-import { memoChannels } from "./memo-channels.mjs";
+"use strict";
+
+const { contextBridge, ipcRenderer } = require("electron");
+
+const memoChannels = {
+  health: "memo:health",
+  list: "memo:list",
+  get: "memo:get",
+  create: "memo:create",
+  update: "memo:update",
+  delete: "memo:delete",
+  search: "memo:search",
+  organize: "memo:organize"
+};
 
 const memoAPI = {
+  health() {
+    return ipcRenderer.invoke(memoChannels.health);
+  },
   list() {
     return ipcRenderer.invoke(memoChannels.list);
   },
@@ -31,11 +46,6 @@ contextBridge.exposeInMainWorld("desktopAPI", {
     node: process.versions.node,
     chrome: process.versions.chrome,
     electron: process.versions.electron
-  },
-  clipboard: {
-    writeText(text) {
-      clipboard.writeText(text);
-    }
   }
 });
 

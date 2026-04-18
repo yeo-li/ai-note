@@ -22,12 +22,13 @@ test.describe("AI Note desktop smoke", () => {
   });
 
   test("keeps selection separate from search when no result matches", async ({ appWindow }) => {
-    const firstNote = appWindow.getByTestId("note-list-item-note-1");
+    const firstNote = appWindow.getByTestId("note-list").locator('[data-testid^="note-list-item-"]').first();
     const searchInput = appWindow.getByTestId("note-search-input");
+    const titleInput = appWindow.getByTestId("note-title-input");
 
     await firstNote.click();
     await expect(firstNote).toHaveAttribute("aria-current", "true");
-    await expect(appWindow.getByTestId("note-title-input")).toHaveValue(/TDD/);
+    const selectedTitle = await titleInput.inputValue();
 
     await searchInput.fill("does-not-match-anything");
 
@@ -37,7 +38,7 @@ test.describe("AI Note desktop smoke", () => {
 
     await searchInput.clear();
 
-    await expect(appWindow.getByTestId("note-title-input")).toHaveValue(/TDD/);
+    await expect(titleInput).toHaveValue(selectedTitle);
   });
 
   test("restores the original body without overwriting a later title edit", async ({ appWindow }) => {

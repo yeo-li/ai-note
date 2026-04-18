@@ -5,6 +5,7 @@ import type {
   MemoCreateInput,
   MemoOrganizeInput,
   MemoOrganizeResult,
+  MemoStoreHealth,
   MemoSearchResult,
   MemoUpdateInput
 } from "./shared/memo";
@@ -22,6 +23,7 @@ type DesktopAPI = {
 };
 
 type MemoAPI = {
+  health(): Promise<MemoStoreHealth>;
   list(): Promise<Memo[]>;
   get(id: string): Promise<Memo | null>;
   create(input?: MemoCreateInput): Promise<Memo>;

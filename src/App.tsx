@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Memo, MemoCreateInput, MemoStoreHealth, MemoUpdateInput } from "./shared/memo";
+import type { Memo, MemoChangeEvent, MemoCreateInput, MemoStoreHealth, MemoUpdateInput } from "./shared/memo";
+import { buildMemoTitleFromBody, deriveNoteHeadline } from "./note-content";
 
 type TransformMode = "default" | "organized";
 
 type Note = {
   id: string;
-  title: string;
   body: string;
   updatedAt: string;
   dateLabel: string;
@@ -32,7 +32,6 @@ type TransformDraft = {
 const initialNotes: Note[] = [
   {
     id: "note-1",
-    title: "TDD를 늦숙하게 리드해주셨습니다.",
     updatedAt: "오후 5:16",
     dateLabel: "2026. 4. 1.",
     mode: "default",
@@ -41,7 +40,6 @@ const initialNotes: Note[] = [
   },
   {
     id: "note-2",
-    title: "src/main/java",
     updatedAt: "오후 4:48",
     dateLabel: "이제",
     mode: "default",
@@ -50,7 +48,6 @@ const initialNotes: Note[] = [
   },
   {
     id: "note-3",
-    title: "DROP DATABASE IF EXISTS JA...",
     updatedAt: "오후 4:10",
     dateLabel: "이제",
     mode: "default",
@@ -59,7 +56,6 @@ const initialNotes: Note[] = [
   },
   {
     id: "note-4",
-    title: "좋은 설계 -> 추상적인 조금 더 구체...",
     updatedAt: "오후 3:32",
     dateLabel: "2026. 3. 31.",
     mode: "default",
@@ -68,7 +64,6 @@ const initialNotes: Note[] = [
   },
   {
     id: "note-5",
-    title: "이력서 및 포폴에서 중요한건 내용 예...",
     updatedAt: "오후 1:12",
     dateLabel: "2026. 3. 31.",
     mode: "default",
@@ -77,7 +72,6 @@ const initialNotes: Note[] = [
   },
   {
     id: "note-6",
-    title: "팀 협업 및 코드 컨벤션 규칙",
     updatedAt: "오전 11:03",
     dateLabel: "2026. 3. 27.",
     mode: "default",
@@ -86,7 +80,6 @@ const initialNotes: Note[] = [
   },
   {
     id: "note-7",
-    title: "VO",
     updatedAt: "오전 9:54",
     dateLabel: "2026. 3. 9.",
     mode: "default",
@@ -95,7 +88,6 @@ const initialNotes: Note[] = [
   },
   {
     id: "note-8",
-    title: "이런 주 인상 깊었던 순간",
     updatedAt: "오전 9:20",
     dateLabel: "2026. 2. 27.",
     mode: "default",
@@ -104,20 +96,6 @@ const initialNotes: Note[] = [
   }
 ];
 
-function buildPreview(body: string) {
-  const compact = body.replace(/\s+/g, " ").trim();
-
-  if (!compact) {
-    return "내용이 비어 있는 메모";
-  }
-
-  if (compact.length <= 56) {
-    return compact;
-  }
-
-  return `${compact.slice(0, 56)}...`;
-}
-
 function matchesQuery(note: Note, query: string) {
   const normalizedQuery = query.trim().toLowerCase();
 
@@ -125,7 +103,7 @@ function matchesQuery(note: Note, query: string) {
     return true;
   }
 
-  return [note.title, note.body, note.dateLabel, note.updatedAt]
+  return [note.body, note.dateLabel, note.updatedAt]
     .join(" ")
     .toLowerCase()
     .includes(normalizedQuery);
@@ -143,10 +121,9 @@ function nowStamp() {
   };
 }
 
-function createNote(count: number): Note {
+function createNote(): Note {
   return {
     id: `note-${Date.now()}`,
-    title: `새 메모 ${count + 1}`,
     body: "",
     mode: "default",
     ...nowStamp()
@@ -179,12 +156,30 @@ function formatUpdatedAtFromIso(iso: string) {
 function toNoteFromMemo(memo: Memo, mode: TransformMode = "default"): Note {
   return {
     id: memo.id,
-    title: memo.title,
     body: memo.body,
     updatedAt: formatUpdatedAtFromIso(memo.updatedAt),
     dateLabel: formatDateLabelFromIso(memo.updatedAt),
     mode
   };
+}
+
+function upsertSyncedNote(currentNotes: Note[], memo: Memo) {
+  const incomingNote = toNoteFromMemo(memo);
+  const existingNote = currentNotes.find((note) => note.id === incomingNote.id);
+  const mergedNote = existingNote
+    ? {
+        ...existingNote,
+        body: incomingNote.body,
+        updatedAt: incomingNote.updatedAt,
+        dateLabel: incomingNote.dateLabel
+      }
+    : incomingNote;
+
+  return [mergedNote, ...currentNotes.filter((note) => note.id !== mergedNote.id)];
+}
+
+function removeSyncedNote(currentNotes: Note[], memoId: string) {
+  return currentNotes.filter((note) => note.id !== memoId);
 }
 
 const storageKindLabels: Record<MemoStoreHealth["storeKind"], string> = {
@@ -207,6 +202,18 @@ function toErrorMessage(error: unknown) {
   }
 
   return "알 수 없는 저장소 오류";
+}
+
+function toMemoUpdateInput(update: Partial<Note>): MemoUpdateInput {
+  if (typeof update.body !== "string") {
+    return {};
+  }
+
+  return {
+    body: update.body,
+    // 저장소/검색 계층과의 호환성을 위해 title은 본문 첫 줄에서 파생한다.
+    title: buildMemoTitleFromBody(update.body)
+  };
 }
 
 function normalizeParagraphs(text: string) {
@@ -334,14 +341,66 @@ function buildAiOrganizedBody(text: string, prompt: string) {
   return previewBody;
 }
 
+type LaunchContext = {
+  stickyMode: boolean;
+  requestedNoteId: string | null;
+};
+
+function readLaunchContext(): LaunchContext {
+  if (typeof window === "undefined") {
+    return {
+      stickyMode: false,
+      requestedNoteId: null
+    };
+  }
+
+  const query = new URLSearchParams(window.location.search);
+  const requestedNoteId = query.get("noteId");
+
+  return {
+    stickyMode: query.get("view") === "sticky",
+    requestedNoteId: requestedNoteId && requestedNoteId.trim().length > 0 ? requestedNoteId.trim() : null
+  };
+}
+
+function StickyCloseIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M5 5l6 6M11 5l-6 6" />
+    </svg>
+  );
+}
+
+function StickyPinIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M6.2 2.6h3.6l.7 2.7 1.6 1.8v1H3.9v-1l1.6-1.8.7-2.7z" />
+      <path d="M8 8.2v4" />
+    </svg>
+  );
+}
+
+function StickyNewNoteIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M4.4 3.1h7.2v9.8H4.4z" />
+      <path d="M8 6.8v3.2M6.4 8.4h3.2" />
+    </svg>
+  );
+}
+
 function App() {
+  const launchContext = useMemo(() => readLaunchContext(), []);
+  const isDedicatedStickyWindow = launchContext.stickyMode;
   const isMacOS =
     window.desktopAPI?.platform === "darwin" ||
     (typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent));
   const [notes, setNotes] = useState(initialNotes);
   const [selectedNoteId, setSelectedNoteId] = useState(initialNotes[0]?.id ?? "");
   const [query, setQuery] = useState("");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(!launchContext.stickyMode);
+  const [isStickyMode, setIsStickyMode] = useState(launchContext.stickyMode);
+  const [isStickyPinned, setIsStickyPinned] = useState(false);
   const [statusMessage, setStatusMessage] = useState("저장소 연결 상태를 확인하고 있다.");
   const [storageHealth, setStorageHealth] = useState<MemoStoreHealth | null>(null);
   const [isStorageLocked, setIsStorageLocked] = useState(true);
@@ -423,8 +482,12 @@ function App() {
 
         if (existingMemos.length > 0) {
           const loadedNotes = existingMemos.map((memo) => toNoteFromMemo(memo));
+          const preferredSelectedNote =
+            launchContext.requestedNoteId && loadedNotes.some((note) => note.id === launchContext.requestedNoteId)
+              ? launchContext.requestedNoteId
+              : loadedNotes[0]?.id ?? "";
           setNotes(loadedNotes);
-          setSelectedNoteId(loadedNotes[0]?.id ?? "");
+          setSelectedNoteId(preferredSelectedNote);
           setStatusMessage(
             health.fallbackReason
               ? `SQLite 초기화 실패로 ${storageLabel} 저장소를 사용 중이다.`
@@ -437,7 +500,7 @@ function App() {
 
         for (const seedNote of [...initialNotes].reverse()) {
           const createdMemo = await window.memoAPI.create({
-            title: seedNote.title,
+            title: buildMemoTitleFromBody(seedNote.body),
             body: seedNote.body
           });
 
@@ -449,7 +512,11 @@ function App() {
         }
 
         setNotes(seededNotes);
-        setSelectedNoteId(seededNotes[0]?.id ?? "");
+        const preferredSeededNote =
+          launchContext.requestedNoteId && seededNotes.some((note) => note.id === launchContext.requestedNoteId)
+            ? launchContext.requestedNoteId
+            : seededNotes[0]?.id ?? "";
+        setSelectedNoteId(preferredSeededNote);
         setStatusMessage(
           health.fallbackReason
             ? `SQLite 초기화 실패로 ${storageLabel} 저장소를 초기화했다.`
@@ -476,6 +543,40 @@ function App() {
 
     return () => {
       cancelled = true;
+    };
+  }, [launchContext.requestedNoteId]);
+
+  useEffect(() => {
+    if (!window.memoAPI?.onDidChange) {
+      return;
+    }
+
+    const unsubscribe = window.memoAPI.onDidChange((changeEvent: MemoChangeEvent) => {
+      if (changeEvent.type === "deleted") {
+        const { memoId } = changeEvent;
+
+        setNotes((currentNotes) => removeSyncedNote(currentNotes, memoId));
+        setDeleteIntentId((currentDeleteIntentId) => (currentDeleteIntentId === memoId ? null : currentDeleteIntentId));
+        setRecentlyDeleted((currentDeletedState) => (currentDeletedState?.note.id === memoId ? null : currentDeletedState));
+        setDraftTransform((currentDraft) => (currentDraft?.noteId === memoId ? null : currentDraft));
+        setBackups((currentBackups) => {
+          if (!currentBackups[memoId]) {
+            return currentBackups;
+          }
+
+          const nextBackups = { ...currentBackups };
+          delete nextBackups[memoId];
+          return nextBackups;
+        });
+
+        return;
+      }
+
+      setNotes((currentNotes) => upsertSyncedNote(currentNotes, changeEvent.memo));
+    });
+
+    return () => {
+      unsubscribe();
     };
   }, []);
 
@@ -530,6 +631,7 @@ function App() {
       : `${notes.length}개의 메모`;
   const activeModeLabel = activeNote?.mode === "organized" ? "AI 정리" : "원문";
   const deleteTargetNote = deleteIntentId ? notes.find((note) => note.id === deleteIntentId) ?? null : null;
+  const deleteTargetHeadline = deleteTargetNote ? deriveNoteHeadline(deleteTargetNote.body) : "";
   const isDeleteModalOpen = Boolean(deleteTargetNote);
   const isMutationLocked = isStorageLocked || !storageHealth?.ready;
   const storageKindLabel = storageHealth ? getStorageKindLabel(storageHealth.storeKind) : "확인 중";
@@ -615,6 +717,17 @@ function App() {
     };
   }, [isDeleteModalOpen]);
 
+  useEffect(() => {
+    if (!isStickyMode) {
+      setIsStickyPinned(false);
+      return;
+    }
+
+    setIsSidebarOpen(false);
+    setDeleteIntentId(null);
+    setIsAiPromptOpen(false);
+  }, [isStickyMode]);
+
   function patchActiveNote(update: Partial<Note>, message?: string) {
     if (isMutationLocked) {
       setStatusMessage("저장소 연결이 복구될 때까지 편집이 잠겨 있다.");
@@ -644,15 +757,7 @@ function App() {
     setDeleteIntentId(null);
     setDraftTransform(null);
 
-    const persistencePatch: MemoUpdateInput = {};
-
-    if (typeof update.title === "string") {
-      persistencePatch.title = update.title;
-    }
-
-    if (typeof update.body === "string") {
-      persistencePatch.body = update.body;
-    }
+    const persistencePatch = toMemoUpdateInput(update);
 
     if (window.memoAPI && Object.keys(persistencePatch).length > 0) {
       void window.memoAPI
@@ -677,13 +782,13 @@ function App() {
       return;
     }
 
-    let nextNote = createNote(notes.length);
+    let nextNote = createNote();
 
     if (window.memoAPI) {
       try {
         const createInput: MemoCreateInput = {
-          title: `새 메모 ${notes.length + 1}`,
-          body: ""
+          title: buildMemoTitleFromBody(nextNote.body),
+          body: nextNote.body
         };
         const createdMemo = await window.memoAPI.create(createInput);
 
@@ -952,7 +1057,7 @@ function App() {
     if (window.memoAPI) {
       try {
         const recreatedMemo = await window.memoAPI.create({
-          title: deletedSnapshot.note.title,
+          title: buildMemoTitleFromBody(deletedSnapshot.note.body),
           body: deletedSnapshot.note.body
         });
 
@@ -985,12 +1090,60 @@ function App() {
     setStatusMessage("삭제한 메모를 되돌렸다.");
   }
 
+  async function openStickyNoteWindow() {
+    const openStickyNote = window.desktopAPI?.window?.openStickyNote;
+
+    if (!openStickyNote) {
+      setStatusMessage("스티커 메모는 데스크톱 앱에서만 새 창으로 열 수 있다.");
+      return;
+    }
+
+    try {
+      await openStickyNote(activeNote?.id ?? null);
+      setStatusMessage("새 스티커 메모 창을 열었다.");
+    } catch {
+      setStatusMessage("스티커 메모 창을 열지 못했다.");
+    }
+  }
+
+  async function toggleStickyPinned() {
+    if (!isDedicatedStickyWindow) {
+      setStatusMessage("스티커 창에서만 고정 기능을 사용할 수 있다.");
+      return;
+    }
+
+    const setStickyPinned = window.desktopAPI?.window?.setStickyPinned;
+
+    if (!setStickyPinned) {
+      setStatusMessage("고정 기능을 사용할 수 없는 환경이다.");
+      return;
+    }
+
+    try {
+      const pinned = await setStickyPinned(!isStickyPinned);
+      setIsStickyPinned(pinned);
+      setStatusMessage(pinned ? "스티커 메모를 화면 최상단에 고정했다." : "스티커 메모 고정을 해제했다.");
+    } catch {
+      setStatusMessage("스티커 메모 고정 상태를 변경하지 못했다.");
+    }
+  }
+
+  function closeStickySurface() {
+    if (isDedicatedStickyWindow) {
+      window.close();
+      return;
+    }
+
+    setIsStickyMode(false);
+    setStatusMessage("일반 모드로 돌아왔다.");
+  }
+
   async function copyCurrentNote() {
     if (!activeNote) {
       return;
     }
 
-    const text = `${activeNote.title}\n\n${activeNote.body}`.trim();
+    const text = activeNote.body;
 
     try {
       if (window.desktopAPI?.clipboard?.writeText) {
@@ -1020,13 +1173,28 @@ function App() {
     }
   }
 
+  const appShellClassName = [
+    "app-shell",
+    isMacOS ? "is-macos" : "",
+    isStickyMode ? "is-sticky-mode" : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const appBodyClassName = [
+    "app-body",
+    isSidebarOpen && !isStickyMode ? "" : "is-sidebar-hidden",
+    isStickyMode ? "is-sticky-mode" : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <main className="page" data-testid="page-root">
-      <section className={`app-shell${isMacOS ? " is-macos" : ""}`} data-testid="app-shell">
+      <section className={appShellClassName} data-testid="app-shell">
         <div className="visually-hidden" role="status" aria-live="polite" aria-atomic="true" data-testid="status-live-region">
           {statusMessage}
         </div>
-        <section className={`app-body${isSidebarOpen ? "" : " is-sidebar-hidden"}`}>
+        <section className={appBodyClassName}>
           <aside className="sidebar" id="memo-sidebar">
             <div className="sidebar-head">
               <div className="sidebar-brand">
@@ -1090,7 +1258,7 @@ function App() {
               {!isCollectionEmpty && filteredNotes.length > 0 ? (
                 filteredNotes.map((note) => {
                   const isSelected = activeNote?.id === note.id;
-                  const noteLabel = note.title.trim() || buildPreview(note.body);
+                  const noteLabel = deriveNoteHeadline(note.body);
 
                   return (
                     <button
@@ -1110,12 +1278,10 @@ function App() {
                     >
                       <span className="note-list-copy">
                         <span className="note-list-meta">
-                          <span>{note.updatedAt}</span>
-                          <span>{note.dateLabel}</span>
                           <span className="note-list-state">{note.mode === "default" ? "원문" : "AI 정리"}</span>
                         </span>
-                        <strong>{note.title}</strong>
-                        <span className="note-list-preview">{buildPreview(note.body)}</span>
+                        <strong>{noteLabel}</strong>
+                        <span className="note-list-preview">{note.dateLabel}</span>
                       </span>
                     </button>
                   );
@@ -1135,12 +1301,58 @@ function App() {
           </aside>
 
           <section className="editor-pane">
+            {isStickyMode ? (
+              <div className="sticky-note-toolbar" role="toolbar" aria-label="스티커 메모 도구" data-testid="sticky-toolbar">
+                <div className="sticky-note-toolbar__drag" aria-hidden="true" />
+                <div className="sticky-note-toolbar__actions sticky-note-toolbar__actions--left">
+                  <button
+                    className="sticky-note-toolbar__button sticky-note-toolbar__button--close"
+                    type="button"
+                    data-testid="sticky-mode-exit-button"
+                    aria-label={isDedicatedStickyWindow ? "스티커 창 닫기" : "일반 모드로 돌아가기"}
+                    onClick={closeStickySurface}
+                  >
+                    <StickyCloseIcon />
+                  </button>
+                  <button
+                    className={`sticky-note-toolbar__button sticky-note-toolbar__button--pin${isStickyPinned ? " is-pinned" : ""}`}
+                    type="button"
+                    data-testid="sticky-mode-pin-button"
+                    aria-label={isStickyPinned ? "스티커 메모 고정 해제" : "스티커 메모 고정"}
+                    aria-pressed={isStickyPinned}
+                    onClick={() => void toggleStickyPinned()}
+                  >
+                    <StickyPinIcon />
+                  </button>
+                </div>
+                <div className="sticky-note-toolbar__actions sticky-note-toolbar__actions--right">
+                  <button
+                    className="sticky-note-toolbar__button sticky-note-toolbar__button--new"
+                    type="button"
+                    data-testid="sticky-mode-new-note-button"
+                    aria-label="새 메모 만들기"
+                    disabled={isMutationLocked}
+                    onClick={() => void handleCreateNote()}
+                  >
+                    <StickyNewNoteIcon />
+                  </button>
+                </div>
+              </div>
+            ) : null}
             {activeNote ? (
               <div className="paper">
                 <header className="paper-head">
                   <div className="paper-utility-bar">
                     <div className="paper-heading-tools">
                       <div className="paper-toolbar">
+                        <button
+                          className="paper-button"
+                          type="button"
+                          data-testid="open-sticky-note-button"
+                          onClick={() => void openStickyNoteWindow()}
+                        >
+                          스티커 메모
+                        </button>
                         <button
                           className="paper-button"
                           type="button"
@@ -1287,7 +1499,7 @@ function App() {
                       <div className="transform-original" data-testid="transform-original-note">
                         <div className="transform-original-head">
                           <strong>원본 메모</strong>
-                          <span>{activeNote.title.trim() || "제목 없는 메모"}</span>
+                          <span>{deriveNoteHeadline(activeNote.body)}</span>
                         </div>
                         <pre className="transform-original-body" data-testid="transform-original-body">
                           {activeNote.body}
@@ -1316,25 +1528,6 @@ function App() {
                   ) : null}
 
                   <div className="editor-card">
-                    <label className="editor-field">
-                      <input
-                        className="paper-title"
-                        type="text"
-                        data-testid="note-title-input"
-                        value={activeNote.title}
-                        placeholder="제목 없는 메모"
-                        disabled={isMutationLocked}
-                        onChange={(event) =>
-                          patchActiveNote(
-                            {
-                              title: event.target.value
-                            },
-                            "메모 제목을 수정했다."
-                          )
-                        }
-                      />
-                    </label>
-
                     <label className="editor-field editor-field-body">
                       <textarea
                         className={`paper-editor${activeDraft ? " is-readonly" : ""}`}
@@ -1451,9 +1644,7 @@ function App() {
             >
               <h2 id="delete-modal-title">메모를 삭제할까요?</h2>
               <p id="delete-modal-description">
-                {deleteTargetNote.title.trim()
-                  ? `"${deleteTargetNote.title.trim()}" 메모를 삭제하면 되돌리기 전까지 사라집니다.`
-                  : "이 메모를 삭제하면 되돌리기 전까지 사라집니다."}
+                "{deleteTargetHeadline}" 메모를 삭제하면 되돌리기 전까지 사라집니다.
               </p>
               <div className="delete-modal-actions">
                 <button className="paper-button" type="button" data-testid="cancel-delete-button" onClick={cancelDeleteNote}>

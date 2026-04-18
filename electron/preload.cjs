@@ -12,6 +12,13 @@ const memoChannels = {
   search: "memo:search",
   organize: "memo:organize"
 };
+const memoEventChannels = {
+  changed: "memo:changed"
+};
+const windowChannels = {
+  openStickyNote: "window:open-sticky-note",
+  setStickyPinned: "window:set-sticky-pinned"
+};
 
 const memoAPI = {
   health() {
@@ -37,11 +44,34 @@ const memoAPI = {
   },
   organize(input) {
     return ipcRenderer.invoke(memoChannels.organize, input);
+  },
+  onDidChange(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+
+    const wrappedListener = (_event, changeEvent) => {
+      listener(changeEvent);
+    };
+
+    ipcRenderer.on(memoEventChannels.changed, wrappedListener);
+
+    return () => {
+      ipcRenderer.off(memoEventChannels.changed, wrappedListener);
+    };
   }
 };
 
 contextBridge.exposeInMainWorld("desktopAPI", {
   platform: process.platform,
+  window: {
+    openStickyNote(noteId) {
+      return ipcRenderer.invoke(windowChannels.openStickyNote, typeof noteId === "string" ? noteId : null);
+    },
+    setStickyPinned(pinned) {
+      return ipcRenderer.invoke(windowChannels.setStickyPinned, Boolean(pinned));
+    }
+  },
   versions: {
     node: process.versions.node,
     chrome: process.versions.chrome,

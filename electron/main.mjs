@@ -14,8 +14,19 @@ const defaultMinimumSize = {
   width: 640,
   height: 720
 };
+const stickyWindowDefaultSize = {
+  width: 420,
+  height: 360
+};
+const stickyWindowMinimumSize = {
+  width: 300,
+  height: 260
+};
 const isPlaywrightE2E = process.env.PLAYWRIGHT_E2E === "1";
 const userDataPathOverride = process.env.AI_NOTE_USER_DATA_PATH;
+const memoEventChannels = {
+  changed: "memo:changed"
+};
 
 if (userDataPathOverride) {
   app.setPath("userData", userDataPathOverride);
@@ -49,21 +60,21 @@ function getTestWindowBounds(workArea) {
   };
 }
 
-function getWindowMetrics(display = screen.getPrimaryDisplay()) {
+function getWindowMetrics(display = screen.getPrimaryDisplay(), minimumSizeBase = defaultMinimumSize) {
   const bounds = getTestWindowBounds(display.workArea) ?? display.workArea;
 
   return {
     bounds,
     minimumSize: {
-      width: Math.min(defaultMinimumSize.width, bounds.width),
-      height: Math.min(defaultMinimumSize.height, bounds.height)
+      width: Math.min(minimumSizeBase.width, bounds.width),
+      height: Math.min(minimumSizeBase.height, bounds.height)
     }
   };
 }
 
-function fitWindowToDisplay(mainWindow) {
+function fitWindowToDisplay(mainWindow, minimumSizeBase = defaultMinimumSize) {
   const targetDisplay = screen.getDisplayMatching(mainWindow.getBounds());
-  const { bounds, minimumSize } = getWindowMetrics(targetDisplay);
+  const { bounds, minimumSize } = getWindowMetrics(targetDisplay, minimumSizeBase);
 
   mainWindow.setMinimumSize(minimumSize.width, minimumSize.height);
   mainWindow.setMaximumSize(isPlaywrightE2E ? bounds.width : 2147483647, isPlaywrightE2E ? bounds.height : 2147483647);
@@ -134,6 +145,28 @@ function normalizeOrganizeInput(value) {
   };
 }
 
+function broadcastMemoChange(event, changeEvent) {
+  const sourceWebContentsId = event?.sender?.id;
+
+  for (const browserWindow of BrowserWindow.getAllWindows()) {
+    if (browserWindow.isDestroyed()) {
+      continue;
+    }
+
+    const { webContents } = browserWindow;
+
+    if (webContents.isDestroyed()) {
+      continue;
+    }
+
+    if (sourceWebContentsId === webContents.id) {
+      continue;
+    }
+
+    webContents.send(memoEventChannels.changed, changeEvent);
+  }
+}
+
 function registerMemoHandlers(memoStore, memoSearchService, organizer, memoStoreContext) {
   ipcMain.handle(memoChannels.health, async () => {
     const baseHealth = {
@@ -163,18 +196,53 @@ function registerMemoHandlers(memoStore, memoSearchService, organizer, memoStore
     return memoId ? memoStore.get(memoId) : null;
   });
 
-  ipcMain.handle(memoChannels.create, async (_event, input) => {
-    return memoStore.create(normalizeMemoInput(input));
+  ipcMain.handle(memoChannels.create, async (event, input) => {
+    const createdMemo = await memoStore.create(normalizeMemoInput(input));
+
+    broadcastMemoChange(event, {
+      type: "created",
+      memo: createdMemo
+    });
+
+    return createdMemo;
   });
 
-  ipcMain.handle(memoChannels.update, async (_event, id, patch) => {
+  ipcMain.handle(memoChannels.update, async (event, id, patch) => {
     const memoId = normalizeMemoId(id);
-    return memoId ? memoStore.update(memoId, normalizeMemoInput(patch)) : null;
+
+    if (!memoId) {
+      return null;
+    }
+
+    const updatedMemo = await memoStore.update(memoId, normalizeMemoInput(patch));
+
+    if (updatedMemo) {
+      broadcastMemoChange(event, {
+        type: "updated",
+        memo: updatedMemo
+      });
+    }
+
+    return updatedMemo;
   });
 
-  ipcMain.handle(memoChannels.delete, async (_event, id) => {
+  ipcMain.handle(memoChannels.delete, async (event, id) => {
     const memoId = normalizeMemoId(id);
-    return memoId ? memoStore.delete(memoId) : false;
+
+    if (!memoId) {
+      return false;
+    }
+
+    const deleted = await memoStore.delete(memoId);
+
+    if (deleted) {
+      broadcastMemoChange(event, {
+        type: "deleted",
+        memoId
+      });
+    }
+
+    return deleted;
   });
 
   ipcMain.handle(memoChannels.search, async (_event, query) => {
@@ -221,8 +289,39 @@ function createPrimaryMemoStore(userDataPath) {
   }
 }
 
+function loadRendererWindow(windowInstance, { stickyMode = false, noteId = null } = {}) {
+  const query = new URLSearchParams();
+
+  if (stickyMode) {
+    query.set("view", "sticky");
+  }
+
+  if (typeof noteId === "string" && noteId.trim().length > 0) {
+    query.set("noteId", noteId.trim());
+  }
+
+  if (rendererUrl) {
+    const targetUrl = query.size > 0 ? `${rendererUrl}?${query.toString()}` : rendererUrl;
+    return windowInstance.loadURL(targetUrl);
+  }
+
+  if (query.size > 0) {
+    const queryObject = Object.fromEntries(query.entries());
+    return windowInstance.loadFile(rendererPath, { query: queryObject });
+  }
+
+  return windowInstance.loadFile(rendererPath);
+}
+
+function attachExternalLinkHandler(windowInstance) {
+  windowInstance.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: "deny" };
+  });
+}
+
 function createWindow() {
-  const { bounds, minimumSize } = getWindowMetrics();
+  const { bounds, minimumSize } = getWindowMetrics(undefined, defaultMinimumSize);
   const windowOptions = {
     x: bounds.x,
     y: bounds.y,
@@ -243,18 +342,10 @@ function createWindow() {
   }
 
   const mainWindow = new BrowserWindow(windowOptions);
-  const syncWindowBounds = () => fitWindowToDisplay(mainWindow);
+  const syncWindowBounds = () => fitWindowToDisplay(mainWindow, defaultMinimumSize);
 
-  if (rendererUrl) {
-    mainWindow.loadURL(rendererUrl);
-  } else {
-    mainWindow.loadFile(rendererPath);
-  }
-
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
-    return { action: "deny" };
-  });
+  void loadRendererWindow(mainWindow);
+  attachExternalLinkHandler(mainWindow);
 
   if (!isPlaywrightE2E) {
     screen.on("display-metrics-changed", syncWindowBounds);
@@ -271,6 +362,51 @@ function createWindow() {
   return mainWindow;
 }
 
+function createStickyNoteWindow(noteId = null) {
+  const focusedWindow = BrowserWindow.getFocusedWindow();
+  const baseDisplay = focusedWindow
+    ? screen.getDisplayMatching(focusedWindow.getBounds())
+    : screen.getPrimaryDisplay();
+  const workArea = baseDisplay.workArea;
+  const width = Math.min(stickyWindowDefaultSize.width, workArea.width);
+  const height = Math.min(stickyWindowDefaultSize.height, workArea.height);
+  const focusedBounds = focusedWindow?.getBounds();
+  const rawX = focusedBounds ? focusedBounds.x + 48 : workArea.x + Math.floor((workArea.width - width) / 2);
+  const rawY = focusedBounds ? focusedBounds.y + 48 : workArea.y + Math.floor((workArea.height - height) / 2);
+  const x = Math.min(Math.max(rawX, workArea.x), workArea.x + workArea.width - width);
+  const y = Math.min(Math.max(rawY, workArea.y), workArea.y + workArea.height - height);
+
+  const windowOptions = {
+    x,
+    y,
+    width,
+    height,
+    minWidth: Math.min(stickyWindowMinimumSize.width, workArea.width),
+    minHeight: Math.min(stickyWindowMinimumSize.height, workArea.height),
+    backgroundColor: "#f7f3ec",
+    frame: false,
+    autoHideMenuBar: true,
+    resizable: true,
+    maximizable: false,
+    fullscreenable: false,
+    webPreferences: {
+      preload: join(__dirname, "preload.cjs"),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  };
+
+  const stickyWindow = new BrowserWindow(windowOptions);
+
+  void loadRendererWindow(stickyWindow, {
+    stickyMode: true,
+    noteId
+  });
+  attachExternalLinkHandler(stickyWindow);
+
+  return stickyWindow;
+}
+
 app.whenReady().then(() => {
   const primaryMemoStore = createPrimaryMemoStore(app.getPath("userData"));
   const memoStore = primaryMemoStore.store;
@@ -282,6 +418,23 @@ app.whenReady().then(() => {
   const organizer = createLocalOrganizer();
 
   registerMemoHandlers(memoStore, memoSearchService, organizer, primaryMemoStore);
+  ipcMain.handle("window:open-sticky-note", (_event, noteId) => {
+    createStickyNoteWindow(typeof noteId === "string" ? noteId : null);
+    return true;
+  });
+  ipcMain.handle("window:set-sticky-pinned", (event, pinned) => {
+    const targetWindow = BrowserWindow.fromWebContents(event.sender);
+
+    if (!targetWindow) {
+      return false;
+    }
+
+    const shouldPin = Boolean(pinned);
+    targetWindow.setAlwaysOnTop(shouldPin, shouldPin ? "floating" : "normal");
+
+    return targetWindow.isAlwaysOnTop();
+  });
+
   createWindow();
 
   app.on("before-quit", () => {

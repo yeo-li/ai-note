@@ -11,6 +11,9 @@ import type {
 
 type DesktopAPI = {
   platform: string;
+  clipboard?: {
+    writeText: (text: string) => void;
+  };
   versions: {
     node: string;
     chrome: string;

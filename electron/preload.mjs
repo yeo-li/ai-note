@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { clipboard, contextBridge, ipcRenderer } from "electron";
 import { memoChannels } from "./memo-channels.mjs";
 
 const memoAPI = {
@@ -31,6 +31,11 @@ contextBridge.exposeInMainWorld("desktopAPI", {
     node: process.versions.node,
     chrome: process.versions.chrome,
     electron: process.versions.electron
+  },
+  clipboard: {
+    writeText(text) {
+      clipboard.writeText(text);
+    }
   }
 });
 

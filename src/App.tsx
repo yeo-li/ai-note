@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Memo, MemoCreateInput, MemoUpdateInput } from "./shared/memo";
+import type { Memo, MemoCreateInput, MemoStoreHealth, MemoUpdateInput } from "./shared/memo";
 
 type TransformMode = "default" | "organized";
 
@@ -187,6 +187,28 @@ function toNoteFromMemo(memo: Memo, mode: TransformMode = "default"): Note {
   };
 }
 
+const storageKindLabels: Record<MemoStoreHealth["storeKind"], string> = {
+  sqlite: "SQLite",
+  json: "JSON",
+  memory: "Memory"
+};
+
+function getStorageKindLabel(kind: MemoStoreHealth["storeKind"]) {
+  return storageKindLabels[kind] ?? "Memory";
+}
+
+function toErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim().length > 0) {
+    return error.trim();
+  }
+
+  return "알 수 없는 저장소 오류";
+}
+
 function normalizeParagraphs(text: string) {
   return text
     .split(/\n{2,}/)
@@ -320,7 +342,9 @@ function App() {
   const [selectedNoteId, setSelectedNoteId] = useState(initialNotes[0]?.id ?? "");
   const [query, setQuery] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [statusMessage, setStatusMessage] = useState("메모를 선택하고 바로 수정할 수 있다.");
+  const [statusMessage, setStatusMessage] = useState("저장소 연결 상태를 확인하고 있다.");
+  const [storageHealth, setStorageHealth] = useState<MemoStoreHealth | null>(null);
+  const [isStorageLocked, setIsStorageLocked] = useState(true);
   const [backups, setBackups] = useState<Record<string, NoteBackup>>({});
   const [deleteIntentId, setDeleteIntentId] = useState<string | null>(null);
   const [recentlyDeleted, setRecentlyDeleted] = useState<DeletedNoteState | null>(null);
@@ -345,21 +369,67 @@ function App() {
 
     async function hydrateNotes() {
       if (!window.memoAPI) {
+        if (cancelled) {
+          return;
+        }
+
+        setStorageHealth({
+          bridgeConnected: false,
+          ready: false,
+          storeKind: "memory",
+          errorMessage: "memoAPI 브리지를 찾지 못했다."
+        });
+        setIsStorageLocked(true);
+        setNotes([]);
+        setSelectedNoteId("");
+        setStatusMessage("메모 저장소 브리지가 연결되지 않아 편집을 잠갔다.");
         return;
       }
 
       try {
+        const health =
+          typeof window.memoAPI.health === "function"
+            ? await window.memoAPI.health()
+            : {
+                bridgeConnected: true,
+                ready: false,
+                storeKind: "memory" as const,
+                errorMessage: "memoAPI.health 핸들러를 찾지 못했다."
+              };
+
+        if (cancelled) {
+          return;
+        }
+
+        setStorageHealth(health);
+
+        if (!health.ready) {
+          setIsStorageLocked(true);
+          setNotes([]);
+          setSelectedNoteId("");
+          setStatusMessage(`저장소 연결 실패: ${health.errorMessage ?? "원인을 확인할 수 없다."}`);
+          return;
+        }
+
         const existingMemos = await window.memoAPI.list();
 
         if (cancelled) {
           return;
         }
 
+        setIsStorageLocked(false);
+
+        const storageLabel = getStorageKindLabel(health.storeKind);
+
         if (existingMemos.length > 0) {
           const loadedNotes = existingMemos.map((memo) => toNoteFromMemo(memo));
           setNotes(loadedNotes);
           setSelectedNoteId(loadedNotes[0]?.id ?? "");
-          setStatusMessage("로컬 메모 저장소를 불러왔다.");
+          setStatusMessage(
+            health.fallbackReason
+              ? `SQLite 초기화 실패로 ${storageLabel} 저장소를 사용 중이다.`
+              : `${storageLabel} 저장소를 불러왔다.`
+          );
           return;
         }
 
@@ -380,10 +450,24 @@ function App() {
 
         setNotes(seededNotes);
         setSelectedNoteId(seededNotes[0]?.id ?? "");
-        setStatusMessage("로컬 메모 저장소를 초기화했다.");
-      } catch {
+        setStatusMessage(
+          health.fallbackReason
+            ? `SQLite 초기화 실패로 ${storageLabel} 저장소를 초기화했다.`
+            : `${storageLabel} 저장소를 초기화했다.`
+        );
+      } catch (error) {
         if (!cancelled) {
-          setStatusMessage("저장소를 읽지 못해 현재 메모 상태로 계속 진행한다.");
+          const message = toErrorMessage(error);
+          setStorageHealth({
+            bridgeConnected: true,
+            ready: false,
+            storeKind: "memory",
+            errorMessage: message
+          });
+          setIsStorageLocked(true);
+          setNotes([]);
+          setSelectedNoteId("");
+          setStatusMessage(`저장소 연결이 중단되어 편집을 잠갔다: ${message}`);
         }
       }
     }
@@ -445,6 +529,25 @@ function App() {
       ? `${filteredNotes.length}개의 검색 결과`
       : `${notes.length}개의 메모`;
   const activeModeLabel = activeNote?.mode === "organized" ? "AI 정리" : "원문";
+  const isMutationLocked = isStorageLocked || !storageHealth?.ready;
+  const storageKindLabel = storageHealth ? getStorageKindLabel(storageHealth.storeKind) : "확인 중";
+  const storageBadgeLabel = storageHealth
+    ? `저장소 ${storageKindLabel}`
+    : "저장소 확인 중";
+  const storageBadgeClassName = [
+    "storage-status-badge",
+    storageHealth ? `is-${storageHealth.storeKind}` : "is-loading",
+    storageHealth?.ready ? "" : "is-error"
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const storageDetailLabel = storageHealth
+    ? storageHealth.ready
+      ? storageHealth.fallbackReason
+        ? `SQLite 초기화 실패로 ${storageKindLabel} 저장소로 대체 실행 중`
+        : "저장소 연결 정상"
+      : storageHealth.errorMessage ?? "저장소 연결 실패"
+    : "저장소 연결 확인 중";
 
   useEffect(() => {
     setDraftTransform((currentDraft) => {
@@ -493,6 +596,11 @@ function App() {
   }, [activeNote, hasQuery, isSelectionOutsideSearch]);
 
   function patchActiveNote(update: Partial<Note>, message?: string) {
+    if (isMutationLocked) {
+      setStatusMessage("저장소 연결이 복구될 때까지 편집이 잠겨 있다.");
+      return;
+    }
+
     if (!activeNote) {
       return;
     }
@@ -529,16 +637,9 @@ function App() {
     if (window.memoAPI && Object.keys(persistencePatch).length > 0) {
       void window.memoAPI
         .update(activeNoteId, persistencePatch)
-        .then((persistedMemo) => {
-          if (!persistedMemo) {
-            return;
-          }
-
-          setNotes((currentNotes) =>
-            currentNotes.map((note) =>
-              note.id === activeNoteId ? toNoteFromMemo(persistedMemo, update.mode ?? note.mode) : note
-            )
-          );
+        .then(() => {
+          // 입력 중 텍스트를 IPC 응답값으로 다시 덮어쓰면
+          // IME 조합 입력(한글)에서 중복 입력처럼 보일 수 있어 로컬 상태를 유지한다.
         })
         .catch(() => {
           setStatusMessage("메모 변경을 저장소에 반영하지 못했다.");
@@ -551,6 +652,11 @@ function App() {
   }
 
   async function handleCreateNote() {
+    if (isMutationLocked) {
+      setStatusMessage("저장소 연결이 복구될 때까지 새 메모를 만들 수 없다.");
+      return;
+    }
+
     let nextNote = createNote(notes.length);
 
     if (window.memoAPI) {
@@ -630,6 +736,11 @@ function App() {
   }
 
   function openAiPromptComposer() {
+    if (isMutationLocked) {
+      setStatusMessage("저장소 연결이 복구될 때까지 AI 정리를 실행할 수 없다.");
+      return;
+    }
+
     if (!activeNote) {
       return;
     }
@@ -647,6 +758,11 @@ function App() {
   }
 
   function startTransformPreview() {
+    if (isMutationLocked) {
+      setStatusMessage("저장소 연결이 복구될 때까지 AI 정리를 실행할 수 없다.");
+      return;
+    }
+
     if (!activeNote) {
       return;
     }
@@ -675,6 +791,11 @@ function App() {
   }
 
   function applyTransformDraft() {
+    if (isMutationLocked) {
+      setStatusMessage("저장소 연결이 복구될 때까지 미리보기를 적용할 수 없다.");
+      return;
+    }
+
     if (!activeNote || !activeDraft) {
       return;
     }
@@ -691,6 +812,11 @@ function App() {
   }
 
   function restoreOriginal() {
+    if (isMutationLocked) {
+      setStatusMessage("저장소 연결이 복구될 때까지 원문 복원을 실행할 수 없다.");
+      return;
+    }
+
     if (!activeNote || !backups[activeNote.id]) {
       setStatusMessage("복원할 원문이 없다.");
       return;
@@ -715,6 +841,11 @@ function App() {
   }
 
   function beginDeleteNote() {
+    if (isMutationLocked) {
+      setStatusMessage("저장소 연결이 복구될 때까지 삭제를 실행할 수 없다.");
+      return;
+    }
+
     if (!activeNote) {
       return;
     }
@@ -732,6 +863,11 @@ function App() {
   }
 
   function confirmDeleteNote() {
+    if (isMutationLocked) {
+      setStatusMessage("저장소 연결이 복구될 때까지 삭제를 실행할 수 없다.");
+      return;
+    }
+
     if (!activeNote) {
       return;
     }
@@ -774,6 +910,11 @@ function App() {
   }
 
   async function undoDelete() {
+    if (isMutationLocked) {
+      setStatusMessage("저장소 연결이 복구될 때까지 되돌리기를 실행할 수 없다.");
+      return;
+    }
+
     if (!recentlyDeleted) {
       return;
     }
@@ -869,6 +1010,7 @@ function App() {
                     className="link-button link-button-primary"
                     type="button"
                     data-testid="sidebar-create-note-button"
+                    disabled={isMutationLocked}
                     onClick={() => void handleCreateNote()}
                   >
                     새 메모
@@ -900,7 +1042,21 @@ function App() {
 
               <div className="sidebar-summary">
                 <span>{noteCountLabel}</span>
+                <span className={storageBadgeClassName} data-testid="storage-status-badge">
+                  {storageBadgeLabel}
+                </span>
               </div>
+              <span
+                className={`storage-status-detail${isMutationLocked ? " is-warning" : ""}`}
+                data-testid="storage-status-detail"
+              >
+                {storageDetailLabel}
+              </span>
+              {storageHealth?.filePath ? (
+                <span className="storage-status-path" title={storageHealth.filePath}>
+                  {storageHealth.filePath}
+                </span>
+              ) : null}
             </div>
 
             <div className="note-list" role="listbox" aria-label="메모 목록" data-testid="note-list">
@@ -977,6 +1133,7 @@ function App() {
                               className="paper-button"
                               type="button"
                               data-testid="editor-create-note-button"
+                              disabled={isMutationLocked}
                               onClick={() => void handleCreateNote()}
                             >
                               새 메모
@@ -994,7 +1151,12 @@ function App() {
 
                     <div className="paper-actions">
                       {recentlyDeleted ? (
-                        <button className="status-button" type="button" onClick={() => void undoDelete()}>
+                        <button
+                          className="status-button"
+                          type="button"
+                          disabled={isMutationLocked}
+                          onClick={() => void undoDelete()}
+                        >
                           되돌리기
                         </button>
                       ) : null}
@@ -1002,6 +1164,7 @@ function App() {
                         className="paper-button paper-button-primary"
                         type="button"
                         data-testid="organize-note-button"
+                        disabled={isMutationLocked}
                         onClick={openAiPromptComposer}
                       >
                         AI 정리
@@ -1011,7 +1174,7 @@ function App() {
                         type="button"
                         data-testid="restore-note-button"
                         onClick={restoreOriginal}
-                        disabled={!hasBackup}
+                        disabled={!hasBackup || isMutationLocked}
                       >
                         원문 복원
                       </button>
@@ -1037,6 +1200,7 @@ function App() {
                             className="paper-button paper-button-danger"
                             type="button"
                             data-testid="confirm-delete-button"
+                            disabled={isMutationLocked}
                             onClick={confirmDeleteNote}
                           >
                             정말 삭제
@@ -1047,6 +1211,7 @@ function App() {
                           className="paper-button paper-button-danger"
                           type="button"
                           data-testid="begin-delete-button"
+                          disabled={isMutationLocked}
                           onClick={beginDeleteNote}
                         >
                           삭제
@@ -1071,6 +1236,7 @@ function App() {
                           type="text"
                           data-testid="ai-prompt-input"
                           value={aiPrompt}
+                          disabled={isMutationLocked}
                           placeholder="예: 더 간결하게 요약해줘, 존댓말로 바꿔줘"
                           onChange={(event) => setAiPrompt(event.target.value)}
                         />
@@ -1079,6 +1245,7 @@ function App() {
                         className="paper-button paper-button-primary"
                         type="submit"
                         data-testid="submit-ai-prompt-button"
+                        disabled={isMutationLocked}
                       >
                         미리보기
                       </button>
@@ -1091,6 +1258,12 @@ function App() {
                         취소
                       </button>
                     </form>
+                  ) : null}
+                  {isMutationLocked && storageHealth ? (
+                    <div className="storage-lock-banner" role="alert" data-testid="storage-lock-alert">
+                      <strong>편집 잠금</strong>
+                      <span>{storageHealth.errorMessage ?? "저장소 연결 확인이 완료될 때까지 편집을 잠갔다."}</span>
+                    </div>
                   ) : null}
                 </header>
 
@@ -1114,7 +1287,13 @@ function App() {
                         </pre>
                       </div>
                       <div className="transform-preview-actions">
-                        <button className="paper-button" type="button" data-testid="apply-transform-button" onClick={applyTransformDraft}>
+                        <button
+                          className="paper-button"
+                          type="button"
+                          data-testid="apply-transform-button"
+                          disabled={isMutationLocked}
+                          onClick={applyTransformDraft}
+                        >
                           적용
                         </button>
                         <button
@@ -1137,6 +1316,7 @@ function App() {
                         data-testid="note-title-input"
                         value={activeNote.title}
                         placeholder="제목 없는 메모"
+                        disabled={isMutationLocked}
                         onChange={(event) =>
                           patchActiveNote(
                             {
@@ -1154,7 +1334,8 @@ function App() {
                         data-testid="note-body-input"
                         value={activeNote.body}
                         placeholder="여기에 메모를 적으세요."
-                        readOnly={Boolean(activeDraft)}
+                        disabled={isMutationLocked}
+                        readOnly={Boolean(activeDraft) || isMutationLocked}
                         onChange={(event) =>
                           patchActiveNote(
                             {
@@ -1204,6 +1385,7 @@ function App() {
                     type="button"
                     data-testid="empty-create-note-button"
                     ref={emptyCreateButtonRef}
+                    disabled={isMutationLocked}
                     onClick={() => void handleCreateNote()}
                   >
                     새 메모
@@ -1237,6 +1419,7 @@ function App() {
                       className="paper-button"
                       type="button"
                       data-testid="empty-undo-delete-button"
+                      disabled={isMutationLocked}
                       onClick={() => void undoDelete()}
                     >
                       되돌리기

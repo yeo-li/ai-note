@@ -19,6 +19,36 @@ test.describe("AI Note desktop smoke", () => {
     await expect(noteList.locator('[data-testid^="note-list-item-"]').first()).toContainText("QA smoke note");
   });
 
+  test("syncs sticky-note edits to the main window without delay", async ({ electronApp, appWindow }) => {
+    const noteList = appWindow.getByTestId("note-list");
+    const primaryBodyInput = appWindow.getByTestId("note-body-input");
+
+    await noteList.locator('[data-testid^="note-list-item-"]').first().click();
+
+    const stickyWindowPromise = electronApp.waitForEvent("window");
+    await appWindow.getByTestId("open-sticky-note-button").click();
+
+    const stickyWindow = await stickyWindowPromise;
+    await stickyWindow.waitForLoadState("domcontentloaded");
+    await stickyWindow.waitForSelector('[data-testid="note-body-input"]');
+    await expect(stickyWindow.getByTestId("sticky-mode-exit-button")).toBeVisible();
+    await expect(stickyWindow.getByTestId("sticky-mode-pin-button")).toBeVisible();
+    await expect(stickyWindow.getByTestId("sticky-mode-new-note-button")).toBeVisible();
+
+    const pinButton = stickyWindow.getByTestId("sticky-mode-pin-button");
+    await expect(pinButton).toHaveAttribute("aria-pressed", "false");
+    await pinButton.click();
+    await expect(pinButton).toHaveAttribute("aria-pressed", "true");
+
+    const stickyBodyInput = stickyWindow.getByTestId("note-body-input");
+    const syncedBody = "스티커 동기화 확인\n일반 창 즉시 반영";
+
+    await stickyBodyInput.fill(syncedBody);
+
+    await expect(primaryBodyInput).toHaveValue(syncedBody, { timeout: 1500 });
+    await expect(noteList.locator('[data-testid^="note-list-item-"]').first()).toContainText("스티커 동기화 확인");
+  });
+
   test("keeps selection separate from search when no result matches", async ({ appWindow }) => {
     const firstNote = appWindow.getByTestId("note-list").locator('[data-testid^="note-list-item-"]').first();
     const searchInput = appWindow.getByTestId("note-search-input");

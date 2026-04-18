@@ -6,6 +6,20 @@ export type Memo = {
   updatedAt: string;
 };
 
+export type MemoChangeEvent =
+  | {
+      type: "created";
+      memo: Memo;
+    }
+  | {
+      type: "updated";
+      memo: Memo;
+    }
+  | {
+      type: "deleted";
+      memoId: string;
+    };
+
 export type MemoCreateInput = {
   title?: string;
   body?: string;

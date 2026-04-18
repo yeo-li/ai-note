@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Memo, MemoCreateInput, MemoStoreHealth, MemoUpdateInput } from "./shared/memo";
+import type { Memo, MemoChangeEvent, MemoCreateInput, MemoStoreHealth, MemoUpdateInput } from "./shared/memo";
 import { buildMemoTitleFromBody, deriveNoteHeadline } from "./note-content";
 
 type TransformMode = "default" | "organized";
@@ -163,6 +163,25 @@ function toNoteFromMemo(memo: Memo, mode: TransformMode = "default"): Note {
   };
 }
 
+function upsertSyncedNote(currentNotes: Note[], memo: Memo) {
+  const incomingNote = toNoteFromMemo(memo);
+  const existingNote = currentNotes.find((note) => note.id === incomingNote.id);
+  const mergedNote = existingNote
+    ? {
+        ...existingNote,
+        body: incomingNote.body,
+        updatedAt: incomingNote.updatedAt,
+        dateLabel: incomingNote.dateLabel
+      }
+    : incomingNote;
+
+  return [mergedNote, ...currentNotes.filter((note) => note.id !== mergedNote.id)];
+}
+
+function removeSyncedNote(currentNotes: Note[], memoId: string) {
+  return currentNotes.filter((note) => note.id !== memoId);
+}
+
 const storageKindLabels: Record<MemoStoreHealth["storeKind"], string> = {
   sqlite: "SQLite",
   json: "JSON",
@@ -322,14 +341,66 @@ function buildAiOrganizedBody(text: string, prompt: string) {
   return previewBody;
 }
 
+type LaunchContext = {
+  stickyMode: boolean;
+  requestedNoteId: string | null;
+};
+
+function readLaunchContext(): LaunchContext {
+  if (typeof window === "undefined") {
+    return {
+      stickyMode: false,
+      requestedNoteId: null
+    };
+  }
+
+  const query = new URLSearchParams(window.location.search);
+  const requestedNoteId = query.get("noteId");
+
+  return {
+    stickyMode: query.get("view") === "sticky",
+    requestedNoteId: requestedNoteId && requestedNoteId.trim().length > 0 ? requestedNoteId.trim() : null
+  };
+}
+
+function StickyCloseIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M5 5l6 6M11 5l-6 6" />
+    </svg>
+  );
+}
+
+function StickyPinIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M6.2 2.6h3.6l.7 2.7 1.6 1.8v1H3.9v-1l1.6-1.8.7-2.7z" />
+      <path d="M8 8.2v4" />
+    </svg>
+  );
+}
+
+function StickyNewNoteIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M4.4 3.1h7.2v9.8H4.4z" />
+      <path d="M8 6.8v3.2M6.4 8.4h3.2" />
+    </svg>
+  );
+}
+
 function App() {
+  const launchContext = useMemo(() => readLaunchContext(), []);
+  const isDedicatedStickyWindow = launchContext.stickyMode;
   const isMacOS =
     window.desktopAPI?.platform === "darwin" ||
     (typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent));
   const [notes, setNotes] = useState(initialNotes);
   const [selectedNoteId, setSelectedNoteId] = useState(initialNotes[0]?.id ?? "");
   const [query, setQuery] = useState("");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(!launchContext.stickyMode);
+  const [isStickyMode, setIsStickyMode] = useState(launchContext.stickyMode);
+  const [isStickyPinned, setIsStickyPinned] = useState(false);
   const [statusMessage, setStatusMessage] = useState("저장소 연결 상태를 확인하고 있다.");
   const [storageHealth, setStorageHealth] = useState<MemoStoreHealth | null>(null);
   const [isStorageLocked, setIsStorageLocked] = useState(true);
@@ -411,8 +482,12 @@ function App() {
 
         if (existingMemos.length > 0) {
           const loadedNotes = existingMemos.map((memo) => toNoteFromMemo(memo));
+          const preferredSelectedNote =
+            launchContext.requestedNoteId && loadedNotes.some((note) => note.id === launchContext.requestedNoteId)
+              ? launchContext.requestedNoteId
+              : loadedNotes[0]?.id ?? "";
           setNotes(loadedNotes);
-          setSelectedNoteId(loadedNotes[0]?.id ?? "");
+          setSelectedNoteId(preferredSelectedNote);
           setStatusMessage(
             health.fallbackReason
               ? `SQLite 초기화 실패로 ${storageLabel} 저장소를 사용 중이다.`
@@ -437,7 +512,11 @@ function App() {
         }
 
         setNotes(seededNotes);
-        setSelectedNoteId(seededNotes[0]?.id ?? "");
+        const preferredSeededNote =
+          launchContext.requestedNoteId && seededNotes.some((note) => note.id === launchContext.requestedNoteId)
+            ? launchContext.requestedNoteId
+            : seededNotes[0]?.id ?? "";
+        setSelectedNoteId(preferredSeededNote);
         setStatusMessage(
           health.fallbackReason
             ? `SQLite 초기화 실패로 ${storageLabel} 저장소를 초기화했다.`
@@ -464,6 +543,40 @@ function App() {
 
     return () => {
       cancelled = true;
+    };
+  }, [launchContext.requestedNoteId]);
+
+  useEffect(() => {
+    if (!window.memoAPI?.onDidChange) {
+      return;
+    }
+
+    const unsubscribe = window.memoAPI.onDidChange((changeEvent: MemoChangeEvent) => {
+      if (changeEvent.type === "deleted") {
+        const { memoId } = changeEvent;
+
+        setNotes((currentNotes) => removeSyncedNote(currentNotes, memoId));
+        setDeleteIntentId((currentDeleteIntentId) => (currentDeleteIntentId === memoId ? null : currentDeleteIntentId));
+        setRecentlyDeleted((currentDeletedState) => (currentDeletedState?.note.id === memoId ? null : currentDeletedState));
+        setDraftTransform((currentDraft) => (currentDraft?.noteId === memoId ? null : currentDraft));
+        setBackups((currentBackups) => {
+          if (!currentBackups[memoId]) {
+            return currentBackups;
+          }
+
+          const nextBackups = { ...currentBackups };
+          delete nextBackups[memoId];
+          return nextBackups;
+        });
+
+        return;
+      }
+
+      setNotes((currentNotes) => upsertSyncedNote(currentNotes, changeEvent.memo));
+    });
+
+    return () => {
+      unsubscribe();
     };
   }, []);
 
@@ -603,6 +716,17 @@ function App() {
       window.removeEventListener("keydown", handleKeydown);
     };
   }, [isDeleteModalOpen]);
+
+  useEffect(() => {
+    if (!isStickyMode) {
+      setIsStickyPinned(false);
+      return;
+    }
+
+    setIsSidebarOpen(false);
+    setDeleteIntentId(null);
+    setIsAiPromptOpen(false);
+  }, [isStickyMode]);
 
   function patchActiveNote(update: Partial<Note>, message?: string) {
     if (isMutationLocked) {
@@ -966,6 +1090,54 @@ function App() {
     setStatusMessage("삭제한 메모를 되돌렸다.");
   }
 
+  async function openStickyNoteWindow() {
+    const openStickyNote = window.desktopAPI?.window?.openStickyNote;
+
+    if (!openStickyNote) {
+      setStatusMessage("스티커 메모는 데스크톱 앱에서만 새 창으로 열 수 있다.");
+      return;
+    }
+
+    try {
+      await openStickyNote(activeNote?.id ?? null);
+      setStatusMessage("새 스티커 메모 창을 열었다.");
+    } catch {
+      setStatusMessage("스티커 메모 창을 열지 못했다.");
+    }
+  }
+
+  async function toggleStickyPinned() {
+    if (!isDedicatedStickyWindow) {
+      setStatusMessage("스티커 창에서만 고정 기능을 사용할 수 있다.");
+      return;
+    }
+
+    const setStickyPinned = window.desktopAPI?.window?.setStickyPinned;
+
+    if (!setStickyPinned) {
+      setStatusMessage("고정 기능을 사용할 수 없는 환경이다.");
+      return;
+    }
+
+    try {
+      const pinned = await setStickyPinned(!isStickyPinned);
+      setIsStickyPinned(pinned);
+      setStatusMessage(pinned ? "스티커 메모를 화면 최상단에 고정했다." : "스티커 메모 고정을 해제했다.");
+    } catch {
+      setStatusMessage("스티커 메모 고정 상태를 변경하지 못했다.");
+    }
+  }
+
+  function closeStickySurface() {
+    if (isDedicatedStickyWindow) {
+      window.close();
+      return;
+    }
+
+    setIsStickyMode(false);
+    setStatusMessage("일반 모드로 돌아왔다.");
+  }
+
   async function copyCurrentNote() {
     if (!activeNote) {
       return;
@@ -1001,13 +1173,28 @@ function App() {
     }
   }
 
+  const appShellClassName = [
+    "app-shell",
+    isMacOS ? "is-macos" : "",
+    isStickyMode ? "is-sticky-mode" : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const appBodyClassName = [
+    "app-body",
+    isSidebarOpen && !isStickyMode ? "" : "is-sidebar-hidden",
+    isStickyMode ? "is-sticky-mode" : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <main className="page" data-testid="page-root">
-      <section className={`app-shell${isMacOS ? " is-macos" : ""}`} data-testid="app-shell">
+      <section className={appShellClassName} data-testid="app-shell">
         <div className="visually-hidden" role="status" aria-live="polite" aria-atomic="true" data-testid="status-live-region">
           {statusMessage}
         </div>
-        <section className={`app-body${isSidebarOpen ? "" : " is-sidebar-hidden"}`}>
+        <section className={appBodyClassName}>
           <aside className="sidebar" id="memo-sidebar">
             <div className="sidebar-head">
               <div className="sidebar-brand">
@@ -1114,12 +1301,58 @@ function App() {
           </aside>
 
           <section className="editor-pane">
+            {isStickyMode ? (
+              <div className="sticky-note-toolbar" role="toolbar" aria-label="스티커 메모 도구" data-testid="sticky-toolbar">
+                <div className="sticky-note-toolbar__drag" aria-hidden="true" />
+                <div className="sticky-note-toolbar__actions sticky-note-toolbar__actions--left">
+                  <button
+                    className="sticky-note-toolbar__button sticky-note-toolbar__button--close"
+                    type="button"
+                    data-testid="sticky-mode-exit-button"
+                    aria-label={isDedicatedStickyWindow ? "스티커 창 닫기" : "일반 모드로 돌아가기"}
+                    onClick={closeStickySurface}
+                  >
+                    <StickyCloseIcon />
+                  </button>
+                  <button
+                    className={`sticky-note-toolbar__button sticky-note-toolbar__button--pin${isStickyPinned ? " is-pinned" : ""}`}
+                    type="button"
+                    data-testid="sticky-mode-pin-button"
+                    aria-label={isStickyPinned ? "스티커 메모 고정 해제" : "스티커 메모 고정"}
+                    aria-pressed={isStickyPinned}
+                    onClick={() => void toggleStickyPinned()}
+                  >
+                    <StickyPinIcon />
+                  </button>
+                </div>
+                <div className="sticky-note-toolbar__actions sticky-note-toolbar__actions--right">
+                  <button
+                    className="sticky-note-toolbar__button sticky-note-toolbar__button--new"
+                    type="button"
+                    data-testid="sticky-mode-new-note-button"
+                    aria-label="새 메모 만들기"
+                    disabled={isMutationLocked}
+                    onClick={() => void handleCreateNote()}
+                  >
+                    <StickyNewNoteIcon />
+                  </button>
+                </div>
+              </div>
+            ) : null}
             {activeNote ? (
               <div className="paper">
                 <header className="paper-head">
                   <div className="paper-utility-bar">
                     <div className="paper-heading-tools">
                       <div className="paper-toolbar">
+                        <button
+                          className="paper-button"
+                          type="button"
+                          data-testid="open-sticky-note-button"
+                          onClick={() => void openStickyNoteWindow()}
+                        >
+                          스티커 메모
+                        </button>
                         <button
                           className="paper-button"
                           type="button"

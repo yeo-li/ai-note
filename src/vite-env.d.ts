@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 import type {
+  MemoChangeEvent,
   Memo,
   MemoCreateInput,
   MemoOrganizeInput,
@@ -12,6 +13,10 @@ import type {
 
 type DesktopAPI = {
   platform: string;
+  window?: {
+    openStickyNote: (noteId?: string | null) => Promise<boolean>;
+    setStickyPinned: (pinned: boolean) => Promise<boolean>;
+  };
   clipboard?: {
     writeText: (text: string) => void;
   };
@@ -31,6 +36,7 @@ type MemoAPI = {
   delete(id: string): Promise<boolean>;
   search(query: string): Promise<MemoSearchResult[]>;
   organize(input: MemoOrganizeInput): Promise<MemoOrganizeResult>;
+  onDidChange(listener: (event: MemoChangeEvent) => void): () => void;
 };
 
 declare global {

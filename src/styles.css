@@ -655,6 +655,53 @@ textarea:focus-visible {
   font-size: 0.8rem;
 }
 
+.delete-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: clamp(18px, 4vw, 28px);
+  background: rgba(6, 27, 49, 0.24);
+  backdrop-filter: blur(2px);
+}
+
+.delete-modal {
+  width: min(100%, 460px);
+  display: grid;
+  gap: 14px;
+  padding: 22px 22px 20px;
+  border-radius: 20px;
+  border: 1px solid rgba(229, 237, 245, 0.95);
+  background: #ffffff;
+  box-shadow: var(--shadow-2);
+}
+
+.delete-modal h2,
+.delete-modal p {
+  margin: 0;
+}
+
+.delete-modal h2 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-main);
+}
+
+.delete-modal p {
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+.delete-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .paper-body {
   min-height: 0;
   overflow: auto;
@@ -934,5 +981,14 @@ textarea:focus-visible {
   .paper-editor {
     min-height: 300px;
     line-height: 1.7;
+  }
+
+  .delete-modal {
+    padding: 18px;
+    border-radius: 16px;
+  }
+
+  .delete-modal-actions .paper-button {
+    flex: 1 1 auto;
   }
 }

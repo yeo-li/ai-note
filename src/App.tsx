@@ -529,6 +529,8 @@ function App() {
       ? `${filteredNotes.length}개의 검색 결과`
       : `${notes.length}개의 메모`;
   const activeModeLabel = activeNote?.mode === "organized" ? "AI 정리" : "원문";
+  const deleteTargetNote = deleteIntentId ? notes.find((note) => note.id === deleteIntentId) ?? null : null;
+  const isDeleteModalOpen = Boolean(deleteTargetNote);
   const isMutationLocked = isStorageLocked || !storageHealth?.ready;
   const storageKindLabel = storageHealth ? getStorageKindLabel(storageHealth.storeKind) : "확인 중";
   const storageBadgeLabel = storageHealth
@@ -594,6 +596,24 @@ function App() {
 
     nextTarget?.focus();
   }, [activeNote, hasQuery, isSelectionOutsideSearch]);
+
+  useEffect(() => {
+    if (!isDeleteModalOpen || typeof window === "undefined") {
+      return;
+    }
+
+    const handleKeydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        cancelDeleteNote();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeydown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeydown);
+    };
+  }, [isDeleteModalOpen]);
 
   function patchActiveNote(update: Partial<Note>, message?: string) {
     if (isMutationLocked) {
@@ -868,16 +888,23 @@ function App() {
       return;
     }
 
-    if (!activeNote) {
+    if (!deleteTargetNote) {
+      setDeleteIntentId(null);
       return;
     }
 
-    const deletedNoteId = activeNote.id;
-    const deletedBackup = backups[activeNote.id] ?? null;
+    const deletedNoteId = deleteTargetNote.id;
+    const deletedBackup = backups[deleteTargetNote.id] ?? null;
     const currentVisibleNotes = hasQuery ? filteredNotes : notes;
-    const deletedIndex = notes.findIndex((note) => note.id === activeNote.id);
-    const deletedVisibleIndex = currentVisibleNotes.findIndex((note) => note.id === activeNote.id);
-    const nextNotes = notes.filter((note) => note.id !== activeNote.id);
+    const deletedIndex = notes.findIndex((note) => note.id === deleteTargetNote.id);
+    const deletedVisibleIndex = currentVisibleNotes.findIndex((note) => note.id === deleteTargetNote.id);
+
+    if (deletedIndex < 0) {
+      setDeleteIntentId(null);
+      return;
+    }
+
+    const nextNotes = notes.filter((note) => note.id !== deleteTargetNote.id);
     const visibleNotes = hasQuery ? nextNotes.filter((note) => matchesQuery(note, query)) : nextNotes;
     const nextSelected =
       visibleNotes[Math.min(Math.max(deletedVisibleIndex, 0), Math.max(visibleNotes.length - 1, 0))] ??
@@ -891,13 +918,13 @@ function App() {
     setIsAiPromptOpen(false);
     setAiPrompt("");
     setRecentlyDeleted({
-      note: activeNote,
+      note: deleteTargetNote,
       index: deletedIndex,
       backup: deletedBackup
     });
     setBackups((currentBackups) => {
       const nextBackups = { ...currentBackups };
-      delete nextBackups[activeNote.id];
+      delete nextBackups[deleteTargetNote.id];
       return nextBackups;
     });
     setStatusMessage("메모를 삭제했습니다. 되돌릴 수 있다.");
@@ -1186,37 +1213,17 @@ function App() {
                       >
                         복사
                       </button>
-                      {deleteIntentId === activeNote.id ? (
-                        <>
-                          <button
-                            className="paper-button"
-                            type="button"
-                            data-testid="cancel-delete-button"
-                            onClick={cancelDeleteNote}
-                          >
-                            취소
-                          </button>
-                          <button
-                            className="paper-button paper-button-danger"
-                            type="button"
-                            data-testid="confirm-delete-button"
-                            disabled={isMutationLocked}
-                            onClick={confirmDeleteNote}
-                          >
-                            정말 삭제
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          className="paper-button paper-button-danger"
-                          type="button"
-                          data-testid="begin-delete-button"
-                          disabled={isMutationLocked}
-                          onClick={beginDeleteNote}
-                        >
-                          삭제
-                        </button>
-                      )}
+                      <button
+                        className="paper-button paper-button-danger"
+                        type="button"
+                        data-testid="begin-delete-button"
+                        aria-haspopup="dialog"
+                        aria-expanded={isDeleteModalOpen}
+                        disabled={isMutationLocked}
+                        onClick={beginDeleteNote}
+                      >
+                        삭제
+                      </button>
                     </div>
                   </div>
 
@@ -1430,6 +1437,41 @@ function App() {
             )}
           </section>
         </section>
+        {isDeleteModalOpen && deleteTargetNote ? (
+          <div className="delete-modal-backdrop" data-testid="delete-confirm-modal" onClick={cancelDeleteNote}>
+            <section
+              className="delete-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delete-modal-title"
+              aria-describedby="delete-modal-description"
+              onClick={(event) => {
+                event.stopPropagation();
+              }}
+            >
+              <h2 id="delete-modal-title">메모를 삭제할까요?</h2>
+              <p id="delete-modal-description">
+                {deleteTargetNote.title.trim()
+                  ? `"${deleteTargetNote.title.trim()}" 메모를 삭제하면 되돌리기 전까지 사라집니다.`
+                  : "이 메모를 삭제하면 되돌리기 전까지 사라집니다."}
+              </p>
+              <div className="delete-modal-actions">
+                <button className="paper-button" type="button" data-testid="cancel-delete-button" onClick={cancelDeleteNote}>
+                  취소
+                </button>
+                <button
+                  className="paper-button paper-button-danger"
+                  type="button"
+                  data-testid="confirm-delete-button"
+                  disabled={isMutationLocked}
+                  onClick={confirmDeleteNote}
+                >
+                  정말 삭제
+                </button>
+              </div>
+            </section>
+          </div>
+        ) : null}
       </section>
     </main>
   );

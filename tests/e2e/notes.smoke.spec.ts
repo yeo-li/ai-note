@@ -90,6 +90,7 @@ test.describe("AI Note desktop smoke", () => {
     await expect(titleInput).toHaveValue("qa filter set 3");
 
     await appWindow.getByTestId("begin-delete-button").click();
+    await expect(appWindow.getByTestId("delete-confirm-modal")).toBeVisible();
     await appWindow.getByTestId("confirm-delete-button").click();
 
     await expect(filteredItems).toHaveCount(2);
@@ -122,6 +123,7 @@ test.describe("AI Note desktop smoke", () => {
     const countBeforeDelete = await noteList.locator('[data-testid^="note-list-item-"]').count();
 
     await appWindow.getByTestId("begin-delete-button").click();
+    await expect(appWindow.getByTestId("delete-confirm-modal")).toBeVisible();
     await appWindow.getByTestId("confirm-delete-button").click();
 
     await expect(noteList.locator('[data-testid^="note-list-item-"]')).toHaveCount(countBeforeDelete - 1);
@@ -151,6 +153,7 @@ test.describe("AI Note desktop smoke", () => {
     await expect(bodyInput).toHaveValue("삭제 전 원문, 복원 확인 입니다.");
 
     await appWindow.getByTestId("begin-delete-button").click();
+    await expect(appWindow.getByTestId("delete-confirm-modal")).toBeVisible();
     await appWindow.getByTestId("confirm-delete-button").click();
     await appWindow.getByRole("button", { name: "되돌리기" }).first().click();
 

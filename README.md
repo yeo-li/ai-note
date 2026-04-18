@@ -81,4 +81,5 @@ npm run allure:open
 - `docs/mvp-requirements.md`: 현재 프로젝트의 MVP 요구사항, 범위, acceptance criteria, 구현 순서
 - `docs/github-task-backlog.md`: GitHub 이슈로 쪼개기 위한 초기 백로그와 워크트리 분할 기준
 - `docs/engineering-workflow.md`: main 중심 브랜치 전략, 스프린트 운영 규칙, Codex 워킹트리 분할 기준
+- `docs/issue-driven-development-rules.md`: 이슈 생성부터 브랜치/커밋/PR까지의 이슈 기반 개발 기본 운영 규칙
 - `docs/sprint-1-acceptance-smoke.md`: Sprint 1 수용 기준과 데스크톱 smoke 시나리오

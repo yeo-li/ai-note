@@ -192,6 +192,22 @@ function getStorageKindLabel(kind: MemoStoreHealth["storeKind"]) {
   return storageKindLabels[kind] ?? "Memory";
 }
 
+function getStorageStatusSummary(health: MemoStoreHealth | null) {
+  if (!health) {
+    return "";
+  }
+
+  if (!health.ready) {
+    return "저장소 연결을 확인하지 못해 현재 편집을 잠갔다.";
+  }
+
+  if (health.fallbackReason) {
+    return `SQLite 초기화에 실패해 ${getStorageKindLabel(health.storeKind)} 저장소로 전환했다.`;
+  }
+
+  return "";
+}
+
 function toErrorMessage(error: unknown) {
   if (error instanceof Error && error.message) {
     return error.message;
@@ -389,6 +405,72 @@ function StickyNewNoteIcon() {
   );
 }
 
+function HeaderPlusIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 3.5v9" />
+      <path d="M3.5 8h9" />
+    </svg>
+  );
+}
+
+function ToolbarStickyIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M4.5 3.1h7v9.8h-7z" />
+      <path d="M6 5.7h4" />
+      <path d="M6 8h4" />
+    </svg>
+  );
+}
+
+function ToolbarSidebarIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M3.3 3.2h9.4v9.6H3.3z" />
+      <path d="M6.2 3.2v9.6" />
+    </svg>
+  );
+}
+
+function ToolbarSparklesIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 2.7l1.1 2.8 2.8 1.1-2.8 1.1L8 10.5 6.9 7.7 4.1 6.6l2.8-1.1z" />
+      <path d="M11.9 10.1l.5 1.3 1.3.5-1.3.5-.5 1.3-.5-1.3-1.3-.5 1.3-.5z" />
+    </svg>
+  );
+}
+
+function ToolbarUndoIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M6.1 5.1H3.7v2.4" />
+      <path d="M3.8 7.5a4.7 4.7 0 1 1 2.6 4.2" />
+    </svg>
+  );
+}
+
+function ToolbarCopyIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M5.1 4.1h6.4v7.2H5.1z" />
+      <path d="M3.3 11.9V5.9" />
+      <path d="M3.3 5.9h5.2" />
+    </svg>
+  );
+}
+
+function NoteMenuIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M4.1 8h.01" />
+      <path d="M8 8h.01" />
+      <path d="M11.9 8h.01" />
+    </svg>
+  );
+}
+
 function App() {
   const launchContext = useMemo(() => readLaunchContext(), []);
   const isDedicatedStickyWindow = launchContext.stickyMode;
@@ -406,6 +488,7 @@ function App() {
   const [isStorageLocked, setIsStorageLocked] = useState(true);
   const [backups, setBackups] = useState<Record<string, NoteBackup>>({});
   const [deleteIntentId, setDeleteIntentId] = useState<string | null>(null);
+  const [noteMenuId, setNoteMenuId] = useState<string | null>(null);
   const [recentlyDeleted, setRecentlyDeleted] = useState<DeletedNoteState | null>(null);
   const [draftTransform, setDraftTransform] = useState<TransformDraft | null>(null);
   const [isAiPromptOpen, setIsAiPromptOpen] = useState(false);
@@ -557,6 +640,7 @@ function App() {
 
         setNotes((currentNotes) => removeSyncedNote(currentNotes, memoId));
         setDeleteIntentId((currentDeleteIntentId) => (currentDeleteIntentId === memoId ? null : currentDeleteIntentId));
+        setNoteMenuId((currentNoteMenuId) => (currentNoteMenuId === memoId ? null : currentNoteMenuId));
         setRecentlyDeleted((currentDeletedState) => (currentDeletedState?.note.id === memoId ? null : currentDeletedState));
         setDraftTransform((currentDraft) => (currentDraft?.noteId === memoId ? null : currentDraft));
         setBackups((currentBackups) => {
@@ -629,7 +713,6 @@ function App() {
     : hasQuery
       ? `${filteredNotes.length}개의 검색 결과`
       : `${notes.length}개의 메모`;
-  const activeModeLabel = activeNote?.mode === "organized" ? "AI 정리" : "원문";
   const deleteTargetNote = deleteIntentId ? notes.find((note) => note.id === deleteIntentId) ?? null : null;
   const deleteTargetHeadline = deleteTargetNote ? deriveNoteHeadline(deleteTargetNote.body) : "";
   const isDeleteModalOpen = Boolean(deleteTargetNote);
@@ -638,6 +721,7 @@ function App() {
   const storageBadgeLabel = storageHealth
     ? `저장소 ${storageKindLabel}`
     : "저장소 확인 중";
+  const storageStatusSummary = getStorageStatusSummary(storageHealth);
   const storageBadgeClassName = [
     "storage-status-badge",
     storageHealth ? `is-${storageHealth.storeKind}` : "is-loading",
@@ -645,13 +729,6 @@ function App() {
   ]
     .filter(Boolean)
     .join(" ");
-  const storageDetailLabel = storageHealth
-    ? storageHealth.ready
-      ? storageHealth.fallbackReason
-        ? `SQLite 초기화 실패로 ${storageKindLabel} 저장소로 대체 실행 중`
-        : "저장소 연결 정상"
-      : storageHealth.errorMessage ?? "저장소 연결 실패"
-    : "저장소 연결 확인 중";
 
   useEffect(() => {
     setDraftTransform((currentDraft) => {
@@ -718,6 +795,51 @@ function App() {
   }, [isDeleteModalOpen]);
 
   useEffect(() => {
+    if (!noteMenuId) {
+      return;
+    }
+
+    if ((hasQuery && !filteredNotes.some((note) => note.id === noteMenuId)) || !notes.some((note) => note.id === noteMenuId)) {
+      setNoteMenuId(null);
+    }
+  }, [filteredNotes, hasQuery, noteMenuId, notes]);
+
+  useEffect(() => {
+    if (!noteMenuId || typeof window === "undefined") {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const nextTarget = event.target;
+
+      if (!(nextTarget instanceof Element)) {
+        setNoteMenuId(null);
+        return;
+      }
+
+      if (nextTarget.closest("[data-note-menu-root='true']")) {
+        return;
+      }
+
+      setNoteMenuId(null);
+    };
+
+    const handleKeydown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setNoteMenuId(null);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeydown);
+
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeydown);
+    };
+  }, [noteMenuId]);
+
+  useEffect(() => {
     if (!isStickyMode) {
       setIsStickyPinned(false);
       return;
@@ -725,6 +847,7 @@ function App() {
 
     setIsSidebarOpen(false);
     setDeleteIntentId(null);
+    setNoteMenuId(null);
     setIsAiPromptOpen(false);
   }, [isStickyMode]);
 
@@ -755,6 +878,7 @@ function App() {
     );
 
     setDeleteIntentId(null);
+    setNoteMenuId(null);
     setDraftTransform(null);
 
     const persistencePatch = toMemoUpdateInput(update);
@@ -803,6 +927,7 @@ function App() {
     setSelectedNoteId(nextNote.id);
     setQuery("");
     setDeleteIntentId(null);
+    setNoteMenuId(null);
     setRecentlyDeleted(null);
     setDraftTransform(null);
     setIsAiPromptOpen(false);
@@ -816,6 +941,7 @@ function App() {
 
     setQuery(nextQuery);
     setDeleteIntentId(null);
+    setNoteMenuId(null);
     setDraftTransform(null);
     setIsAiPromptOpen(false);
     setAiPrompt("");
@@ -871,6 +997,7 @@ function App() {
     }
 
     setDeleteIntentId(null);
+    setNoteMenuId(null);
     setAiPrompt((currentPrompt) => currentPrompt || activeDraft?.prompt || "");
     setIsAiPromptOpen(true);
     setStatusMessage("AI 정리 프롬프트 입력창을 열었다.");
@@ -901,6 +1028,7 @@ function App() {
     const previewBody = buildAiOrganizedBody(activeNote.body, trimmedPrompt);
 
     setDeleteIntentId(null);
+    setNoteMenuId(null);
     setDraftTransform({
       noteId: activeNote.id,
       prompt: trimmedPrompt,
@@ -911,6 +1039,7 @@ function App() {
   }
 
   function cancelTransformPreview() {
+    setNoteMenuId(null);
     setDraftTransform(null);
     setStatusMessage("미리보기를 닫았다.");
   }
@@ -957,7 +1086,10 @@ function App() {
       "원문 상태로 다시 복원했다."
     );
 
+    setIsAiPromptOpen(false);
+    setAiPrompt("");
     setDraftTransform(null);
+    setNoteMenuId(null);
     setBackups((currentBackups) => {
       const nextBackups = { ...currentBackups };
       delete nextBackups[activeNote.id];
@@ -965,26 +1097,77 @@ function App() {
     });
   }
 
-  function beginDeleteNote() {
+  function beginDeleteNote(noteId?: string) {
     if (isMutationLocked) {
       setStatusMessage("저장소 연결이 복구될 때까지 삭제를 실행할 수 없다.");
       return;
     }
 
-    if (!activeNote) {
+    const targetNote = noteId
+      ? notes.find((note) => note.id === noteId) ?? null
+      : activeNote;
+
+    if (noteId && !targetNote) {
+      setNoteMenuId(null);
+      setStatusMessage("삭제 대상을 찾지 못했다.");
+      return;
+    }
+
+    if (!targetNote) {
       return;
     }
 
     setDraftTransform(null);
     setIsAiPromptOpen(false);
     setAiPrompt("");
-    setDeleteIntentId(activeNote.id);
-    setStatusMessage("이 메모를 삭제할까요?");
+    setNoteMenuId(null);
+    setDeleteIntentId(targetNote.id);
+    setStatusMessage(`"${deriveNoteHeadline(targetNote.body)}" 메모를 삭제할까요?`);
   }
 
   function cancelDeleteNote() {
     setDeleteIntentId(null);
     setStatusMessage("삭제를 취소했다.");
+  }
+
+  function toggleNoteMenu(noteId: string) {
+    setDeleteIntentId(null);
+    setNoteMenuId((currentNoteMenuId) => (currentNoteMenuId === noteId ? null : noteId));
+  }
+
+  async function copyCurrentNote() {
+    if (!activeNote) {
+      return;
+    }
+
+    const text = activeNote.body;
+
+    try {
+      if (window.desktopAPI?.clipboard?.writeText) {
+        window.desktopAPI.clipboard.writeText(text);
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+
+        const copied = document.execCommand("copy");
+        document.body.removeChild(textarea);
+
+        if (!copied) {
+          throw new Error("copy failed");
+        }
+      }
+
+      setStatusMessage("현재 메모를 클립보드에 복사했다.");
+    } catch {
+      setStatusMessage("클립보드 복사에 실패했다.");
+    }
   }
 
   function confirmDeleteNote() {
@@ -1003,6 +1186,7 @@ function App() {
     const currentVisibleNotes = hasQuery ? filteredNotes : notes;
     const deletedIndex = notes.findIndex((note) => note.id === deleteTargetNote.id);
     const deletedVisibleIndex = currentVisibleNotes.findIndex((note) => note.id === deleteTargetNote.id);
+    const shouldKeepSelection = selectedNoteId.length > 0 && selectedNoteId !== deleteTargetNote.id;
 
     if (deletedIndex < 0) {
       setDeleteIntentId(null);
@@ -1011,14 +1195,19 @@ function App() {
 
     const nextNotes = notes.filter((note) => note.id !== deleteTargetNote.id);
     const visibleNotes = hasQuery ? nextNotes.filter((note) => matchesQuery(note, query)) : nextNotes;
-    const nextSelected =
+    const fallbackSelected =
       visibleNotes[Math.min(Math.max(deletedVisibleIndex, 0), Math.max(visibleNotes.length - 1, 0))] ??
       nextNotes[Math.min(deletedIndex, Math.max(nextNotes.length - 1, 0))] ??
       null;
+    const nextSelected =
+      shouldKeepSelection && nextNotes.some((note) => note.id === selectedNoteId)
+        ? nextNotes.find((note) => note.id === selectedNoteId) ?? fallbackSelected
+        : fallbackSelected;
 
     setNotes(nextNotes);
     setSelectedNoteId(nextSelected?.id ?? "");
     setDeleteIntentId(null);
+    setNoteMenuId(null);
     setDraftTransform(null);
     setIsAiPromptOpen(false);
     setAiPrompt("");
@@ -1084,6 +1273,7 @@ function App() {
       };
     });
     setSelectedNoteId(restoredNote.id);
+    setNoteMenuId(null);
     setRecentlyDeleted(null);
     setIsAiPromptOpen(false);
     setAiPrompt("");
@@ -1136,41 +1326,6 @@ function App() {
 
     setIsStickyMode(false);
     setStatusMessage("일반 모드로 돌아왔다.");
-  }
-
-  async function copyCurrentNote() {
-    if (!activeNote) {
-      return;
-    }
-
-    const text = activeNote.body;
-
-    try {
-      if (window.desktopAPI?.clipboard?.writeText) {
-        window.desktopAPI.clipboard.writeText(text);
-      } else if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const textarea = document.createElement("textarea");
-        textarea.value = text;
-        textarea.setAttribute("readonly", "");
-        textarea.style.position = "absolute";
-        textarea.style.left = "-9999px";
-        document.body.appendChild(textarea);
-        textarea.select();
-
-        const copied = document.execCommand("copy");
-        document.body.removeChild(textarea);
-
-        if (!copied) {
-          throw new Error("copy failed");
-        }
-      }
-
-      setStatusMessage("현재 메모를 클립보드에 복사했다.");
-    } catch {
-      setStatusMessage("클립보드 복사에 실패했다.");
-    }
   }
 
   const appShellClassName = [
@@ -1241,62 +1396,90 @@ function App() {
                   {storageBadgeLabel}
                 </span>
               </div>
-              <span
-                className={`storage-status-detail${isMutationLocked ? " is-warning" : ""}`}
-                data-testid="storage-status-detail"
-              >
-                {storageDetailLabel}
-              </span>
-              {storageHealth?.filePath ? (
-                <span className="storage-status-path" title={storageHealth.filePath}>
-                  {storageHealth.filePath}
-                </span>
-              ) : null}
             </div>
 
-            <div className="note-list" role="listbox" aria-label="메모 목록" data-testid="note-list">
-              {!isCollectionEmpty && filteredNotes.length > 0 ? (
-                filteredNotes.map((note) => {
+            {!isCollectionEmpty && filteredNotes.length > 0 ? (
+              <ul className="note-list" aria-label="메모 목록" data-testid="note-list">
+                {filteredNotes.map((note) => {
                   const isSelected = activeNote?.id === note.id;
                   const noteLabel = deriveNoteHeadline(note.body);
+                  const isNoteMenuOpen = noteMenuId === note.id;
+                  const noteMenuIdValue = `note-actions-menu-${note.id}`;
 
                   return (
-                    <button
+                    <li
                       key={note.id}
                       className={`note-list-item${isSelected ? " is-selected" : ""}`}
                       data-mode={note.mode}
-                      data-testid={`note-list-item-${note.id}`}
-                      type="button"
-                      role="option"
-                      aria-selected={isSelected}
-                      aria-current={isSelected ? "true" : undefined}
-                      aria-label={`${noteLabel} 메모`}
-                      onClick={() => {
-                        setSelectedNoteId(note.id);
-                        setDeleteIntentId(null);
-                      }}
                     >
-                      <span className="note-list-copy">
-                        <span className="note-list-meta">
-                          <span className="note-list-state">{note.mode === "default" ? "원문" : "AI 정리"}</span>
+                      <button
+                        className="note-list-item-button"
+                        data-testid={`note-list-item-${note.id}`}
+                        type="button"
+                        aria-current={isSelected ? "true" : undefined}
+                        aria-label={`${noteLabel} 메모`}
+                        onClick={() => {
+                          setSelectedNoteId(note.id);
+                          setDeleteIntentId(null);
+                          setNoteMenuId(null);
+                        }}
+                      >
+                        <span className="note-list-copy">
+                          <span className="note-list-meta">
+                            <span className="note-list-state">{note.mode === "default" ? "원문" : "AI 정리"}</span>
+                          </span>
+                          <strong>{noteLabel}</strong>
+                          <span className="note-list-preview">{note.dateLabel}</span>
                         </span>
-                        <strong>{noteLabel}</strong>
-                        <span className="note-list-preview">{note.dateLabel}</span>
-                      </span>
-                    </button>
+                      </button>
+                      <div className="note-list-actions" data-note-menu-root="true">
+                        <button
+                          className="note-list-menu-button"
+                          type="button"
+                          data-testid={isSelected ? "selected-note-menu-button" : undefined}
+                          aria-label={`${noteLabel} 메모 메뉴`}
+                          aria-expanded={isNoteMenuOpen}
+                          aria-controls={isNoteMenuOpen ? noteMenuIdValue : undefined}
+                          onClick={() => toggleNoteMenu(note.id)}
+                        >
+                          <NoteMenuIcon />
+                        </button>
+                        {isNoteMenuOpen ? (
+                          <div className="note-list-menu" id={noteMenuIdValue}>
+                            <button
+                              className="note-list-menu-item note-list-menu-item-danger"
+                              type="button"
+                              data-testid={isSelected ? "selected-note-delete-button" : undefined}
+                              disabled={isMutationLocked}
+                              onClick={() => beginDeleteNote(note.id)}
+                            >
+                              삭제
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </li>
                   );
-                })
-              ) : (
-                <section className="sidebar-empty" data-testid="sidebar-empty-state">
-                  <strong>{isCollectionEmpty ? "메모가 없습니다" : "검색 결과가 없습니다"}</strong>
-                  <p>
-                    {isCollectionEmpty
-                      ? "새 메모를 만들면 바로 목록에 나타난다."
-                      : "다른 검색어를 입력하거나 검색을 해제하세요."}
+                })}
+              </ul>
+            ) : (
+              <section className="note-list sidebar-empty" data-testid="sidebar-empty-state">
+                <strong>{isCollectionEmpty ? "메모가 없습니다" : "검색 결과가 없습니다"}</strong>
+                <p>
+                  {isCollectionEmpty
+                    ? "새 메모를 만들면 바로 목록에 나타난다."
+                    : "다른 검색어를 입력하거나 검색을 해제하세요."}
+                </p>
+                {storageStatusSummary ? (
+                  <p
+                    className={`sidebar-empty-status${storageHealth?.ready ? "" : " is-warning"}`}
+                    data-testid="sidebar-storage-summary"
+                  >
+                    {storageStatusSummary}
                   </p>
-                </section>
-              )}
-            </div>
+                ) : null}
+              </section>
+            )}
 
           </aside>
 
@@ -1343,98 +1526,74 @@ function App() {
               <div className="paper">
                 <header className="paper-head">
                   <div className="paper-utility-bar">
-                    <div className="paper-heading-tools">
-                      <div className="paper-toolbar">
-                        <button
-                          className="paper-button"
-                          type="button"
-                          data-testid="open-sticky-note-button"
-                          onClick={() => void openStickyNoteWindow()}
-                        >
-                          스티커 메모
-                        </button>
-                        <button
-                          className="paper-button"
-                          type="button"
-                          data-testid="editor-toggle-sidebar-button"
-                          aria-controls="memo-sidebar"
-                          aria-expanded={isSidebarOpen}
-                          onClick={() => {
-                            setIsSidebarOpen((current) => !current);
-                          }}
-                        >
-                          {isSidebarOpen ? "목록 닫기" : "목록 열기"}
-                        </button>
-
-                        {!isSidebarOpen ? (
-                          <>
-                            <button
-                              className="paper-button"
-                              type="button"
-                              data-testid="editor-create-note-button"
-                              disabled={isMutationLocked}
-                              onClick={() => void handleCreateNote()}
-                            >
-                              새 메모
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-
-                      <div className="paper-meta">
-                        <span>{activeNote.updatedAt}</span>
-                        <span>{activeModeLabel}</span>
-                        {hasQuery ? <span>{filteredNotes.length}개 결과</span> : null}
-                      </div>
-                    </div>
-
-                    <div className="paper-actions">
+                    <div className="paper-toolbar paper-toolbar-editor" role="toolbar" aria-label="메모 도구">
+                      <button
+                        className="paper-button paper-button-icon"
+                        type="button"
+                        data-testid="open-sticky-note-button"
+                        aria-label="스티커 메모 열기"
+                        title="스티커 메모"
+                        onClick={() => void openStickyNoteWindow()}
+                      >
+                        <ToolbarStickyIcon />
+                      </button>
+                      <button
+                        className="paper-button paper-button-icon"
+                        type="button"
+                        data-testid="editor-toggle-sidebar-button"
+                        aria-label={isSidebarOpen ? "목록 닫기" : "목록 열기"}
+                        title={isSidebarOpen ? "목록 닫기" : "목록 열기"}
+                        aria-controls="memo-sidebar"
+                        aria-expanded={isSidebarOpen}
+                        onClick={() => {
+                          setIsSidebarOpen((current) => !current);
+                        }}
+                      >
+                        <ToolbarSidebarIcon />
+                      </button>
                       {recentlyDeleted ? (
                         <button
-                          className="status-button"
+                          className="status-button paper-button-icon"
                           type="button"
+                          aria-label="되돌리기"
+                          title="되돌리기"
                           disabled={isMutationLocked}
                           onClick={() => void undoDelete()}
                         >
-                          되돌리기
+                          <ToolbarUndoIcon />
                         </button>
                       ) : null}
                       <button
-                        className="paper-button paper-button-primary"
+                        className="paper-button paper-button-icon paper-button-primary"
                         type="button"
                         data-testid="organize-note-button"
+                        aria-label="AI 정리"
+                        title="AI 정리"
                         disabled={isMutationLocked}
                         onClick={openAiPromptComposer}
                       >
-                        AI 정리
+                        <ToolbarSparklesIcon />
                       </button>
                       <button
-                        className="paper-button"
-                        type="button"
-                        data-testid="restore-note-button"
-                        onClick={restoreOriginal}
-                        disabled={!hasBackup || isMutationLocked}
-                      >
-                        원문 복원
-                      </button>
-                      <button
-                        className="paper-button"
+                        className="paper-button paper-button-icon"
                         type="button"
                         data-testid="copy-note-button"
-                        onClick={copyCurrentNote}
+                        aria-label="메모 복사"
+                        title="메모 복사"
+                        onClick={() => void copyCurrentNote()}
                       >
-                        복사
+                        <ToolbarCopyIcon />
                       </button>
                       <button
-                        className="paper-button paper-button-danger"
+                        className="paper-button paper-button-icon paper-button-primary"
                         type="button"
-                        data-testid="begin-delete-button"
-                        aria-haspopup="dialog"
-                        aria-expanded={isDeleteModalOpen}
+                        data-testid="editor-create-note-button"
+                        aria-label="새 메모 만들기"
+                        title="새 메모 만들기"
                         disabled={isMutationLocked}
-                        onClick={beginDeleteNote}
+                        onClick={() => void handleCreateNote()}
                       >
-                        삭제
+                        <HeaderPlusIcon />
                       </button>
                     </div>
                   </div>
@@ -1460,22 +1619,35 @@ function App() {
                           onChange={(event) => setAiPrompt(event.target.value)}
                         />
                       </label>
-                      <button
-                        className="paper-button paper-button-primary"
-                        type="submit"
-                        data-testid="submit-ai-prompt-button"
-                        disabled={isMutationLocked}
-                      >
-                        미리보기
-                      </button>
-                      <button
-                        className="paper-button"
-                        type="button"
-                        data-testid="cancel-ai-prompt-button"
-                        onClick={closeAiPromptComposer}
-                      >
-                        취소
-                      </button>
+                      <div className="ai-prompt-actions">
+                        {hasBackup ? (
+                          <button
+                            className="paper-button transform-restore-button"
+                            type="button"
+                            data-testid="restore-note-button"
+                            disabled={isMutationLocked}
+                            onClick={restoreOriginal}
+                          >
+                            원문 복원
+                          </button>
+                        ) : null}
+                        <button
+                          className="paper-button paper-button-primary"
+                          type="submit"
+                          data-testid="submit-ai-prompt-button"
+                          disabled={isMutationLocked}
+                        >
+                          미리보기
+                        </button>
+                        <button
+                          className="paper-button"
+                          type="button"
+                          data-testid="cancel-ai-prompt-button"
+                          onClick={closeAiPromptComposer}
+                        >
+                          취소
+                        </button>
+                      </div>
                     </form>
                   ) : null}
                   {isMutationLocked && storageHealth ? (
@@ -1506,15 +1678,17 @@ function App() {
                         </pre>
                       </div>
                       <div className="transform-preview-actions">
-                        <button
-                          className="paper-button"
-                          type="button"
-                          data-testid="apply-transform-button"
-                          disabled={isMutationLocked}
-                          onClick={applyTransformDraft}
-                        >
-                          적용
-                        </button>
+                        {hasBackup ? (
+                          <button
+                            className="paper-button transform-restore-button"
+                            type="button"
+                            data-testid="restore-note-button"
+                            disabled={isMutationLocked}
+                            onClick={restoreOriginal}
+                          >
+                            원문 복원
+                          </button>
+                        ) : null}
                         <button
                           className="paper-button"
                           type="button"
@@ -1522,6 +1696,15 @@ function App() {
                           onClick={cancelTransformPreview}
                         >
                           취소
+                        </button>
+                        <button
+                          className="paper-button paper-button-primary"
+                          type="button"
+                          data-testid="apply-transform-button"
+                          disabled={isMutationLocked}
+                          onClick={applyTransformDraft}
+                        >
+                          적용
                         </button>
                       </div>
                     </section>

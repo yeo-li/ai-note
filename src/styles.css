@@ -710,6 +710,18 @@ textarea:focus-visible {
   line-height: 1.5;
 }
 
+.sidebar-empty-status {
+  margin-top: 2px;
+  color: var(--text-soft);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.sidebar-empty-status.is-warning {
+  color: #8f2750;
+  font-weight: 600;
+}
+
 .editor-pane {
   position: relative;
   min-height: 0;

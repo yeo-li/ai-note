@@ -192,6 +192,22 @@ function getStorageKindLabel(kind: MemoStoreHealth["storeKind"]) {
   return storageKindLabels[kind] ?? "Memory";
 }
 
+function getStorageStatusSummary(health: MemoStoreHealth | null) {
+  if (!health) {
+    return "";
+  }
+
+  if (!health.ready) {
+    return "저장소 연결을 확인하지 못해 현재 편집을 잠갔다.";
+  }
+
+  if (health.fallbackReason) {
+    return `SQLite 초기화에 실패해 ${getStorageKindLabel(health.storeKind)} 저장소로 전환했다.`;
+  }
+
+  return "";
+}
+
 function toErrorMessage(error: unknown) {
   if (error instanceof Error && error.message) {
     return error.message;
@@ -705,6 +721,7 @@ function App() {
   const storageBadgeLabel = storageHealth
     ? `저장소 ${storageKindLabel}`
     : "저장소 확인 중";
+  const storageStatusSummary = getStorageStatusSummary(storageHealth);
   const storageBadgeClassName = [
     "storage-status-badge",
     storageHealth ? `is-${storageHealth.storeKind}` : "is-loading",
@@ -1421,7 +1438,6 @@ function App() {
                           type="button"
                           data-testid={isSelected ? "selected-note-menu-button" : undefined}
                           aria-label={`${noteLabel} 메모 메뉴`}
-                          aria-haspopup="menu"
                           aria-expanded={isNoteMenuOpen}
                           aria-controls={isNoteMenuOpen ? noteMenuIdValue : undefined}
                           onClick={() => toggleNoteMenu(note.id)}
@@ -1429,11 +1445,10 @@ function App() {
                           <NoteMenuIcon />
                         </button>
                         {isNoteMenuOpen ? (
-                          <div className="note-list-menu" id={noteMenuIdValue} role="menu">
+                          <div className="note-list-menu" id={noteMenuIdValue}>
                             <button
                               className="note-list-menu-item note-list-menu-item-danger"
                               type="button"
-                              role="menuitem"
                               data-testid={isSelected ? "selected-note-delete-button" : undefined}
                               disabled={isMutationLocked}
                               onClick={() => beginDeleteNote(note.id)}
@@ -1455,6 +1470,14 @@ function App() {
                     ? "새 메모를 만들면 바로 목록에 나타난다."
                     : "다른 검색어를 입력하거나 검색을 해제하세요."}
                 </p>
+                {storageStatusSummary ? (
+                  <p
+                    className={`sidebar-empty-status${storageHealth?.ready ? "" : " is-warning"}`}
+                    data-testid="sidebar-storage-summary"
+                  >
+                    {storageStatusSummary}
+                  </p>
+                ) : null}
               </section>
             )}
 

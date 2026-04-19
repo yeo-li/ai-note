@@ -435,6 +435,16 @@ function ToolbarUndoIcon() {
   );
 }
 
+function ToolbarCopyIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M5.1 4.1h6.4v7.2H5.1z" />
+      <path d="M3.3 11.9V5.9" />
+      <path d="M3.3 5.9h5.2" />
+    </svg>
+  );
+}
+
 function NoteMenuIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -1076,9 +1086,15 @@ function App() {
       return;
     }
 
-    const targetNote =
-      (noteId ? notes.find((note) => note.id === noteId) ?? null : null) ??
-      activeNote;
+    const targetNote = noteId
+      ? notes.find((note) => note.id === noteId) ?? null
+      : activeNote;
+
+    if (noteId && !targetNote) {
+      setNoteMenuId(null);
+      setStatusMessage("삭제 대상을 찾지 못했다.");
+      return;
+    }
 
     if (!targetNote) {
       return;
@@ -1100,6 +1116,41 @@ function App() {
   function toggleNoteMenu(noteId: string) {
     setDeleteIntentId(null);
     setNoteMenuId((currentNoteMenuId) => (currentNoteMenuId === noteId ? null : noteId));
+  }
+
+  async function copyCurrentNote() {
+    if (!activeNote) {
+      return;
+    }
+
+    const text = activeNote.body;
+
+    try {
+      if (window.desktopAPI?.clipboard?.writeText) {
+        window.desktopAPI.clipboard.writeText(text);
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+
+        const copied = document.execCommand("copy");
+        document.body.removeChild(textarea);
+
+        if (!copied) {
+          throw new Error("copy failed");
+        }
+      }
+
+      setStatusMessage("현재 메모를 클립보드에 복사했다.");
+    } catch {
+      setStatusMessage("클립보드 복사에 실패했다.");
+    }
   }
 
   function confirmDeleteNote() {
@@ -1330,16 +1381,16 @@ function App() {
               </div>
             </div>
 
-            <div className="note-list" role="listbox" aria-label="메모 목록" data-testid="note-list">
-              {!isCollectionEmpty && filteredNotes.length > 0 ? (
-                filteredNotes.map((note) => {
+            {!isCollectionEmpty && filteredNotes.length > 0 ? (
+              <ul className="note-list" aria-label="메모 목록" data-testid="note-list">
+                {filteredNotes.map((note) => {
                   const isSelected = activeNote?.id === note.id;
                   const noteLabel = deriveNoteHeadline(note.body);
                   const isNoteMenuOpen = noteMenuId === note.id;
                   const noteMenuIdValue = `note-actions-menu-${note.id}`;
 
                   return (
-                    <div
+                    <li
                       key={note.id}
                       className={`note-list-item${isSelected ? " is-selected" : ""}`}
                       data-mode={note.mode}
@@ -1348,8 +1399,6 @@ function App() {
                         className="note-list-item-button"
                         data-testid={`note-list-item-${note.id}`}
                         type="button"
-                        role="option"
-                        aria-selected={isSelected}
                         aria-current={isSelected ? "true" : undefined}
                         aria-label={`${noteLabel} 메모`}
                         onClick={() => {
@@ -1394,20 +1443,20 @@ function App() {
                           </div>
                         ) : null}
                       </div>
-                    </div>
+                    </li>
                   );
-                })
-              ) : (
-                <section className="sidebar-empty" data-testid="sidebar-empty-state">
-                  <strong>{isCollectionEmpty ? "메모가 없습니다" : "검색 결과가 없습니다"}</strong>
-                  <p>
-                    {isCollectionEmpty
-                      ? "새 메모를 만들면 바로 목록에 나타난다."
-                      : "다른 검색어를 입력하거나 검색을 해제하세요."}
-                  </p>
-                </section>
-              )}
-            </div>
+                })}
+              </ul>
+            ) : (
+              <section className="note-list sidebar-empty" data-testid="sidebar-empty-state">
+                <strong>{isCollectionEmpty ? "메모가 없습니다" : "검색 결과가 없습니다"}</strong>
+                <p>
+                  {isCollectionEmpty
+                    ? "새 메모를 만들면 바로 목록에 나타난다."
+                    : "다른 검색어를 입력하거나 검색을 해제하세요."}
+                </p>
+              </section>
+            )}
 
           </aside>
 
@@ -1501,6 +1550,16 @@ function App() {
                         onClick={openAiPromptComposer}
                       >
                         <ToolbarSparklesIcon />
+                      </button>
+                      <button
+                        className="paper-button paper-button-icon"
+                        type="button"
+                        data-testid="copy-note-button"
+                        aria-label="메모 복사"
+                        title="메모 복사"
+                        onClick={() => void copyCurrentNote()}
+                      >
+                        <ToolbarCopyIcon />
                       </button>
                       <button
                         className="paper-button paper-button-icon paper-button-primary"

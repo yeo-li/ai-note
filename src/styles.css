@@ -479,6 +479,8 @@ textarea:focus-visible {
   min-height: 0;
   overflow: auto;
   scrollbar-gutter: stable;
+  list-style: none;
+  margin: 0;
   padding: 0;
   display: grid;
   align-content: start;

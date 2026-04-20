@@ -1034,7 +1034,7 @@ function App() {
       prompt: trimmedPrompt,
       previewBody
     });
-    setIsAiPromptOpen(false);
+    setIsAiPromptOpen(true);
     setStatusMessage(trimmedPrompt ? "AI 정리 미리보기를 만들었다." : "기본 AI 정리 미리보기를 만들었다.");
   }
 
@@ -1042,6 +1042,21 @@ function App() {
     setNoteMenuId(null);
     setDraftTransform(null);
     setStatusMessage("미리보기를 닫았다.");
+  }
+
+  function updateTransformDraft(previewBody: string) {
+    if (!activeDraft) {
+      return;
+    }
+
+    setDraftTransform((currentDraft) =>
+      currentDraft?.noteId === activeDraft.noteId
+        ? {
+            ...currentDraft,
+            previewBody
+          }
+        : currentDraft
+    );
   }
 
   function applyTransformDraft() {
@@ -1342,7 +1357,6 @@ function App() {
   ]
     .filter(Boolean)
     .join(" ");
-
   return (
     <main className="page" data-testid="page-root">
       <section className={appShellClassName} data-testid="app-shell">
@@ -1620,7 +1634,7 @@ function App() {
                         />
                       </label>
                       <div className="ai-prompt-actions">
-                        {hasBackup ? (
+                        {hasBackup && !activeDraft ? (
                           <button
                             className="paper-button transform-restore-button"
                             type="button"
@@ -1637,16 +1651,18 @@ function App() {
                           data-testid="submit-ai-prompt-button"
                           disabled={isMutationLocked}
                         >
-                          미리보기
+                          {activeDraft ? "다시 정리" : "미리보기"}
                         </button>
-                        <button
-                          className="paper-button"
-                          type="button"
-                          data-testid="cancel-ai-prompt-button"
-                          onClick={closeAiPromptComposer}
-                        >
-                          취소
-                        </button>
+                        {!activeDraft ? (
+                          <button
+                            className="paper-button"
+                            type="button"
+                            data-testid="cancel-ai-prompt-button"
+                            onClick={closeAiPromptComposer}
+                          >
+                            취소
+                          </button>
+                        ) : null}
                       </div>
                     </form>
                   ) : null}
@@ -1658,79 +1674,107 @@ function App() {
                   ) : null}
                 </header>
 
-                <div className="paper-body">
+                <div className={`paper-body${activeDraft ? " is-preview-mode" : ""}`}>
                   {activeDraft ? (
-                    <section className="transform-preview" data-testid="transform-preview">
-                      <div className="transform-preview-head">
-                        <div className="transform-preview-copy">
-                          <strong>AI 정리 미리보기</strong>
-                          <span>{activeDraft.prompt ? `프롬프트: ${activeDraft.prompt}` : "기본 정리"}</span>
+                    <section className="transform-review-layout" data-testid="transform-preview">
+                      <section className="transform-review-panel transform-review-panel--accent">
+                        <div className="transform-review-panel-head">
+                          <div className="transform-review-panel-copy">
+                            <span className="transform-review-panel-label">제안 결과</span>
+                            <strong>AI가 정리한 초안</strong>
+                            <p className="transform-review-panel-note">
+                              적용 전에 직접 수정할 수 있고, 상단 프롬프트로 다시 생성하면 아래 초안이 갱신됩니다.
+                            </p>
+                          </div>
+                          {hasBackup ? (
+                            <button
+                              className="paper-button transform-restore-button"
+                              type="button"
+                              data-testid="restore-note-button"
+                              disabled={isMutationLocked}
+                              onClick={restoreOriginal}
+                            >
+                              원문 복원
+                            </button>
+                          ) : null}
                         </div>
-                      </div>
-                      <pre className="transform-preview-body">{activeDraft.previewBody}</pre>
-                      <div className="transform-original" data-testid="transform-original-note">
-                        <div className="transform-original-head">
-                          <strong>원본 메모</strong>
-                          <span>{deriveNoteHeadline(activeNote.body)}</span>
-                        </div>
-                        <pre className="transform-original-body" data-testid="transform-original-body">
-                          {activeNote.body}
-                        </pre>
-                      </div>
-                      <div className="transform-preview-actions">
-                        {hasBackup ? (
+                        <label className="transform-review-editor-shell">
+                          <span className="sr-only">적용 전에 수정할 AI 초안</span>
+                          <textarea
+                            className="transform-review-editor"
+                            data-testid="transform-preview-input"
+                            value={activeDraft.previewBody}
+                            aria-label="적용 전에 수정할 AI 초안"
+                            onChange={(event) => updateTransformDraft(event.target.value)}
+                          />
+                        </label>
+                        <div className="transform-review-panel-actions">
                           <button
-                            className="paper-button transform-restore-button"
+                            className="paper-button"
                             type="button"
-                            data-testid="restore-note-button"
-                            disabled={isMutationLocked}
-                            onClick={restoreOriginal}
+                            data-testid="cancel-transform-button"
+                            onClick={cancelTransformPreview}
                           >
-                            원문 복원
+                            취소
                           </button>
-                        ) : null}
-                        <button
-                          className="paper-button"
-                          type="button"
-                          data-testid="cancel-transform-button"
-                          onClick={cancelTransformPreview}
-                        >
-                          취소
-                        </button>
-                        <button
-                          className="paper-button paper-button-primary"
-                          type="button"
-                          data-testid="apply-transform-button"
-                          disabled={isMutationLocked}
-                          onClick={applyTransformDraft}
-                        >
-                          적용
-                        </button>
-                      </div>
-                    </section>
-                  ) : null}
+                          <button
+                            className="paper-button paper-button-primary"
+                            type="button"
+                            data-testid="apply-transform-button"
+                            disabled={isMutationLocked}
+                            onClick={applyTransformDraft}
+                          >
+                            적용
+                          </button>
+                        </div>
+                      </section>
 
-                  <div className="editor-card">
-                    <label className="editor-field editor-field-body">
-                      <textarea
-                        className={`paper-editor${activeDraft ? " is-readonly" : ""}`}
-                        data-testid="note-body-input"
-                        value={activeNote.body}
-                        placeholder="여기에 메모를 적으세요."
-                        disabled={isMutationLocked}
-                        readOnly={Boolean(activeDraft) || isMutationLocked}
-                        onChange={(event) =>
-                          patchActiveNote(
-                            {
-                              body: event.target.value,
-                              mode: hasBackup ? activeNote.mode : "default"
-                            },
-                            "메모 내용을 수정했다."
-                          )
-                        }
-                      />
-                    </label>
-                  </div>
+                      <aside
+                        className="transform-review-panel transform-review-panel--source"
+                        data-testid="transform-original-note"
+                      >
+                        <div className="transform-review-panel-head">
+                          <div className="transform-review-panel-copy">
+                            <span className="transform-review-panel-label">현재 원문</span>
+                            <strong>적용 전 메모</strong>
+                            <p className="transform-review-panel-note">
+                              원문은 읽기 전용 비교 영역으로 유지됩니다.
+                            </p>
+                          </div>
+                        </div>
+                        <pre
+                          className="transform-review-body transform-review-body--source"
+                          data-testid="transform-original-body"
+                          tabIndex={0}
+                          aria-label="현재 메모 원문"
+                        >
+                          {activeNote.body.length > 0 ? activeNote.body : "원문이 비어 있습니다."}
+                        </pre>
+                      </aside>
+                    </section>
+                  ) : (
+                    <div className="editor-card">
+                      <label className="editor-field editor-field-body">
+                        <textarea
+                          className="paper-editor"
+                          data-testid="note-body-input"
+                          value={activeNote.body}
+                          placeholder="여기에 메모를 적으세요."
+                          disabled={isMutationLocked}
+                          readOnly={isMutationLocked}
+                          onChange={(event) =>
+                            patchActiveNote(
+                              {
+                                body: event.target.value,
+                                mode: hasBackup ? activeNote.mode : "default"
+                              },
+                              "메모 내용을 수정했다."
+                            )
+                          }
+                        />
+                      </label>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (

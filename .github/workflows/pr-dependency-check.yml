@@ -1,0 +1,199 @@
+name: PR Dependency Check
+
+on:
+  pull_request_target:
+    branches:
+      - develop
+    types:
+      - opened
+      - edited
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  dependency-check:
+    name: dependency-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate dependency gate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pr = context.payload.pull_request;
+            const prBody = pr.body || "";
+
+            function collectIssueRefs(text) {
+              const refs = new Set();
+              if (!text) {
+                return [];
+              }
+
+              for (const match of text.matchAll(/#(\d+)/g)) {
+                refs.add(Number(match[1]));
+              }
+
+              return [...refs];
+            }
+
+            function extractMarkdownSection(text, heading) {
+              const lines = text.split(/\r?\n/);
+              const targetHeading = `## ${heading}`.toLowerCase();
+              const collected = [];
+              let inSection = false;
+
+              for (const line of lines) {
+                if (inSection && /^##\s+/.test(line)) {
+                  break;
+                }
+
+                if (inSection) {
+                  collected.push(line);
+                  continue;
+                }
+
+                if (line.trim().toLowerCase() === targetHeading) {
+                  inSection = true;
+                }
+              }
+
+              return collected.join("\n").trim();
+            }
+
+            function extractDependsOnRefs(text) {
+              const refs = new Set();
+              const dependencySection = extractMarkdownSection(text, "Depends-On");
+
+              for (const ref of collectIssueRefs(dependencySection)) {
+                refs.add(ref);
+              }
+
+              for (const match of text.matchAll(/^Depends-On:\s*(.+)$/gim)) {
+                for (const ref of collectIssueRefs(match[1])) {
+                  refs.add(ref);
+                }
+              }
+
+              return [...refs];
+            }
+
+            function extractClosingIssueRefs(text) {
+              const refs = new Set();
+
+              for (const match of text.matchAll(/\b(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\s+#(\d+)/gi)) {
+                refs.add(Number(match[1]));
+              }
+
+              return [...refs];
+            }
+
+            function hasLabel(issue, labelName) {
+              return (issue.labels || []).some((label) => label.name === labelName);
+            }
+
+            async function fetchIssue(issueNumber) {
+              try {
+                const { data } = await github.rest.issues.get({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                });
+
+                return data;
+              } catch (error) {
+                throw new Error(`Unable to load #${issueNumber}: ${error.message}`);
+              }
+            }
+
+            try {
+              const closingIssueRefs = extractClosingIssueRefs(prBody);
+
+              if (closingIssueRefs.length === 0) {
+                core.setFailed("Linked issue is required for develop PRs. Add `Closes #...` under `## Linked Issues`.");
+                return;
+              }
+
+              const explicitDependencyRefs = extractDependsOnRefs(prBody);
+              const inferredDependencyRefs = new Set();
+              const closingIssues = [];
+
+              for (const issueNumber of closingIssueRefs) {
+                const issue = await fetchIssue(issueNumber);
+                closingIssues.push(issue);
+
+                const dependencySection = extractMarkdownSection(issue.body || "", "선행 이슈");
+                for (const dependencyRef of collectIssueRefs(dependencySection)) {
+                  if (dependencyRef !== issue.number) {
+                    inferredDependencyRefs.add(dependencyRef);
+                  }
+                }
+              }
+
+              const dependencyRefs = new Set([
+                ...explicitDependencyRefs,
+                ...inferredDependencyRefs,
+              ]);
+              const dependencies = [];
+
+              for (const issueNumber of dependencyRefs) {
+                dependencies.push(await fetchIssue(issueNumber));
+              }
+
+              const blockedIssues = closingIssues.filter((issue) =>
+                hasLabel(issue, "status:blocked")
+              );
+              const openDependencies = dependencies.filter((issue) => issue.state !== "closed");
+
+              const summaryLines = [
+                `PR: #${pr.number} ${pr.title}`,
+                `Linked issues: ${closingIssueRefs.map((issueNumber) => `#${issueNumber}`).join(", ")}`,
+                explicitDependencyRefs.length > 0
+                  ? `Depends-On section: ${explicitDependencyRefs.map((issueNumber) => `#${issueNumber}`).join(", ")}`
+                  : "Depends-On section: none",
+                inferredDependencyRefs.size > 0
+                  ? `Issue dependencies: ${[...inferredDependencyRefs].map((issueNumber) => `#${issueNumber}`).join(", ")}`
+                  : "Issue dependencies: none",
+                dependencyRefs.size > 0
+                  ? `Effective dependencies: ${[...dependencyRefs].map((issueNumber) => `#${issueNumber}`).join(", ")}`
+                  : "Effective dependencies: none",
+              ];
+
+              await core.summary
+                .addHeading("Dependency Check")
+                .addCodeBlock(summaryLines.join("\n"))
+                .write();
+
+              const errors = [];
+
+              if (blockedIssues.length > 0) {
+                errors.push(
+                  `Blocked issue labels remain on: ${blockedIssues
+                    .map((issue) => `#${issue.number} ${issue.title}`)
+                    .join(", ")}`
+                );
+              }
+
+              if (openDependencies.length > 0) {
+                errors.push(
+                  `Open dependency issues: ${openDependencies
+                    .map((issue) => `#${issue.number} ${issue.title} (${issue.html_url})`)
+                    .join(", ")}`
+                );
+              }
+
+              if (errors.length > 0) {
+                core.setFailed(errors.join("\n"));
+                return;
+              }
+
+              core.info("Dependency check passed.");
+            } catch (error) {
+              core.setFailed(error.message);
+            }

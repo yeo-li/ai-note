@@ -63,12 +63,26 @@
 - `priority:p1`
 - `priority:p2`
 
+### 상태 라벨
+
+- `status:blocked`
+- `status:ready`
+- `status:in-progress`
+
 ### 운영 규칙
 
 - 모든 구현 작업은 GitHub 이슈를 먼저 만든다
 - Feature 이슈 아래에 Task 이슈를 쪼갠다
 - 스프린트 범위는 마일스톤으로 고정한다
 - Codex 워킹트리는 Task 이슈 기준으로 만든다
+
+### 의존성 표기 규칙
+
+- 선행 작업이 필요한 이슈에는 `## 선행 이슈` 섹션을 둔다
+- 선행 이슈가 없으면 `없음`이라고 적는다
+- 선행 이슈가 하나라도 열려 있으면 후속 이슈는 `status:blocked`를 유지한다
+- 선행 이슈가 모두 닫히면 후속 이슈를 `status:ready`로 변경한다
+- 실제 작업을 시작하면 `status:in-progress`로 변경한다
 
 ## Codex Worktree Rules
 
@@ -119,6 +133,23 @@
 3. AI Organize
 4. Context Search
 5. Quality
+
+모노레포 전환 Feature `#27`의 현재 의존 순서는 아래로 고정한다.
+
+1. `#29` npm workspaces 기반 루트 구조와 `develop` 워크플로 정리
+2. `#30` 백엔드 서비스 앱 초기 구성과 `#31` 공용 타입/계약 패키지 분리
+3. `#28` Electron 데스크톱 앱 재정렬
+
+의존 관계는 `#29 -> (#30, #31) -> #28`로 운영한다.
+
+## Dependency Gate
+
+- `develop` 대상 PR은 반드시 `Closes #...`로 작업 이슈를 연결한다
+- PR 본문에 `## Depends-On` 섹션을 두고 선행 이슈가 없으면 `없음`이라고 적는다
+- workflow `PR Dependency Check`는 PR의 `Depends-On`과 연결 이슈의 `선행 이슈`를 함께 읽어 실제 의존성을 계산한다
+- 연결 이슈가 `status:blocked`이면 체크를 실패시킨다
+- 의존 이슈가 하나라도 열려 있으면 체크를 실패시킨다
+- GitHub 브랜치 보호 규칙에서 workflow `PR Dependency Check`의 job `dependency-check`를 required status check로 수동 등록한다
 
 ## PR Rules
 

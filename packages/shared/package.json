@@ -1,0 +1,6 @@
+{
+  "name": "@ai-note/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reserved workspace for shared contracts and utilities."
+}

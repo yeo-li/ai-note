@@ -23,16 +23,17 @@
 ## 3. 브랜치 전략
 
 1. 모든 작업 브랜치는 `develop`에서 분기한다.
-2. 브랜치 이름 형식은 아래를 사용한다.
+2. Codex 작업 브랜치 이름 형식은 아래를 사용한다.
 
 ```text
-{feat|fix|chore|refactor|docs|test}/{작업내용}#{이슈번호}
+codex/s<번호>-<트랙>-<작업>
 ```
 
 예시:
-- `feat/memo-search-improve#123`
-- `chore/build-script-cleanup#124`
-- `docs/issue-workflow-guide#125`
+- `codex/s29-monorepo-workspaces`
+- `codex/s30-server-bootstrap`
+- `codex/s31-shared-contract-foundation`
+3. 이슈별 worktree를 쓸 때는 활성 브랜치와 worktree를 1:1로 대응시킨다.
 
 ## 4. 이슈 기반 개발 원칙
 
@@ -63,6 +64,7 @@
    - 왜 변경했는지
    - 변경 파일/영향 범위
    - 검증 방법과 결과
+   - Depends-On (`- 없음` 또는 선행 이슈/PR)
    - 연결 이슈 (`Closes #이슈번호`)
 
 ## 7. 최소 검증 기준

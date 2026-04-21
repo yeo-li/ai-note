@@ -160,10 +160,10 @@ test.describe("AI Note desktop smoke", () => {
     await expect(appWindow.getByTestId("transform-preview")).toBeVisible();
     await expect(appWindow.getByTestId("ai-prompt-form")).toBeVisible();
     await expect(appWindow.getByTestId("ai-prompt-input")).toHaveValue("목록으로 정리해줘");
-    await expect(appWindow.getByTestId("submit-ai-prompt-button")).toHaveCount(0);
+    await expect(appWindow.getByTestId("submit-ai-prompt-button")).toHaveText("다시 생성");
     await expect(previewBody).toContainText("- Preview and delete");
     await appWindow.getByTestId("ai-prompt-input").fill("핵심만 요약해줘");
-    await appWindow.getByTestId("ai-prompt-input").press("Enter");
+    await appWindow.getByTestId("submit-ai-prompt-button").click();
     await expect(appWindow.getByTestId("ai-prompt-input")).toHaveValue("핵심만 요약해줘");
     await expect(previewBody).toContainText("Preview and delete");
     await expect(previewBody).not.toContainText("- Preview and delete");
@@ -172,9 +172,7 @@ test.describe("AI Note desktop smoke", () => {
     await expect(appWindow.getByTestId("transform-original-body")).toContainText("첫 문장입니다.");
     await expect(appWindow.getByTestId("cancel-transform-button")).toBeVisible();
     await expect(appWindow.getByTestId("apply-transform-button")).toBeVisible();
-    await appWindow.getByTestId("cancel-transform-button").evaluate((element) => {
-      (element as HTMLButtonElement).click();
-    });
+    await appWindow.getByTestId("cancel-transform-button").click();
     await expect(appWindow.getByTestId("transform-preview")).toBeHidden();
     await expect(bodyInput).toHaveValue("Preview and delete\n\n첫 문장입니다.\n\n두 번째 문장입니다.");
 

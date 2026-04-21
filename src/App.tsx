@@ -848,7 +848,9 @@ function App() {
     setIsSidebarOpen(false);
     setDeleteIntentId(null);
     setNoteMenuId(null);
+    setDraftTransform(null);
     setIsAiPromptOpen(false);
+    setAiPrompt("");
   }, [isStickyMode]);
 
   function patchActiveNote(update: Partial<Note>, message?: string) {
@@ -992,6 +994,11 @@ function App() {
       return;
     }
 
+    if (isStickyMode) {
+      setStatusMessage("스티커 메모에서는 AI 정리 미리보기를 열 수 없다. 일반 모드에서 실행하세요.");
+      return;
+    }
+
     if (!activeNote) {
       return;
     }
@@ -1012,6 +1019,11 @@ function App() {
   function startTransformPreview() {
     if (isMutationLocked) {
       setStatusMessage("저장소 연결이 복구될 때까지 AI 정리를 실행할 수 없다.");
+      return;
+    }
+
+    if (isStickyMode) {
+      setStatusMessage("스티커 메모에서는 AI 정리 미리보기를 열 수 없다. 일반 모드에서 실행하세요.");
       return;
     }
 
@@ -1568,7 +1580,7 @@ function App() {
                         data-testid="organize-note-button"
                         aria-label="AI 정리"
                         title="AI 정리"
-                        disabled={isMutationLocked}
+                        disabled={isMutationLocked || isStickyMode}
                         onClick={openAiPromptComposer}
                       >
                         <ToolbarSparklesIcon />
@@ -1600,6 +1612,7 @@ function App() {
                   {isAiPromptOpen ? (
                     <div className="ai-prompt-shell">
                       <form
+                        id="ai-prompt-form"
                         className="ai-prompt-form"
                         data-testid="ai-prompt-form"
                         onSubmit={(event) => {
@@ -1633,57 +1646,23 @@ function App() {
                           </button>
                         ) : null}
                         {activeDraft ? (
-                          <>
-                            <button
-                              className="paper-button"
-                              type="button"
-                              data-testid="cancel-transform-button"
-                              onMouseDown={(event) => {
-                                if (event.button !== 0) {
-                                  return;
-                                }
-
-                                event.preventDefault();
-                                cancelTransformPreview();
-                              }}
-                              onClick={(event) => {
-                                if (event.detail === 0) {
-                                  cancelTransformPreview();
-                                }
-                              }}
-                            >
-                              취소
-                            </button>
-                            <button
-                              className="paper-button paper-button-primary"
-                              type="button"
-                              data-testid="apply-transform-button"
-                              disabled={isMutationLocked}
-                              onMouseDown={(event) => {
-                                if (event.button !== 0) {
-                                  return;
-                                }
-
-                                event.preventDefault();
-                                applyTransformDraft();
-                              }}
-                              onClick={(event) => {
-                                if (event.detail === 0) {
-                                  applyTransformDraft();
-                                }
-                              }}
-                            >
-                              적용
-                            </button>
-                          </>
+                          <button
+                            className="paper-button paper-button-primary"
+                            type="submit"
+                            form="ai-prompt-form"
+                            data-testid="submit-ai-prompt-button"
+                            disabled={isMutationLocked}
+                          >
+                            다시 생성
+                          </button>
                         ) : (
                           <>
                             <button
                               className="paper-button paper-button-primary"
-                              type="button"
+                              type="submit"
+                              form="ai-prompt-form"
                               data-testid="submit-ai-prompt-button"
                               disabled={isMutationLocked}
-                              onClick={startTransformPreview}
                             >
                               미리보기
                             </button>
@@ -1717,7 +1696,7 @@ function App() {
                             <span className="transform-review-panel-label">제안 결과</span>
                             <strong>AI가 정리한 초안</strong>
                             <p className="transform-review-panel-note">
-                              상단 프롬프트로 다시 생성하면 아래 초안이 갱신됩니다.
+                              상단 프롬프트를 수정하고 다시 생성을 누르면 아래 초안이 갱신됩니다.
                             </p>
                           </div>
                           {hasBackup ? (
@@ -1740,6 +1719,25 @@ function App() {
                         >
                           {activeDraft.previewBody}
                         </pre>
+                        <div className="transform-review-actions">
+                          <button
+                            className="paper-button"
+                            type="button"
+                            data-testid="cancel-transform-button"
+                            onClick={cancelTransformPreview}
+                          >
+                            취소
+                          </button>
+                          <button
+                            className="paper-button paper-button-primary"
+                            type="button"
+                            data-testid="apply-transform-button"
+                            disabled={isMutationLocked}
+                            onClick={applyTransformDraft}
+                          >
+                            적용
+                          </button>
+                        </div>
                       </section>
 
                       <aside
@@ -1761,7 +1759,7 @@ function App() {
                           tabIndex={0}
                           aria-label="현재 메모 원문"
                         >
-                          {activeNote.body.length > 0 ? activeNote.body : "원문이 비어 있습니다."}
+                          {activeNote.body}
                         </pre>
                       </aside>
                     </section>

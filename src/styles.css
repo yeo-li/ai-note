@@ -1158,6 +1158,10 @@ textarea:focus-visible {
   box-shadow: none;
 }
 
+.transform-review-panel--accent {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
 .transform-review-panel--source {
   grid-template-rows: auto minmax(0, 1fr);
   padding-left: 24px;
@@ -1240,6 +1244,15 @@ textarea:focus-visible {
 
 .transform-review-body--source {
   color: var(--text-muted);
+}
+
+.transform-review-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 12px;
+  border-top: 1px solid rgba(233, 214, 120, 0.42);
 }
 
 .transform-review-panel--accent .transform-review-panel-head {

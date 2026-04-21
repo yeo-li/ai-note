@@ -999,10 +999,16 @@ textarea:focus-visible {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
+  -webkit-app-region: no-drag;
 }
 
 .ai-prompt-form {
   min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  -webkit-app-region: no-drag;
 }
 
 .ai-prompt-actions {
@@ -1012,6 +1018,7 @@ textarea:focus-visible {
   justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
+  -webkit-app-region: no-drag;
 }
 
 .ai-prompt-input {
@@ -1246,15 +1253,6 @@ textarea:focus-visible {
   color: var(--text-muted);
 }
 
-.transform-review-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding-top: 12px;
-  border-top: 1px solid rgba(233, 214, 120, 0.42);
-}
-
 .transform-review-panel--accent .transform-review-panel-head {
   border-color: rgba(233, 214, 120, 0.52);
 }
@@ -1381,9 +1379,14 @@ textarea:focus-visible {
     grid-template-columns: 1fr;
   }
 
+  .ai-prompt-form {
+    grid-template-columns: 1fr;
+  }
+
   .ai-prompt-actions {
     justify-content: flex-start;
   }
+
 }
 
 @media (max-width: 1080px) {

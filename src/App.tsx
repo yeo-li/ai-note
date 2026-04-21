@@ -493,8 +493,10 @@ function App() {
   const [draftTransform, setDraftTransform] = useState<TransformDraft | null>(null);
   const [isAiPromptOpen, setIsAiPromptOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
+  const [isPreviewActionCoolingDown, setIsPreviewActionCoolingDown] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const aiPromptInputRef = useRef<HTMLInputElement | null>(null);
+  const previewActionCooldownRef = useRef<number | null>(null);
   const emptyCreateButtonRef = useRef<HTMLButtonElement | null>(null);
   const emptyFirstResultButtonRef = useRef<HTMLButtonElement | null>(null);
   const emptyClearSearchButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -777,6 +779,14 @@ function App() {
   }, [activeNote, hasQuery, isSelectionOutsideSearch]);
 
   useEffect(() => {
+    return () => {
+      if (previewActionCooldownRef.current !== null) {
+        window.clearTimeout(previewActionCooldownRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!isDeleteModalOpen || typeof window === "undefined") {
       return;
     }
@@ -1046,6 +1056,7 @@ function App() {
       prompt: trimmedPrompt,
       previewBody
     });
+    setIsPreviewActionCoolingDown(false);
     setIsAiPromptOpen(true);
     setStatusMessage(trimmedPrompt ? "AI 정리 미리보기를 만들었다." : "기본 AI 정리 미리보기를 만들었다.");
   }
@@ -1053,6 +1064,14 @@ function App() {
   function cancelTransformPreview() {
     setNoteMenuId(null);
     setDraftTransform(null);
+    setIsPreviewActionCoolingDown(true);
+    if (previewActionCooldownRef.current !== null) {
+      window.clearTimeout(previewActionCooldownRef.current);
+    }
+    previewActionCooldownRef.current = window.setTimeout(() => {
+      setIsPreviewActionCoolingDown(false);
+      previewActionCooldownRef.current = null;
+    }, 220);
     setStatusMessage("미리보기를 닫았다.");
   }
 
@@ -1610,74 +1629,96 @@ function App() {
                   </div>
 
                   {isAiPromptOpen ? (
-                    <div className="ai-prompt-shell">
-                      <form
-                        id="ai-prompt-form"
-                        className="ai-prompt-form"
-                        data-testid="ai-prompt-form"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          startTransformPreview();
-                        }}
-                      >
-                        <label className="ai-prompt-input">
-                          <span className="visually-hidden">AI 정리 프롬프트</span>
-                          <input
-                            ref={aiPromptInputRef}
-                            type="text"
-                            data-testid="ai-prompt-input"
-                            value={aiPrompt}
-                            disabled={isMutationLocked}
-                            placeholder="예: 더 간결하게 요약해줘, 존댓말로 바꿔줘"
-                            onChange={(event) => setAiPrompt(event.target.value)}
-                          />
-                        </label>
-                      </form>
-                      <div className="ai-prompt-actions">
-                        {hasBackup && !activeDraft ? (
-                          <button
-                            className="paper-button transform-restore-button"
-                            type="button"
-                            data-testid="restore-note-button"
-                            disabled={isMutationLocked}
-                            onClick={restoreOriginal}
-                          >
-                            원문 복원
-                          </button>
-                        ) : null}
-                        {activeDraft ? (
-                          <button
-                            className="paper-button paper-button-primary"
-                            type="submit"
-                            form="ai-prompt-form"
-                            data-testid="submit-ai-prompt-button"
-                            disabled={isMutationLocked}
-                          >
-                            다시 생성
-                          </button>
-                        ) : (
-                          <>
+                    <>
+                      <div className="ai-prompt-shell">
+                        <form
+                          id="ai-prompt-form"
+                          className="ai-prompt-form"
+                          data-testid="ai-prompt-form"
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            startTransformPreview();
+                          }}
+                        >
+                          <label className="ai-prompt-input">
+                            <span className="visually-hidden">AI 정리 프롬프트</span>
+                            <input
+                              ref={aiPromptInputRef}
+                              type="text"
+                              data-testid="ai-prompt-input"
+                              value={aiPrompt}
+                              disabled={isMutationLocked}
+                              placeholder="예: 더 간결하게 요약해줘, 존댓말로 바꿔줘"
+                              onChange={(event) => setAiPrompt(event.target.value)}
+                            />
+                          </label>
+                          {activeDraft ? (
                             <button
-                              className="paper-button paper-button-primary"
+                              className="paper-button"
                               type="submit"
-                              form="ai-prompt-form"
                               data-testid="submit-ai-prompt-button"
                               disabled={isMutationLocked}
                             >
-                              미리보기
+                              다시 생성
                             </button>
+                          ) : null}
+                        </form>
+                        <div className="ai-prompt-actions">
+                          {hasBackup && !activeDraft ? (
                             <button
-                              className="paper-button"
+                              className="paper-button transform-restore-button"
                               type="button"
-                              data-testid="cancel-ai-prompt-button"
-                              onClick={closeAiPromptComposer}
+                              data-testid="restore-note-button"
+                              disabled={isMutationLocked}
+                              onClick={restoreOriginal}
                             >
-                              취소
+                              원문 복원
                             </button>
-                          </>
-                        )}
+                          ) : null}
+                          {activeDraft ? (
+                            <>
+                              <button
+                                className="paper-button"
+                                type="button"
+                                data-testid="cancel-transform-button"
+                                onClick={cancelTransformPreview}
+                              >
+                                취소
+                              </button>
+                              <button
+                                className="paper-button paper-button-primary"
+                                type="button"
+                                data-testid="apply-transform-button"
+                                disabled={isMutationLocked}
+                                onClick={applyTransformDraft}
+                              >
+                                적용
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                className="paper-button paper-button-primary"
+                                type="submit"
+                                form="ai-prompt-form"
+                                data-testid="submit-ai-prompt-button"
+                                disabled={isMutationLocked || isPreviewActionCoolingDown}
+                              >
+                                미리보기
+                              </button>
+                              <button
+                                className="paper-button"
+                                type="button"
+                                data-testid="cancel-ai-prompt-button"
+                                onClick={closeAiPromptComposer}
+                              >
+                                취소
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    </>
                   ) : null}
                   {isMutationLocked && storageHealth ? (
                     <div className="storage-lock-banner" role="alert" data-testid="storage-lock-alert">
@@ -1719,25 +1760,6 @@ function App() {
                         >
                           {activeDraft.previewBody}
                         </pre>
-                        <div className="transform-review-actions">
-                          <button
-                            className="paper-button"
-                            type="button"
-                            data-testid="cancel-transform-button"
-                            onClick={cancelTransformPreview}
-                          >
-                            취소
-                          </button>
-                          <button
-                            className="paper-button paper-button-primary"
-                            type="button"
-                            data-testid="apply-transform-button"
-                            disabled={isMutationLocked}
-                            onClick={applyTransformDraft}
-                          >
-                            적용
-                          </button>
-                        </div>
                       </section>
 
                       <aside

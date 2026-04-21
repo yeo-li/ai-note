@@ -33,10 +33,13 @@ export function handleRequest(
     return;
   }
 
-  const requestUrl = new URL(
-    request.url,
-    `http://${request.headers.host ?? `${config.host}:${config.port}`}`,
-  );
+  let requestUrl: URL;
+  try {
+    requestUrl = new URL(request.url, `http://${config.host}:${config.port}`);
+  } catch {
+    respondJson(response, 400, { error: 'bad_request' });
+    return;
+  }
 
   if (request.method === 'GET' && requestUrl.pathname === '/health') {
     respondJson(response, 200, getHealthResponse());

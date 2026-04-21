@@ -9,6 +9,10 @@
 - `GET /health` 헬스체크 API
 - 로컬 `dev/build/start/test` 스크립트
 
+## 런타임 요구사항
+
+- Node.js `20.12.0` 이상
+
 ## 로컬 실행
 
 ```bash

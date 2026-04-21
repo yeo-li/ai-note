@@ -493,8 +493,10 @@ function App() {
   const [draftTransform, setDraftTransform] = useState<TransformDraft | null>(null);
   const [isAiPromptOpen, setIsAiPromptOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
+  const [isPreviewActionCoolingDown, setIsPreviewActionCoolingDown] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const aiPromptInputRef = useRef<HTMLInputElement | null>(null);
+  const previewActionCooldownRef = useRef<number | null>(null);
   const emptyCreateButtonRef = useRef<HTMLButtonElement | null>(null);
   const emptyFirstResultButtonRef = useRef<HTMLButtonElement | null>(null);
   const emptyClearSearchButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -777,6 +779,14 @@ function App() {
   }, [activeNote, hasQuery, isSelectionOutsideSearch]);
 
   useEffect(() => {
+    return () => {
+      if (previewActionCooldownRef.current !== null) {
+        window.clearTimeout(previewActionCooldownRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!isDeleteModalOpen || typeof window === "undefined") {
       return;
     }
@@ -848,7 +858,9 @@ function App() {
     setIsSidebarOpen(false);
     setDeleteIntentId(null);
     setNoteMenuId(null);
+    setDraftTransform(null);
     setIsAiPromptOpen(false);
+    setAiPrompt("");
   }, [isStickyMode]);
 
   function patchActiveNote(update: Partial<Note>, message?: string) {
@@ -992,6 +1004,11 @@ function App() {
       return;
     }
 
+    if (isStickyMode) {
+      setStatusMessage("스티커 메모에서는 AI 정리 미리보기를 열 수 없다. 일반 모드에서 실행하세요.");
+      return;
+    }
+
     if (!activeNote) {
       return;
     }
@@ -1015,6 +1032,11 @@ function App() {
       return;
     }
 
+    if (isStickyMode) {
+      setStatusMessage("스티커 메모에서는 AI 정리 미리보기를 열 수 없다. 일반 모드에서 실행하세요.");
+      return;
+    }
+
     if (!activeNote) {
       return;
     }
@@ -1034,13 +1056,22 @@ function App() {
       prompt: trimmedPrompt,
       previewBody
     });
-    setIsAiPromptOpen(false);
+    setIsPreviewActionCoolingDown(false);
+    setIsAiPromptOpen(true);
     setStatusMessage(trimmedPrompt ? "AI 정리 미리보기를 만들었다." : "기본 AI 정리 미리보기를 만들었다.");
   }
 
   function cancelTransformPreview() {
     setNoteMenuId(null);
     setDraftTransform(null);
+    setIsPreviewActionCoolingDown(true);
+    if (previewActionCooldownRef.current !== null) {
+      window.clearTimeout(previewActionCooldownRef.current);
+    }
+    previewActionCooldownRef.current = window.setTimeout(() => {
+      setIsPreviewActionCoolingDown(false);
+      previewActionCooldownRef.current = null;
+    }, 220);
     setStatusMessage("미리보기를 닫았다.");
   }
 
@@ -1342,7 +1373,6 @@ function App() {
   ]
     .filter(Boolean)
     .join(" ");
-
   return (
     <main className="page" data-testid="page-root">
       <section className={appShellClassName} data-testid="app-shell">
@@ -1569,7 +1599,7 @@ function App() {
                         data-testid="organize-note-button"
                         aria-label="AI 정리"
                         title="AI 정리"
-                        disabled={isMutationLocked}
+                        disabled={isMutationLocked || isStickyMode}
                         onClick={openAiPromptComposer}
                       >
                         <ToolbarSparklesIcon />
@@ -1599,56 +1629,96 @@ function App() {
                   </div>
 
                   {isAiPromptOpen ? (
-                    <form
-                      className="ai-prompt-form"
-                      data-testid="ai-prompt-form"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        startTransformPreview();
-                      }}
-                    >
-                      <label className="ai-prompt-input">
-                        <span className="visually-hidden">AI 정리 프롬프트</span>
-                        <input
-                          ref={aiPromptInputRef}
-                          type="text"
-                          data-testid="ai-prompt-input"
-                          value={aiPrompt}
-                          disabled={isMutationLocked}
-                          placeholder="예: 더 간결하게 요약해줘, 존댓말로 바꿔줘"
-                          onChange={(event) => setAiPrompt(event.target.value)}
-                        />
-                      </label>
-                      <div className="ai-prompt-actions">
-                        {hasBackup ? (
-                          <button
-                            className="paper-button transform-restore-button"
-                            type="button"
-                            data-testid="restore-note-button"
-                            disabled={isMutationLocked}
-                            onClick={restoreOriginal}
-                          >
-                            원문 복원
-                          </button>
-                        ) : null}
-                        <button
-                          className="paper-button paper-button-primary"
-                          type="submit"
-                          data-testid="submit-ai-prompt-button"
-                          disabled={isMutationLocked}
+                    <>
+                      <div className="ai-prompt-shell">
+                        <form
+                          id="ai-prompt-form"
+                          className="ai-prompt-form"
+                          data-testid="ai-prompt-form"
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            startTransformPreview();
+                          }}
                         >
-                          미리보기
-                        </button>
-                        <button
-                          className="paper-button"
-                          type="button"
-                          data-testid="cancel-ai-prompt-button"
-                          onClick={closeAiPromptComposer}
-                        >
-                          취소
-                        </button>
+                          <label className="ai-prompt-input">
+                            <span className="visually-hidden">AI 정리 프롬프트</span>
+                            <input
+                              ref={aiPromptInputRef}
+                              type="text"
+                              data-testid="ai-prompt-input"
+                              value={aiPrompt}
+                              disabled={isMutationLocked}
+                              placeholder="예: 더 간결하게 요약해줘, 존댓말로 바꿔줘"
+                              onChange={(event) => setAiPrompt(event.target.value)}
+                            />
+                          </label>
+                          {activeDraft ? (
+                            <button
+                              className="paper-button"
+                              type="submit"
+                              data-testid="submit-ai-prompt-button"
+                              disabled={isMutationLocked}
+                            >
+                              다시 생성
+                            </button>
+                          ) : null}
+                        </form>
+                        <div className="ai-prompt-actions">
+                          {hasBackup && !activeDraft ? (
+                            <button
+                              className="paper-button transform-restore-button"
+                              type="button"
+                              data-testid="restore-note-button"
+                              disabled={isMutationLocked}
+                              onClick={restoreOriginal}
+                            >
+                              원문 복원
+                            </button>
+                          ) : null}
+                          {activeDraft ? (
+                            <>
+                              <button
+                                className="paper-button"
+                                type="button"
+                                data-testid="cancel-transform-button"
+                                onClick={cancelTransformPreview}
+                              >
+                                취소
+                              </button>
+                              <button
+                                className="paper-button paper-button-primary"
+                                type="button"
+                                data-testid="apply-transform-button"
+                                disabled={isMutationLocked}
+                                onClick={applyTransformDraft}
+                              >
+                                적용
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                className="paper-button paper-button-primary"
+                                type="submit"
+                                form="ai-prompt-form"
+                                data-testid="submit-ai-prompt-button"
+                                disabled={isMutationLocked || isPreviewActionCoolingDown}
+                              >
+                                미리보기
+                              </button>
+                              <button
+                                className="paper-button"
+                                type="button"
+                                data-testid="cancel-ai-prompt-button"
+                                onClick={closeAiPromptComposer}
+                              >
+                                취소
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
-                    </form>
+                    </>
                   ) : null}
                   {isMutationLocked && storageHealth ? (
                     <div className="storage-lock-banner" role="alert" data-testid="storage-lock-alert">
@@ -1658,79 +1728,86 @@ function App() {
                   ) : null}
                 </header>
 
-                <div className="paper-body">
+                <div className={`paper-body${activeDraft ? " is-preview-mode" : ""}`}>
                   {activeDraft ? (
-                    <section className="transform-preview" data-testid="transform-preview">
-                      <div className="transform-preview-head">
-                        <div className="transform-preview-copy">
-                          <strong>AI 정리 미리보기</strong>
-                          <span>{activeDraft.prompt ? `프롬프트: ${activeDraft.prompt}` : "기본 정리"}</span>
+                    <section className="transform-review-layout" data-testid="transform-preview">
+                      <section className="transform-review-panel transform-review-panel--accent">
+                        <div className="transform-review-panel-head">
+                          <div className="transform-review-panel-copy">
+                            <span className="transform-review-panel-label">제안 결과</span>
+                            <strong>AI가 정리한 초안</strong>
+                            <p className="transform-review-panel-note">
+                              상단 프롬프트를 수정하고 다시 생성을 누르면 아래 초안이 갱신됩니다.
+                            </p>
+                          </div>
+                          {hasBackup ? (
+                            <button
+                              className="paper-button transform-restore-button"
+                              type="button"
+                              data-testid="restore-note-button"
+                              disabled={isMutationLocked}
+                              onClick={restoreOriginal}
+                            >
+                              원문 복원
+                            </button>
+                          ) : null}
                         </div>
-                      </div>
-                      <pre className="transform-preview-body">{activeDraft.previewBody}</pre>
-                      <div className="transform-original" data-testid="transform-original-note">
-                        <div className="transform-original-head">
-                          <strong>원본 메모</strong>
-                          <span>{deriveNoteHeadline(activeNote.body)}</span>
+                        <pre
+                          className="transform-review-body"
+                          data-testid="transform-preview-body"
+                          tabIndex={0}
+                          aria-label="AI가 정리한 미리보기 결과"
+                        >
+                          {activeDraft.previewBody}
+                        </pre>
+                      </section>
+
+                      <aside
+                        className="transform-review-panel transform-review-panel--source"
+                        data-testid="transform-original-note"
+                      >
+                        <div className="transform-review-panel-head">
+                          <div className="transform-review-panel-copy">
+                            <span className="transform-review-panel-label">현재 원문</span>
+                            <strong>적용 전 메모</strong>
+                            <p className="transform-review-panel-note">
+                              원문은 읽기 전용 비교 영역으로 유지됩니다.
+                            </p>
+                          </div>
                         </div>
-                        <pre className="transform-original-body" data-testid="transform-original-body">
+                        <pre
+                          className="transform-review-body transform-review-body--source"
+                          data-testid="transform-original-body"
+                          tabIndex={0}
+                          aria-label="현재 메모 원문"
+                        >
                           {activeNote.body}
                         </pre>
-                      </div>
-                      <div className="transform-preview-actions">
-                        {hasBackup ? (
-                          <button
-                            className="paper-button transform-restore-button"
-                            type="button"
-                            data-testid="restore-note-button"
-                            disabled={isMutationLocked}
-                            onClick={restoreOriginal}
-                          >
-                            원문 복원
-                          </button>
-                        ) : null}
-                        <button
-                          className="paper-button"
-                          type="button"
-                          data-testid="cancel-transform-button"
-                          onClick={cancelTransformPreview}
-                        >
-                          취소
-                        </button>
-                        <button
-                          className="paper-button paper-button-primary"
-                          type="button"
-                          data-testid="apply-transform-button"
-                          disabled={isMutationLocked}
-                          onClick={applyTransformDraft}
-                        >
-                          적용
-                        </button>
-                      </div>
+                      </aside>
                     </section>
-                  ) : null}
-
-                  <div className="editor-card">
-                    <label className="editor-field editor-field-body">
-                      <textarea
-                        className={`paper-editor${activeDraft ? " is-readonly" : ""}`}
-                        data-testid="note-body-input"
-                        value={activeNote.body}
-                        placeholder="여기에 메모를 적으세요."
-                        disabled={isMutationLocked}
-                        readOnly={Boolean(activeDraft) || isMutationLocked}
-                        onChange={(event) =>
-                          patchActiveNote(
-                            {
-                              body: event.target.value,
-                              mode: hasBackup ? activeNote.mode : "default"
-                            },
-                            "메모 내용을 수정했다."
-                          )
-                        }
-                      />
-                    </label>
-                  </div>
+                  ) : (
+                    <div className="editor-card">
+                      <label className="editor-field editor-field-body">
+                        <textarea
+                          className="paper-editor"
+                          data-testid="note-body-input"
+                          value={activeNote.body}
+                          placeholder="여기에 메모를 적으세요."
+                          disabled={isMutationLocked}
+                          readOnly={isMutationLocked}
+                          onChange={(event) =>
+                            patchActiveNote(
+                              {
+                                body: event.target.value,
+                                mode: hasBackup ? activeNote.mode : "default"
+                              },
+                              "메모 내용을 수정했다."
+                            )
+                          }
+                        />
+                      </label>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (

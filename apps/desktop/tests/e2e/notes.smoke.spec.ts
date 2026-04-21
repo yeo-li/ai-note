@@ -93,6 +93,27 @@ test.describe("AI Note desktop smoke", () => {
     await expect(bodyInput).toHaveValue(originalBody);
   });
 
+  test("shows the AI draft before applying it", async ({ appWindow }) => {
+    const createButton = appWindow.getByTestId("sidebar-create-note-button");
+    const bodyInput = appWindow.getByTestId("note-body-input");
+    const draftBody = appWindow.getByTestId("transform-preview-body");
+    const originalBody = "적용 전 수정\n첫 문장\n두 번째 문장";
+    const previewBody = "적용 전 수정 첫 문장 두 번째 문장";
+
+    await createButton.click();
+    await bodyInput.fill(originalBody);
+
+    await appWindow.getByTestId("organize-note-button").click();
+    await appWindow.getByTestId("ai-prompt-input").fill("핵심만 요약해줘");
+    await appWindow.getByTestId("submit-ai-prompt-button").click();
+
+    await expect(draftBody).toContainText(previewBody);
+
+    await appWindow.getByTestId("apply-transform-button").click();
+
+    await expect(bodyInput).toHaveValue(previewBody);
+  });
+
   test("keeps the adjacent visible note selected after deleting inside filtered results", async ({ appWindow }) => {
     const createButton = appWindow.getByTestId("sidebar-create-note-button");
     const noteList = appWindow.getByTestId("note-list");
@@ -127,6 +148,7 @@ test.describe("AI Note desktop smoke", () => {
     const createButton = appWindow.getByTestId("sidebar-create-note-button");
     const noteList = appWindow.getByTestId("note-list");
     const bodyInput = appWindow.getByTestId("note-body-input");
+    const previewBody = appWindow.getByTestId("transform-preview-body");
 
     await createButton.click();
     await bodyInput.fill("Preview and delete\n\n첫 문장입니다.\n\n두 번째 문장입니다.");
@@ -136,13 +158,23 @@ test.describe("AI Note desktop smoke", () => {
     await appWindow.getByTestId("ai-prompt-input").fill("목록으로 정리해줘");
     await appWindow.getByTestId("submit-ai-prompt-button").click();
     await expect(appWindow.getByTestId("transform-preview")).toBeVisible();
-    await expect(appWindow.getByTestId("transform-preview")).toContainText("프롬프트: 목록으로 정리해줘");
+    await expect(appWindow.getByTestId("ai-prompt-form")).toBeVisible();
+    await expect(appWindow.getByTestId("ai-prompt-input")).toHaveValue("목록으로 정리해줘");
+    await expect(appWindow.getByTestId("submit-ai-prompt-button")).toHaveText("다시 생성");
+    await expect(previewBody).toContainText("- Preview and delete");
+    await appWindow.getByTestId("ai-prompt-input").fill("핵심만 요약해줘");
+    await appWindow.getByTestId("submit-ai-prompt-button").click();
+    await expect(appWindow.getByTestId("ai-prompt-input")).toHaveValue("핵심만 요약해줘");
+    await expect(previewBody).toContainText("Preview and delete");
+    await expect(previewBody).not.toContainText("- Preview and delete");
     await expect(appWindow.getByTestId("transform-original-note")).toBeVisible();
-    await expect(appWindow.getByTestId("transform-original-note")).toContainText("Preview and delete");
+    await expect(appWindow.getByTestId("transform-original-body")).toContainText("Preview and delete");
     await expect(appWindow.getByTestId("transform-original-body")).toContainText("첫 문장입니다.");
-
+    await expect(appWindow.getByTestId("cancel-transform-button")).toBeVisible();
+    await expect(appWindow.getByTestId("apply-transform-button")).toBeVisible();
     await appWindow.getByTestId("cancel-transform-button").click();
     await expect(appWindow.getByTestId("transform-preview")).toBeHidden();
+    await expect(bodyInput).toHaveValue("Preview and delete\n\n첫 문장입니다.\n\n두 번째 문장입니다.");
 
     const countBeforeDelete = await noteList.locator('[data-testid^="note-list-item-"]').count();
 

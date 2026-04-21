@@ -40,8 +40,8 @@ type MemoAPI = {
   health(): Promise<MemoStoreHealth>;
   list(): Promise<ListMemosResponse["memos"]>;
   get(id: GetMemoRequest["memoId"]): Promise<GetMemoResponse["memo"]>;
-  create(input?: CreateMemoRequest["input"]): Promise<CreateMemoResponse["memo"]>;
-  update(id: UpdateMemoRequest["memoId"], patch?: UpdateMemoRequest["patch"]): Promise<UpdateMemoResponse["memo"]>;
+  create(input: CreateMemoRequest["input"]): Promise<CreateMemoResponse["memo"]>;
+  update(id: UpdateMemoRequest["memoId"], patch: UpdateMemoRequest["patch"]): Promise<UpdateMemoResponse["memo"]>;
   delete(id: DeleteMemoRequest["memoId"]): Promise<DeleteMemoResponse["deleted"]>;
   search(query: SearchMemosRequest["query"]): Promise<SearchMemosResponse["results"]>;
   organize(input: OrganizeMemoRequest["input"]): Promise<OrganizeMemoResponse["result"]>;

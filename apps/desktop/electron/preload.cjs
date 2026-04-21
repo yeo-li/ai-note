@@ -30,10 +30,10 @@ const memoAPI = {
   get(id) {
     return ipcRenderer.invoke(memoChannels.get, id);
   },
-  create(input = {}) {
+  create(input) {
     return ipcRenderer.invoke(memoChannels.create, input);
   },
-  update(id, patch = {}) {
+  update(id, patch) {
     return ipcRenderer.invoke(memoChannels.update, id, patch);
   },
   delete(id) {

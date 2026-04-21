@@ -1044,21 +1044,6 @@ function App() {
     setStatusMessage("미리보기를 닫았다.");
   }
 
-  function updateTransformDraft(previewBody: string) {
-    if (!activeDraft) {
-      return;
-    }
-
-    setDraftTransform((currentDraft) =>
-      currentDraft?.noteId === activeDraft.noteId
-        ? {
-            ...currentDraft,
-            previewBody
-          }
-        : currentDraft
-    );
-  }
-
   function applyTransformDraft() {
     if (isMutationLocked) {
       setStatusMessage("저장소 연결이 복구될 때까지 미리보기를 적용할 수 없다.");
@@ -1683,7 +1668,7 @@ function App() {
                             <span className="transform-review-panel-label">제안 결과</span>
                             <strong>AI가 정리한 초안</strong>
                             <p className="transform-review-panel-note">
-                              적용 전에 직접 수정할 수 있고, 상단 프롬프트로 다시 생성하면 아래 초안이 갱신됩니다.
+                              상단 프롬프트로 다시 생성하면 아래 초안이 갱신됩니다.
                             </p>
                           </div>
                           {hasBackup ? (
@@ -1698,16 +1683,14 @@ function App() {
                             </button>
                           ) : null}
                         </div>
-                        <label className="transform-review-editor-shell">
-                          <span className="sr-only">적용 전에 수정할 AI 초안</span>
-                          <textarea
-                            className="transform-review-editor"
-                            data-testid="transform-preview-input"
-                            value={activeDraft.previewBody}
-                            aria-label="적용 전에 수정할 AI 초안"
-                            onChange={(event) => updateTransformDraft(event.target.value)}
-                          />
-                        </label>
+                        <pre
+                          className="transform-review-body"
+                          data-testid="transform-preview-body"
+                          tabIndex={0}
+                          aria-label="AI가 정리한 미리보기 결과"
+                        >
+                          {activeDraft.previewBody}
+                        </pre>
                         <div className="transform-review-panel-actions">
                           <button
                             className="paper-button"

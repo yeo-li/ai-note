@@ -10,25 +10,34 @@ on:
       - reopened
       - synchronize
       - ready_for_review
+  issues:
+    types:
+      - edited
+      - reopened
+      - closed
+      - labeled
+      - unlabeled
 
 permissions:
   contents: read
   issues: read
   pull-requests: read
+  statuses: write
 
 jobs:
-  dependency-check:
-    name: dependency-check
+  sync-dependency-status:
+    name: sync-dependency-status
     runs-on: ubuntu-latest
     steps:
-      - name: Validate dependency gate
+      - name: Sync dependency status
         uses: actions/github-script@v7
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const pr = context.payload.pull_request;
-            const prBody = pr.body || "";
+            const statusContext = "dependency-check";
+            const runUrl = `https://github.com/${owner}/${repo}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            const issueCache = new Map();
 
             function collectIssueRefs(text) {
               const refs = new Set();
@@ -41,6 +50,14 @@ jobs:
               }
 
               return [...refs];
+            }
+
+            function truncateDescription(text) {
+              if (text.length <= 140) {
+                return text;
+              }
+
+              return `${text.slice(0, 137)}...`;
             }
 
             function extractMarkdownSection(text, heading) {
@@ -99,101 +116,267 @@ jobs:
             }
 
             async function fetchIssue(issueNumber) {
-              try {
-                const { data } = await github.rest.issues.get({
-                  owner,
-                  repo,
-                  issue_number: issueNumber,
-                });
+              if (!issueCache.has(issueNumber)) {
+                issueCache.set(
+                  issueNumber,
+                  github.rest.issues
+                    .get({
+                      owner,
+                      repo,
+                      issue_number: issueNumber,
+                    })
+                    .then(({ data }) => data)
+                );
+              }
 
-                return data;
+              try {
+                return await issueCache.get(issueNumber);
               } catch (error) {
                 throw new Error(`Unable to load #${issueNumber}: ${error.message}`);
               }
             }
 
-            try {
-              const closingIssueRefs = extractClosingIssueRefs(prBody);
+            async function listOpenDevelopPullRequests() {
+              return github.paginate(github.rest.pulls.list, {
+                owner,
+                repo,
+                state: "open",
+                base: "develop",
+                per_page: 100,
+              });
+            }
 
-              if (closingIssueRefs.length === 0) {
-                core.setFailed("Linked issue is required for develop PRs. Add `Closes #...` under `## Linked Issues`.");
-                return;
-              }
+            async function evaluatePullRequest(pr) {
+              try {
+                const prBody = pr.body || "";
+                const closingIssueRefs = extractClosingIssueRefs(prBody);
 
-              const explicitDependencyRefs = extractDependsOnRefs(prBody);
-              const inferredDependencyRefs = new Set();
-              const closingIssues = [];
+                if (closingIssueRefs.length === 0) {
+                  return {
+                    state: "failure",
+                    description: "Add `Closes #번호` in Linked Issues",
+                    summaryLines: [
+                      `PR: #${pr.number} ${pr.title}`,
+                      "Linked issues: none",
+                      "Depends-On section: none",
+                      "Issue dependencies: none",
+                      "Effective dependencies: none",
+                    ],
+                    errors: [
+                      "Linked issue is required for develop PRs. Add `Closes #번호` under `## Linked Issues`.",
+                    ],
+                  };
+                }
 
-              for (const issueNumber of closingIssueRefs) {
-                const issue = await fetchIssue(issueNumber);
-                closingIssues.push(issue);
+                const explicitDependencyRefs = extractDependsOnRefs(prBody);
+                const closingIssues = [];
+                const inferredDependencyRefs = new Set();
 
-                const dependencySection = extractMarkdownSection(issue.body || "", "선행 이슈");
-                for (const dependencyRef of collectIssueRefs(dependencySection)) {
-                  if (dependencyRef !== issue.number) {
-                    inferredDependencyRefs.add(dependencyRef);
+                for (const issueNumber of closingIssueRefs) {
+                  const issue = await fetchIssue(issueNumber);
+                  closingIssues.push(issue);
+
+                  const dependencySection = extractMarkdownSection(issue.body || "", "선행 이슈");
+                  for (const dependencyRef of collectIssueRefs(dependencySection)) {
+                    if (dependencyRef !== issue.number) {
+                      inferredDependencyRefs.add(dependencyRef);
+                    }
                   }
+                }
+
+                const dependencyRefs = [...new Set([
+                  ...explicitDependencyRefs,
+                  ...inferredDependencyRefs,
+                ])];
+                const dependencies = [];
+
+                for (const issueNumber of dependencyRefs) {
+                  dependencies.push(await fetchIssue(issueNumber));
+                }
+
+                const blockedIssues = closingIssues.filter((issue) =>
+                  hasLabel(issue, "status:blocked")
+                );
+                const openDependencies = dependencies.filter((issue) => issue.state !== "closed");
+                const summaryLines = [
+                  `PR: #${pr.number} ${pr.title}`,
+                  `Linked issues: ${closingIssueRefs.map((issueNumber) => `#${issueNumber}`).join(", ")}`,
+                  explicitDependencyRefs.length > 0
+                    ? `Depends-On section: ${explicitDependencyRefs.map((issueNumber) => `#${issueNumber}`).join(", ")}`
+                    : "Depends-On section: none",
+                  inferredDependencyRefs.size > 0
+                    ? `Issue dependencies: ${[...inferredDependencyRefs].map((issueNumber) => `#${issueNumber}`).join(", ")}`
+                    : "Issue dependencies: none",
+                  dependencyRefs.length > 0
+                    ? `Effective dependencies: ${dependencyRefs.map((issueNumber) => `#${issueNumber}`).join(", ")}`
+                    : "Effective dependencies: none",
+                ];
+
+                const errors = [];
+
+                if (blockedIssues.length > 0) {
+                  errors.push(
+                    `Blocked issue labels remain on: ${blockedIssues
+                      .map((issue) => `#${issue.number} ${issue.title}`)
+                      .join(", ")}`
+                  );
+                }
+
+                if (openDependencies.length > 0) {
+                  errors.push(
+                    `Open dependency issues: ${openDependencies
+                      .map((issue) => `#${issue.number} ${issue.title} (${issue.html_url})`)
+                      .join(", ")}`
+                  );
+                }
+
+                if (errors.length > 0) {
+                  return {
+                    state: "failure",
+                    description: blockedIssues.length > 0
+                      ? "Closing issue is still marked blocked"
+                      : "Open dependency issues remain",
+                    summaryLines,
+                    errors,
+                  };
+                }
+
+                return {
+                  state: "success",
+                  description: dependencyRefs.length > 0
+                    ? "Dependency issues satisfied"
+                    : "No dependency issues",
+                  summaryLines,
+                  errors: [],
+                };
+              } catch (error) {
+                return {
+                  state: "error",
+                  description: "Dependency check execution failed",
+                  summaryLines: [`PR: #${pr.number} ${pr.title}`],
+                  errors: [error.message],
+                };
+              }
+            }
+
+            async function updateDependencyStatus(pr, evaluation) {
+              await github.rest.repos.createCommitStatus({
+                owner,
+                repo,
+                sha: pr.head.sha,
+                state: evaluation.state,
+                context: statusContext,
+                description: truncateDescription(evaluation.description),
+                target_url: runUrl,
+              });
+            }
+
+            async function findAffectedPullRequests(issueNumber) {
+              const openPullRequests = await listOpenDevelopPullRequests();
+              const affectedPullRequests = [];
+
+              for (const pr of openPullRequests) {
+                const prBody = pr.body || "";
+                const closingIssueRefs = extractClosingIssueRefs(prBody);
+                const explicitDependencyRefs = extractDependsOnRefs(prBody);
+
+                if (
+                  closingIssueRefs.includes(issueNumber) ||
+                  explicitDependencyRefs.includes(issueNumber)
+                ) {
+                  affectedPullRequests.push(pr);
+                  continue;
+                }
+
+                let dependsOnChangedIssue = false;
+
+                for (const closingIssueRef of closingIssueRefs) {
+                  const closingIssue = await fetchIssue(closingIssueRef);
+                  const dependencySection = extractMarkdownSection(
+                    closingIssue.body || "",
+                    "선행 이슈"
+                  );
+
+                  if (collectIssueRefs(dependencySection).includes(issueNumber)) {
+                    dependsOnChangedIssue = true;
+                    break;
+                  }
+                }
+
+                if (dependsOnChangedIssue) {
+                  affectedPullRequests.push(pr);
                 }
               }
 
-              const dependencyRefs = new Set([
-                ...explicitDependencyRefs,
-                ...inferredDependencyRefs,
-              ]);
-              const dependencies = [];
+              return affectedPullRequests;
+            }
 
-              for (const issueNumber of dependencyRefs) {
-                dependencies.push(await fetchIssue(issueNumber));
-              }
+            const summaries = [];
+            const internalErrors = [];
 
-              const blockedIssues = closingIssues.filter((issue) =>
-                hasLabel(issue, "status:blocked")
+            if (context.eventName === "pull_request_target") {
+              const pr = context.payload.pull_request;
+              const evaluation = await evaluatePullRequest(pr);
+
+              await updateDependencyStatus(pr, evaluation);
+
+              summaries.push(
+                [
+                  ...evaluation.summaryLines,
+                  `Status context: ${statusContext}`,
+                  `Result: ${evaluation.state}`,
+                  ...evaluation.errors,
+                ].join("\n")
               );
-              const openDependencies = dependencies.filter((issue) => issue.state !== "closed");
 
-              const summaryLines = [
-                `PR: #${pr.number} ${pr.title}`,
-                `Linked issues: ${closingIssueRefs.map((issueNumber) => `#${issueNumber}`).join(", ")}`,
-                explicitDependencyRefs.length > 0
-                  ? `Depends-On section: ${explicitDependencyRefs.map((issueNumber) => `#${issueNumber}`).join(", ")}`
-                  : "Depends-On section: none",
-                inferredDependencyRefs.size > 0
-                  ? `Issue dependencies: ${[...inferredDependencyRefs].map((issueNumber) => `#${issueNumber}`).join(", ")}`
-                  : "Issue dependencies: none",
-                dependencyRefs.size > 0
-                  ? `Effective dependencies: ${[...dependencyRefs].map((issueNumber) => `#${issueNumber}`).join(", ")}`
-                  : "Effective dependencies: none",
-              ];
+              if (evaluation.state === "error") {
+                internalErrors.push(
+                  `Failed to evaluate PR #${pr.number}: ${evaluation.errors.join(" | ")}`
+                );
+              }
+            }
 
-              await core.summary
-                .addHeading("Dependency Check")
-                .addCodeBlock(summaryLines.join("\n"))
-                .write();
+            if (context.eventName === "issues") {
+              const issue = context.payload.issue;
+              const affectedPullRequests = await findAffectedPullRequests(issue.number);
 
-              const errors = [];
-
-              if (blockedIssues.length > 0) {
-                errors.push(
-                  `Blocked issue labels remain on: ${blockedIssues
-                    .map((issue) => `#${issue.number} ${issue.title}`)
-                    .join(", ")}`
+              if (affectedPullRequests.length === 0) {
+                summaries.push(
+                  [
+                    `Issue: #${issue.number} ${issue.title}`,
+                    "Affected develop PRs: none",
+                  ].join("\n")
                 );
               }
 
-              if (openDependencies.length > 0) {
-                errors.push(
-                  `Open dependency issues: ${openDependencies
-                    .map((issue) => `#${issue.number} ${issue.title} (${issue.html_url})`)
-                    .join(", ")}`
+              for (const pr of affectedPullRequests) {
+                const evaluation = await evaluatePullRequest(pr);
+
+                await updateDependencyStatus(pr, evaluation);
+
+                summaries.push(
+                  [
+                    `Issue event: ${context.payload.action} on #${issue.number}`,
+                    ...evaluation.summaryLines,
+                    `Status context: ${statusContext}`,
+                    `Result: ${evaluation.state}`,
+                    ...evaluation.errors,
+                  ].join("\n")
                 );
-              }
 
-              if (errors.length > 0) {
-                core.setFailed(errors.join("\n"));
-                return;
+                if (evaluation.state === "error") {
+                  internalErrors.push(
+                    `Failed to re-evaluate PR #${pr.number}: ${evaluation.errors.join(" | ")}`
+                  );
+                }
               }
+            }
 
-              core.info("Dependency check passed.");
-            } catch (error) {
-              core.setFailed(error.message);
+            await core.summary
+              .addHeading("Dependency Check Sync")
+              .addCodeBlock(summaries.join("\n\n"))
+              .write();
+
+            if (internalErrors.length > 0) {
+              core.setFailed(internalErrors.join("\n"));
             }

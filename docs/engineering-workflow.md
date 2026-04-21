@@ -79,7 +79,7 @@
 ### 의존성 표기 규칙
 
 - 선행 작업이 필요한 이슈에는 `## 선행 이슈` 섹션을 둔다
-- 선행 이슈가 없으면 `없음`이라고 적는다
+- 선행 이슈가 없으면 `- 없음`이라고 적는다
 - 선행 이슈가 하나라도 열려 있으면 후속 이슈는 `status:blocked`를 유지한다
 - 선행 이슈가 모두 닫히면 후속 이슈를 `status:ready`로 변경한다
 - 실제 작업을 시작하면 `status:in-progress`로 변경한다
@@ -134,22 +134,18 @@
 4. Context Search
 5. Quality
 
-모노레포 전환 Feature `#27`의 현재 의존 순서는 아래로 고정한다.
-
-1. `#29` npm workspaces 기반 루트 구조와 `develop` 워크플로 정리
-2. `#30` 백엔드 서비스 앱 초기 구성과 `#31` 공용 타입/계약 패키지 분리
-3. `#28` Electron 데스크톱 앱 재정렬
-
-의존 관계는 `#29 -> (#30, #31) -> #28`로 운영한다.
+- Feature별 상세 선행 순서와 예외는 공통 문서가 아니라 해당 Feature 이슈 본문 또는 별도 계획 문서에서 관리한다.
 
 ## Dependency Gate
 
 - `develop` 대상 PR은 반드시 `Closes #...`로 작업 이슈를 연결한다
-- PR 본문에 `## Depends-On` 섹션을 두고 선행 이슈가 없으면 `없음`이라고 적는다
+- PR 본문에 `## Depends-On` 섹션을 두고 선행 이슈가 없으면 `- 없음`이라고 적는다
 - workflow `PR Dependency Check`는 PR의 `Depends-On`과 연결 이슈의 `선행 이슈`를 함께 읽어 실제 의존성을 계산한다
-- 연결 이슈가 `status:blocked`이면 체크를 실패시킨다
-- 의존 이슈가 하나라도 열려 있으면 체크를 실패시킨다
-- GitHub 브랜치 보호 규칙에서 workflow `PR Dependency Check`의 job `dependency-check`를 required status check로 수동 등록한다
+- 연결 이슈가 `status:blocked`이면 상태 컨텍스트 `dependency-check`를 실패로 갱신한다
+- 의존 이슈가 하나라도 열려 있으면 상태 컨텍스트 `dependency-check`를 실패로 갱신한다
+- 이슈 상태가 바뀌었을 때도 같은 상태 컨텍스트를 다시 계산할 수 있도록 `issues` 이벤트 재평가 경로를 함께 유지한다
+- 저장소 기본 브랜치가 `main`이면 `issues` 이벤트 workflow는 기본 브랜치의 workflow 파일을 사용하므로, 같은 재평가 경로를 `main`에도 반영해야 자동 갱신이 실제로 동작한다
+- GitHub 브랜치 보호 규칙에서 상태 컨텍스트 `dependency-check`를 required status check로 수동 등록한다
 
 ## PR Rules
 

@@ -1598,26 +1598,28 @@ function App() {
                   </div>
 
                   {isAiPromptOpen ? (
-                    <form
-                      className="ai-prompt-form"
-                      data-testid="ai-prompt-form"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        startTransformPreview();
-                      }}
-                    >
-                      <label className="ai-prompt-input">
-                        <span className="visually-hidden">AI 정리 프롬프트</span>
-                        <input
-                          ref={aiPromptInputRef}
-                          type="text"
-                          data-testid="ai-prompt-input"
-                          value={aiPrompt}
-                          disabled={isMutationLocked}
-                          placeholder="예: 더 간결하게 요약해줘, 존댓말로 바꿔줘"
-                          onChange={(event) => setAiPrompt(event.target.value)}
-                        />
-                      </label>
+                    <div className="ai-prompt-shell">
+                      <form
+                        className="ai-prompt-form"
+                        data-testid="ai-prompt-form"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          startTransformPreview();
+                        }}
+                      >
+                        <label className="ai-prompt-input">
+                          <span className="visually-hidden">AI 정리 프롬프트</span>
+                          <input
+                            ref={aiPromptInputRef}
+                            type="text"
+                            data-testid="ai-prompt-input"
+                            value={aiPrompt}
+                            disabled={isMutationLocked}
+                            placeholder="예: 더 간결하게 요약해줘, 존댓말로 바꿔줘"
+                            onChange={(event) => setAiPrompt(event.target.value)}
+                          />
+                        </label>
+                      </form>
                       <div className="ai-prompt-actions">
                         {hasBackup && !activeDraft ? (
                           <button
@@ -1630,26 +1632,73 @@ function App() {
                             원문 복원
                           </button>
                         ) : null}
-                        <button
-                          className="paper-button paper-button-primary"
-                          type="submit"
-                          data-testid="submit-ai-prompt-button"
-                          disabled={isMutationLocked}
-                        >
-                          {activeDraft ? "다시 정리" : "미리보기"}
-                        </button>
-                        {!activeDraft ? (
-                          <button
-                            className="paper-button"
-                            type="button"
-                            data-testid="cancel-ai-prompt-button"
-                            onClick={closeAiPromptComposer}
-                          >
-                            취소
-                          </button>
-                        ) : null}
+                        {activeDraft ? (
+                          <>
+                            <button
+                              className="paper-button"
+                              type="button"
+                              data-testid="cancel-transform-button"
+                              onMouseDown={(event) => {
+                                if (event.button !== 0) {
+                                  return;
+                                }
+
+                                event.preventDefault();
+                                cancelTransformPreview();
+                              }}
+                              onClick={(event) => {
+                                if (event.detail === 0) {
+                                  cancelTransformPreview();
+                                }
+                              }}
+                            >
+                              취소
+                            </button>
+                            <button
+                              className="paper-button paper-button-primary"
+                              type="button"
+                              data-testid="apply-transform-button"
+                              disabled={isMutationLocked}
+                              onMouseDown={(event) => {
+                                if (event.button !== 0) {
+                                  return;
+                                }
+
+                                event.preventDefault();
+                                applyTransformDraft();
+                              }}
+                              onClick={(event) => {
+                                if (event.detail === 0) {
+                                  applyTransformDraft();
+                                }
+                              }}
+                            >
+                              적용
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              className="paper-button paper-button-primary"
+                              type="button"
+                              data-testid="submit-ai-prompt-button"
+                              disabled={isMutationLocked}
+                              onClick={startTransformPreview}
+                            >
+                              미리보기
+                            </button>
+                            <button
+                              className="paper-button"
+                              type="button"
+                              data-testid="cancel-ai-prompt-button"
+                              onClick={closeAiPromptComposer}
+                            >
+                              취소
+                            </button>
+                          </>
+                        )}
                       </div>
-                    </form>
+                    </div>
                   ) : null}
                   {isMutationLocked && storageHealth ? (
                     <div className="storage-lock-banner" role="alert" data-testid="storage-lock-alert">
@@ -1691,25 +1740,6 @@ function App() {
                         >
                           {activeDraft.previewBody}
                         </pre>
-                        <div className="transform-review-panel-actions">
-                          <button
-                            className="paper-button"
-                            type="button"
-                            data-testid="cancel-transform-button"
-                            onClick={cancelTransformPreview}
-                          >
-                            취소
-                          </button>
-                          <button
-                            className="paper-button paper-button-primary"
-                            type="button"
-                            data-testid="apply-transform-button"
-                            disabled={isMutationLocked}
-                            onClick={applyTransformDraft}
-                          >
-                            적용
-                          </button>
-                        </div>
                       </section>
 
                       <aside

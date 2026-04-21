@@ -2,14 +2,23 @@
 
 import type {
   MemoChangeEvent,
-  Memo,
-  MemoCreateInput,
-  MemoOrganizeInput,
-  MemoOrganizeResult,
-  MemoStoreHealth,
-  MemoSearchResult,
-  MemoUpdateInput
-} from "./shared/memo";
+} from "@ai-note/shared/memo";
+import type {
+  CreateMemoRequest,
+  CreateMemoResponse,
+  DeleteMemoRequest,
+  DeleteMemoResponse,
+  GetMemoRequest,
+  GetMemoResponse,
+  ListMemosResponse,
+  OrganizeMemoRequest,
+  OrganizeMemoResponse,
+  SearchMemosRequest,
+  SearchMemosResponse,
+  UpdateMemoRequest,
+  UpdateMemoResponse
+} from "@ai-note/shared/memo-api";
+import type { MemoStoreHealth } from "./shared/memo-bridge";
 
 type DesktopAPI = {
   platform: string;
@@ -29,13 +38,13 @@ type DesktopAPI = {
 
 type MemoAPI = {
   health(): Promise<MemoStoreHealth>;
-  list(): Promise<Memo[]>;
-  get(id: string): Promise<Memo | null>;
-  create(input?: MemoCreateInput): Promise<Memo>;
-  update(id: string, patch?: MemoUpdateInput): Promise<Memo | null>;
-  delete(id: string): Promise<boolean>;
-  search(query: string): Promise<MemoSearchResult[]>;
-  organize(input: MemoOrganizeInput): Promise<MemoOrganizeResult>;
+  list(): Promise<ListMemosResponse["memos"]>;
+  get(id: GetMemoRequest["memoId"]): Promise<GetMemoResponse["memo"]>;
+  create(input?: CreateMemoRequest["input"]): Promise<CreateMemoResponse["memo"]>;
+  update(id: UpdateMemoRequest["memoId"], patch?: UpdateMemoRequest["patch"]): Promise<UpdateMemoResponse["memo"]>;
+  delete(id: DeleteMemoRequest["memoId"]): Promise<DeleteMemoResponse["deleted"]>;
+  search(query: SearchMemosRequest["query"]): Promise<SearchMemosResponse["results"]>;
+  organize(input: OrganizeMemoRequest["input"]): Promise<OrganizeMemoResponse["result"]>;
   onDidChange(listener: (event: MemoChangeEvent) => void): () => void;
 };
 

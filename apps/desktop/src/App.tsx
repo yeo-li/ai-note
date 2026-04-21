@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Memo, MemoChangeEvent, MemoCreateInput, MemoStoreHealth, MemoUpdateInput } from "./shared/memo";
+import type { Memo, MemoChangeEvent, MemoCreateInput, MemoUpdateInput } from "@ai-note/shared/memo";
+import type { MemoStoreHealth } from "./shared/memo-bridge";
 import { buildMemoTitleFromBody, deriveNoteHeadline } from "./note-content";
 
 type TransformMode = "default" | "organized";

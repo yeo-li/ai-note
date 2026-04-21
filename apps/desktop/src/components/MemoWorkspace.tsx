@@ -6,7 +6,7 @@ import type {
   MemoOrganizeResult,
   MemoSearchResult,
   MemoUpdateInput
-} from "../shared/memo";
+} from "@ai-note/shared/memo";
 
 const UNTITLED_MEMO_LABEL = "제목 없는 메모";
 const DELETE_UNDO_MS = 5000;

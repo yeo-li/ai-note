@@ -2,6 +2,7 @@ import { startTransition, useDeferredValue, useEffect, useRef, useState } from "
 import type {
   Memo,
   MemoCreateInput,
+  MemoId,
   MemoOrganizeIntent,
   MemoOrganizeResult,
   MemoSearchResult,
@@ -12,14 +13,14 @@ const UNTITLED_MEMO_LABEL = "제목 없는 메모";
 const DELETE_UNDO_MS = 5000;
 
 type OrganizePreviewState = {
-  memoId: string;
+  memoId: MemoId;
   baseBody: string;
   result: MemoOrganizeResult;
 };
 
 type PendingDeleteState = {
   memo: Memo;
-  fallbackMemoId: string | null;
+  fallbackMemoId: MemoId | null;
   timerId: number;
 };
 
@@ -181,7 +182,7 @@ async function loadInitialMemos() {
 export function MemoWorkspace() {
   const isMacOS = window.desktopAPI?.platform === "darwin";
   const [memos, setMemos] = useState<Memo[]>([]);
-  const [activeMemoId, setActiveMemoId] = useState<string | null>(null);
+  const [activeMemoId, setActiveMemoId] = useState<MemoId | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [statusMessage, setStatusMessage] = useState(getInitialStatus());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -193,12 +194,12 @@ export function MemoWorkspace() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchMessage, setSearchMessage] = useState("자연어로 메모 제목과 내용을 검색해 보세요.");
   const [searchErrorMessage, setSearchErrorMessage] = useState<string | null>(null);
-  const [deleteIntentId, setDeleteIntentId] = useState<string | null>(null);
+  const [deleteIntentId, setDeleteIntentId] = useState<MemoId | null>(null);
   const [pendingDeletion, setPendingDeletion] = useState<PendingDeleteState | null>(null);
-  const activeMemoIdRef = useRef<string | null>(null);
+  const activeMemoIdRef = useRef<MemoId | null>(null);
   const organizeRequestRef = useRef(0);
-  const latestEditVersionRef = useRef<Record<string, number>>({});
-  const latestSaveSequenceRef = useRef<Record<string, number>>({});
+  const latestEditVersionRef = useRef<Record<MemoId, number>>({});
+  const latestSaveSequenceRef = useRef<Record<MemoId, number>>({});
   const deferredSearchQuery = useDeferredValue(searchQuery.trim());
 
   useEffect(() => {
@@ -341,13 +342,13 @@ export function MemoWorkspace() {
     setMemos((current) => [nextMemo, ...current.filter((memo) => memo.id !== nextMemo.id)]);
   }
 
-  function bumpEditVersion(memoId: string) {
+  function bumpEditVersion(memoId: MemoId) {
     const nextVersion = (latestEditVersionRef.current[memoId] ?? 0) + 1;
     latestEditVersionRef.current[memoId] = nextVersion;
     return nextVersion;
   }
 
-  function startSaveSequence(memoId: string) {
+  function startSaveSequence(memoId: MemoId) {
     const nextSequence = (latestSaveSequenceRef.current[memoId] ?? 0) + 1;
     latestSaveSequenceRef.current[memoId] = nextSequence;
     return nextSequence;
@@ -374,7 +375,7 @@ export function MemoWorkspace() {
     }
   }
 
-  async function persistMemoUpdate(memoId: string, updates: MemoUpdateInput) {
+  async function persistMemoUpdate(memoId: MemoId, updates: MemoUpdateInput) {
     if (!window.memoAPI) {
       return null;
     }

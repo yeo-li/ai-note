@@ -1,6 +1,12 @@
 # @ai-note/shared
 
-이 워크스페이스는 이후 데스크톱/서버가 함께 쓰는 타입, 계약, 유틸리티를 수용할 자리다.
+이 워크스페이스는 desktop/server가 함께 참조하는 계약 전용 패키지다.
 
-- 현재 이슈 범위에서는 패키지 경계만 만든다.
-- 기존 데스크톱 내부 타입의 세부 이전은 후속 이슈에서 진행한다.
+- `@ai-note/shared/memo`: 메모 도메인 타입과 입력/결과 모델
+- `@ai-note/shared/memo-api`: 메모 API 요청/응답 DTO
+- `@ai-note/shared`: 배럴 export
+
+현재 범위에서는 renderer/store 구현 세부 타입은 포함하지 않는다.
+
+- `MemoStoreHealth` 같은 preload/store 상태 타입은 desktop 로컬에 둔다.
+- desktop과 server는 앱 내부 파일을 가리키지 말고 이 패키지로만 계약을 참조한다.

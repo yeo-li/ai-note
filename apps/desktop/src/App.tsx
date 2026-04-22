@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Memo, MemoChangeEvent, MemoCreateInput, MemoStoreHealth, MemoUpdateInput } from "./shared/memo";
+import type { Memo, MemoChangeEvent, MemoCreateInput, MemoId, MemoUpdateInput } from "@ai-note/shared/memo";
+import type { MemoStoreHealth } from "./shared/memo-bridge";
 import { buildMemoTitleFromBody, deriveNoteHeadline } from "./note-content";
 
 type TransformMode = "default" | "organized";
 
 type Note = {
-  id: string;
+  id: MemoId;
   body: string;
   updatedAt: string;
   dateLabel: string;
@@ -24,7 +25,7 @@ type DeletedNoteState = {
 };
 
 type TransformDraft = {
-  noteId: string;
+  noteId: MemoId;
   prompt: string;
   previewBody: string;
 };
@@ -178,7 +179,7 @@ function upsertSyncedNote(currentNotes: Note[], memo: Memo) {
   return [mergedNote, ...currentNotes.filter((note) => note.id !== mergedNote.id)];
 }
 
-function removeSyncedNote(currentNotes: Note[], memoId: string) {
+function removeSyncedNote(currentNotes: Note[], memoId: MemoId) {
   return currentNotes.filter((note) => note.id !== memoId);
 }
 
@@ -359,7 +360,7 @@ function buildAiOrganizedBody(text: string, prompt: string) {
 
 type LaunchContext = {
   stickyMode: boolean;
-  requestedNoteId: string | null;
+  requestedNoteId: MemoId | null;
 };
 
 function readLaunchContext(): LaunchContext {
@@ -478,7 +479,7 @@ function App() {
     window.desktopAPI?.platform === "darwin" ||
     (typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent));
   const [notes, setNotes] = useState(initialNotes);
-  const [selectedNoteId, setSelectedNoteId] = useState(initialNotes[0]?.id ?? "");
+  const [selectedNoteId, setSelectedNoteId] = useState<MemoId | "">(initialNotes[0]?.id ?? "");
   const [query, setQuery] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(!launchContext.stickyMode);
   const [isStickyMode, setIsStickyMode] = useState(launchContext.stickyMode);
@@ -486,9 +487,9 @@ function App() {
   const [statusMessage, setStatusMessage] = useState("저장소 연결 상태를 확인하고 있다.");
   const [storageHealth, setStorageHealth] = useState<MemoStoreHealth | null>(null);
   const [isStorageLocked, setIsStorageLocked] = useState(true);
-  const [backups, setBackups] = useState<Record<string, NoteBackup>>({});
-  const [deleteIntentId, setDeleteIntentId] = useState<string | null>(null);
-  const [noteMenuId, setNoteMenuId] = useState<string | null>(null);
+  const [backups, setBackups] = useState<Record<MemoId, NoteBackup>>({});
+  const [deleteIntentId, setDeleteIntentId] = useState<MemoId | null>(null);
+  const [noteMenuId, setNoteMenuId] = useState<MemoId | null>(null);
   const [recentlyDeleted, setRecentlyDeleted] = useState<DeletedNoteState | null>(null);
   const [draftTransform, setDraftTransform] = useState<TransformDraft | null>(null);
   const [isAiPromptOpen, setIsAiPromptOpen] = useState(false);
@@ -1128,7 +1129,7 @@ function App() {
     });
   }
 
-  function beginDeleteNote(noteId?: string) {
+  function beginDeleteNote(noteId?: MemoId) {
     if (isMutationLocked) {
       setStatusMessage("저장소 연결이 복구될 때까지 삭제를 실행할 수 없다.");
       return;
@@ -1161,7 +1162,7 @@ function App() {
     setStatusMessage("삭제를 취소했다.");
   }
 
-  function toggleNoteMenu(noteId: string) {
+  function toggleNoteMenu(noteId: MemoId) {
     setDeleteIntentId(null);
     setNoteMenuId((currentNoteMenuId) => (currentNoteMenuId === noteId ? null : noteId));
   }

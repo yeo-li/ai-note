@@ -1,5 +1,7 @@
+export type MemoId = string;
+
 export type Memo = {
-  id: string;
+  id: MemoId;
   title: string;
   body: string;
   createdAt: string;
@@ -17,7 +19,7 @@ export type MemoChangeEvent =
     }
   | {
       type: "deleted";
-      memoId: string;
+      memoId: MemoId;
     };
 
 export type MemoCreateInput = {
@@ -40,7 +42,7 @@ export type MemoSearchResult = {
 export type MemoOrganizeIntent = "polish" | "polite";
 
 export type MemoOrganizeInput = {
-  memoId: string;
+  memoId: MemoId;
   title?: string;
   body: string;
   intent: MemoOrganizeIntent;
@@ -51,15 +53,4 @@ export type MemoOrganizeResult = {
   original: string;
   suggested: string;
   summary: string;
-};
-
-export type MemoStoreKind = "sqlite" | "json" | "memory";
-
-export type MemoStoreHealth = {
-  bridgeConnected: boolean;
-  ready: boolean;
-  storeKind: MemoStoreKind;
-  filePath?: string;
-  fallbackReason?: string;
-  errorMessage?: string;
 };

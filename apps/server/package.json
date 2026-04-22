@@ -2,6 +2,9 @@
   "name": "@ai-note/server",
   "version": "0.1.0",
   "private": true,
+  "dependencies": {
+    "@ai-note/shared": "0.1.0"
+  },
   "description": "TypeScript server workspace for the AI Note backend bootstrap.",
   "type": "module",
   "main": "dist/index.js",

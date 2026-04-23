@@ -397,20 +397,52 @@ function StickyPinIcon() {
   );
 }
 
-function StickyNewNoteIcon() {
+function BrandNoteIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M4.4 3.1h7.2v9.8H4.4z" />
-      <path d="M8 6.8v3.2M6.4 8.4h3.2" />
+      <path d="M4.2 2.7h5l2.6 2.6v8.1H4.2z" />
+      <path d="M9.2 2.7v2.6h2.6" />
+      <path d="M5.8 8h4.4" />
+      <path d="M5.8 10.5h4.4" />
     </svg>
   );
 }
 
-function HeaderPlusIcon() {
+function PlusIcon() {
+  return (
+    <svg className="plus-icon" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M7.1 3.3h1.8v3.8h3.8v1.8H8.9v3.8H7.1V8.9H3.3V7.1h3.8z" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M8 3.5v9" />
-      <path d="M3.5 8h9" />
+      <path d="M7.1 11.7a4.6 4.6 0 1 0 0-9.2 4.6 4.6 0 0 0 0 9.2Z" />
+      <path d="m10.7 10.8 2.8 2.7" />
+    </svg>
+  );
+}
+
+function SidebarListIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M5.1 3.3h6.6v9.4H5.1z" />
+      <path d="M3.2 5.2h.01" />
+      <path d="M3.2 8h.01" />
+      <path d="M3.2 10.8h.01" />
+      <path d="M6.7 5.2h3.3" />
+      <path d="M6.7 8h3.3" />
+      <path d="M6.7 10.8h3.3" />
+    </svg>
+  );
+}
+
+function SidebarFavoriteIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="m8 2.7 1.5 3 3.3.5-2.4 2.3.6 3.3L8 10.2 5 11.8l.6-3.3-2.4-2.3 3.3-.5z" />
     </svg>
   );
 }
@@ -948,6 +980,46 @@ function App() {
     setStatusMessage("새 메모를 만들고 바로 편집 상태로 열었다.");
   }
 
+  async function handleCreateStickyNoteWindow() {
+    if (isMutationLocked) {
+      setStatusMessage("저장소 연결이 복구될 때까지 새 스티커 메모를 만들 수 없다.");
+      return;
+    }
+
+    const openStickyNote = window.desktopAPI?.window?.openStickyNote;
+
+    if (!openStickyNote) {
+      setStatusMessage("스티커 메모는 데스크톱 앱에서만 새 창으로 열 수 있다.");
+      return;
+    }
+
+    let nextNote = createNote();
+
+    if (window.memoAPI) {
+      try {
+        const createInput: MemoCreateInput = {
+          title: buildMemoTitleFromBody(nextNote.body),
+          body: nextNote.body
+        };
+        const createdMemo = await window.memoAPI.create(createInput);
+
+        nextNote = toNoteFromMemo(createdMemo);
+      } catch {
+        setStatusMessage("새 스티커 메모를 만들지 못했다.");
+        return;
+      }
+    }
+
+    setNotes((currentNotes) => [nextNote, ...currentNotes.filter((note) => note.id !== nextNote.id)]);
+
+    try {
+      await openStickyNote(nextNote.id);
+      setStatusMessage("새 스티커 메모를 추가했다.");
+    } catch {
+      setStatusMessage("새 스티커 메모 창을 열지 못했다.");
+    }
+  }
+
   function handleSearch(nextQuery: string) {
     const trimmedQuery = nextQuery.trim();
     const matchingNotes = notes.filter((note) => matchesQuery(note, nextQuery));
@@ -1374,6 +1446,22 @@ function App() {
   ]
     .filter(Boolean)
     .join(" ");
+  const paperKicker = activeDraft
+    ? "AI Preview"
+    : activeNote?.mode === "organized"
+      ? "Refined Memo"
+      : hasQuery
+        ? "Search"
+        : "Draft";
+  const paperStatusLabel = isMutationLocked
+    ? "Read only"
+    : activeDraft
+      ? "Preview only"
+      : recentlyDeleted
+        ? "Undo available"
+        : "Saved locally";
+  const showPaperStatus = isMutationLocked || Boolean(activeDraft) || Boolean(recentlyDeleted);
+  const sidebarCountLabel = hasQuery ? `결과 ${filteredNotes.length}개` : `메모 ${notes.length}개`;
   return (
     <main className="page" data-testid="page-root">
       <section className={appShellClassName} data-testid="app-shell">
@@ -1384,22 +1472,32 @@ function App() {
           <aside className="sidebar" id="memo-sidebar">
             <div className="sidebar-head">
               <div className="sidebar-brand">
-                <strong>AI Note</strong>
+                <div className="sidebar-brand-copy">
+                  <span className="sidebar-brand-mark" aria-hidden="true">
+                    <BrandNoteIcon />
+                  </span>
+                  <span className="sidebar-brand-text">
+                    <strong>AI Note</strong>
+                  </span>
+                </div>
 
                 <div className="sidebar-brand-actions">
                   <button
-                    className="link-button link-button-primary"
+                    className="link-button sidebar-create-button"
                     type="button"
                     data-testid="sidebar-create-note-button"
+                    aria-label="새 메모 만들기"
+                    title="새 메모 만들기"
                     disabled={isMutationLocked}
                     onClick={() => void handleCreateNote()}
                   >
-                    새 메모
+                    <PlusIcon />
                   </button>
                 </div>
               </div>
 
               <label className="sidebar-search">
+                <SearchIcon />
                 <span className="visually-hidden">메모 검색</span>
                 <input
                   ref={searchInputRef}
@@ -1421,12 +1519,29 @@ function App() {
                 ) : null}
               </label>
 
-              <div className="sidebar-summary">
-                <span>{noteCountLabel}</span>
-                <span className={storageBadgeClassName} data-testid="storage-status-badge">
-                  {storageBadgeLabel}
-                </span>
-              </div>
+              <nav className="sidebar-nav" aria-label="사이드바 탐색">
+                <button
+                  className={`sidebar-nav-item${!hasQuery ? " is-active" : ""}`}
+                  type="button"
+                  onClick={() => handleSearch("")}
+                >
+                  <SidebarListIcon />
+                  <span>전체 메모</span>
+                </button>
+                <button
+                  className="sidebar-nav-item"
+                  type="button"
+                  onClick={() => setStatusMessage("즐겨찾기 구분은 아직 준비 중입니다.")}
+                >
+                  <SidebarFavoriteIcon />
+                  <span>즐겨찾기</span>
+                </button>
+              </nav>
+            </div>
+
+            <div className="sidebar-section-heading">
+              <span>최근</span>
+              <span>{sidebarCountLabel}</span>
             </div>
 
             {!isCollectionEmpty && filteredNotes.length > 0 ? (
@@ -1436,12 +1551,18 @@ function App() {
                   const noteLabel = deriveNoteHeadline(note.body);
                   const isNoteMenuOpen = noteMenuId === note.id;
                   const noteMenuIdValue = `note-actions-menu-${note.id}`;
+                  const handleSelectNote = () => {
+                    setSelectedNoteId(note.id);
+                    setDeleteIntentId(null);
+                    setNoteMenuId(null);
+                  };
 
                   return (
                     <li
                       key={note.id}
                       className={`note-list-item${isSelected ? " is-selected" : ""}`}
                       data-mode={note.mode}
+                      onClick={handleSelectNote}
                     >
                       <button
                         className="note-list-item-button"
@@ -1449,21 +1570,14 @@ function App() {
                         type="button"
                         aria-current={isSelected ? "true" : undefined}
                         aria-label={`${noteLabel} 메모`}
-                        onClick={() => {
-                          setSelectedNoteId(note.id);
-                          setDeleteIntentId(null);
-                          setNoteMenuId(null);
-                        }}
+                        onClick={handleSelectNote}
                       >
                         <span className="note-list-copy">
-                          <span className="note-list-meta">
-                            <span className="note-list-state">{note.mode === "default" ? "원문" : "AI 정리"}</span>
-                          </span>
                           <strong>{noteLabel}</strong>
-                          <span className="note-list-preview">{note.dateLabel}</span>
+                          <span className="note-list-date">{note.dateLabel === "이제" ? note.updatedAt : note.dateLabel}</span>
                         </span>
                       </button>
-                      <div className="note-list-actions" data-note-menu-root="true">
+                      <div className="note-list-actions" data-note-menu-root="true" onClick={(event) => event.stopPropagation()}>
                         <button
                           className="note-list-menu-button"
                           type="button"
@@ -1512,285 +1626,58 @@ function App() {
               </section>
             )}
 
+            <footer className="sidebar-foot">
+              <span className={`${storageBadgeClassName} sidebar-foot-badge`} data-testid="storage-status-badge">
+                {storageBadgeLabel}
+              </span>
+              {storageStatusSummary ? <p>{storageStatusSummary}</p> : <p>모든 메모는 로컬 저장소에 바로 반영됩니다.</p>}
+            </footer>
+
           </aside>
 
           <section className="editor-pane">
             {isStickyMode ? (
-              <div className="sticky-note-toolbar" role="toolbar" aria-label="스티커 메모 도구" data-testid="sticky-toolbar">
-                <div className="sticky-note-toolbar__drag" aria-hidden="true" />
-                <div className="sticky-note-toolbar__actions sticky-note-toolbar__actions--left">
-                  <button
-                    className="sticky-note-toolbar__button sticky-note-toolbar__button--close"
-                    type="button"
-                    data-testid="sticky-mode-exit-button"
-                    aria-label={isDedicatedStickyWindow ? "스티커 창 닫기" : "일반 모드로 돌아가기"}
-                    onClick={closeStickySurface}
-                  >
-                    <StickyCloseIcon />
-                  </button>
-                  <button
-                    className={`sticky-note-toolbar__button sticky-note-toolbar__button--pin${isStickyPinned ? " is-pinned" : ""}`}
-                    type="button"
-                    data-testid="sticky-mode-pin-button"
-                    aria-label={isStickyPinned ? "스티커 메모 고정 해제" : "스티커 메모 고정"}
-                    aria-pressed={isStickyPinned}
-                    onClick={() => void toggleStickyPinned()}
-                  >
-                    <StickyPinIcon />
-                  </button>
-                </div>
-                <div className="sticky-note-toolbar__actions sticky-note-toolbar__actions--right">
-                  <button
-                    className="sticky-note-toolbar__button sticky-note-toolbar__button--new"
-                    type="button"
-                    data-testid="sticky-mode-new-note-button"
-                    aria-label="새 메모 만들기"
-                    disabled={isMutationLocked}
-                    onClick={() => void handleCreateNote()}
-                  >
-                    <StickyNewNoteIcon />
-                  </button>
-                </div>
-              </div>
-            ) : null}
-            {activeNote ? (
-              <div className="paper">
-                <header className="paper-head">
-                  <div className="paper-utility-bar">
-                    <div className="paper-toolbar paper-toolbar-editor" role="toolbar" aria-label="메모 도구">
+              <div className="sticky-note-canvas">
+                <article className="sticky-note-card">
+                  <div className="sticky-note-toolbar" role="toolbar" aria-label="스티커 메모 도구" data-testid="sticky-toolbar">
+                    <div className="sticky-note-toolbar__actions sticky-note-toolbar__actions--left">
                       <button
-                        className="paper-button paper-button-icon"
+                        className="sticky-note-toolbar__button sticky-note-toolbar__button--new"
                         type="button"
-                        data-testid="open-sticky-note-button"
-                        aria-label="스티커 메모 열기"
-                        title="스티커 메모"
-                        onClick={() => void openStickyNoteWindow()}
-                      >
-                        <ToolbarStickyIcon />
-                      </button>
-                      <button
-                        className="paper-button paper-button-icon"
-                        type="button"
-                        data-testid="editor-toggle-sidebar-button"
-                        aria-label={isSidebarOpen ? "목록 닫기" : "목록 열기"}
-                        title={isSidebarOpen ? "목록 닫기" : "목록 열기"}
-                        aria-controls="memo-sidebar"
-                        aria-expanded={isSidebarOpen}
-                        onClick={() => {
-                          setIsSidebarOpen((current) => !current);
-                        }}
-                      >
-                        <ToolbarSidebarIcon />
-                      </button>
-                      {recentlyDeleted ? (
-                        <button
-                          className="status-button paper-button-icon"
-                          type="button"
-                          aria-label="되돌리기"
-                          title="되돌리기"
-                          disabled={isMutationLocked}
-                          onClick={() => void undoDelete()}
-                        >
-                          <ToolbarUndoIcon />
-                        </button>
-                      ) : null}
-                      <button
-                        className="paper-button paper-button-icon paper-button-primary"
-                        type="button"
-                        data-testid="organize-note-button"
-                        aria-label="AI 정리"
-                        title="AI 정리"
-                        disabled={isMutationLocked || isStickyMode}
-                        onClick={openAiPromptComposer}
-                      >
-                        <ToolbarSparklesIcon />
-                      </button>
-                      <button
-                        className="paper-button paper-button-icon"
-                        type="button"
-                        data-testid="copy-note-button"
-                        aria-label="메모 복사"
-                        title="메모 복사"
-                        onClick={() => void copyCurrentNote()}
-                      >
-                        <ToolbarCopyIcon />
-                      </button>
-                      <button
-                        className="paper-button paper-button-icon paper-button-primary"
-                        type="button"
-                        data-testid="editor-create-note-button"
-                        aria-label="새 메모 만들기"
-                        title="새 메모 만들기"
+                        data-testid="sticky-mode-new-note-button"
+                        aria-label="새 스티커 메모 만들기"
                         disabled={isMutationLocked}
-                        onClick={() => void handleCreateNote()}
+                        onClick={() => void handleCreateStickyNoteWindow()}
                       >
-                        <HeaderPlusIcon />
+                        <PlusIcon />
+                      </button>
+                      <button
+                        className={`sticky-note-toolbar__button sticky-note-toolbar__button--pin${isStickyPinned ? " is-pinned" : ""}`}
+                        type="button"
+                        data-testid="sticky-mode-pin-button"
+                        aria-label={isStickyPinned ? "스티커 메모 고정 해제" : "스티커 메모 고정"}
+                        aria-pressed={isStickyPinned}
+                        onClick={() => void toggleStickyPinned()}
+                      >
+                        <StickyPinIcon />
+                      </button>
+                      <button
+                        className="sticky-note-toolbar__button sticky-note-toolbar__button--close"
+                        type="button"
+                        data-testid="sticky-mode-exit-button"
+                        aria-label={isDedicatedStickyWindow ? "스티커 창 닫기" : "일반 모드로 돌아가기"}
+                        onClick={closeStickySurface}
+                      >
+                        <StickyCloseIcon />
                       </button>
                     </div>
                   </div>
 
-                  {isAiPromptOpen ? (
-                    <>
-                      <div className="ai-prompt-shell">
-                        <form
-                          id="ai-prompt-form"
-                          className="ai-prompt-form"
-                          data-testid="ai-prompt-form"
-                          onSubmit={(event) => {
-                            event.preventDefault();
-                            startTransformPreview();
-                          }}
-                        >
-                          <label className="ai-prompt-input">
-                            <span className="visually-hidden">AI 정리 프롬프트</span>
-                            <input
-                              ref={aiPromptInputRef}
-                              type="text"
-                              data-testid="ai-prompt-input"
-                              value={aiPrompt}
-                              disabled={isMutationLocked}
-                              placeholder="예: 더 간결하게 요약해줘, 존댓말로 바꿔줘"
-                              onChange={(event) => setAiPrompt(event.target.value)}
-                            />
-                          </label>
-                          {activeDraft ? (
-                            <button
-                              className="paper-button"
-                              type="submit"
-                              data-testid="submit-ai-prompt-button"
-                              disabled={isMutationLocked}
-                            >
-                              다시 생성
-                            </button>
-                          ) : null}
-                        </form>
-                        <div className="ai-prompt-actions">
-                          {hasBackup && !activeDraft ? (
-                            <button
-                              className="paper-button transform-restore-button"
-                              type="button"
-                              data-testid="restore-note-button"
-                              disabled={isMutationLocked}
-                              onClick={restoreOriginal}
-                            >
-                              원문 복원
-                            </button>
-                          ) : null}
-                          {activeDraft ? (
-                            <>
-                              <button
-                                className="paper-button"
-                                type="button"
-                                data-testid="cancel-transform-button"
-                                onClick={cancelTransformPreview}
-                              >
-                                취소
-                              </button>
-                              <button
-                                className="paper-button paper-button-primary"
-                                type="button"
-                                data-testid="apply-transform-button"
-                                disabled={isMutationLocked}
-                                onClick={applyTransformDraft}
-                              >
-                                적용
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                className="paper-button paper-button-primary"
-                                type="submit"
-                                form="ai-prompt-form"
-                                data-testid="submit-ai-prompt-button"
-                                disabled={isMutationLocked || isPreviewActionCoolingDown}
-                              >
-                                미리보기
-                              </button>
-                              <button
-                                className="paper-button"
-                                type="button"
-                                data-testid="cancel-ai-prompt-button"
-                                onClick={closeAiPromptComposer}
-                              >
-                                취소
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </>
-                  ) : null}
-                  {isMutationLocked && storageHealth ? (
-                    <div className="storage-lock-banner" role="alert" data-testid="storage-lock-alert">
-                      <strong>편집 잠금</strong>
-                      <span>{storageHealth.errorMessage ?? "저장소 연결 확인이 완료될 때까지 편집을 잠갔다."}</span>
-                    </div>
-                  ) : null}
-                </header>
-
-                <div className={`paper-body${activeDraft ? " is-preview-mode" : ""}`}>
-                  {activeDraft ? (
-                    <section className="transform-review-layout" data-testid="transform-preview">
-                      <section className="transform-review-panel transform-review-panel--accent">
-                        <div className="transform-review-panel-head">
-                          <div className="transform-review-panel-copy">
-                            <span className="transform-review-panel-label">제안 결과</span>
-                            <strong>AI가 정리한 초안</strong>
-                            <p className="transform-review-panel-note">
-                              상단 프롬프트를 수정하고 다시 생성을 누르면 아래 초안이 갱신됩니다.
-                            </p>
-                          </div>
-                          {hasBackup ? (
-                            <button
-                              className="paper-button transform-restore-button"
-                              type="button"
-                              data-testid="restore-note-button"
-                              disabled={isMutationLocked}
-                              onClick={restoreOriginal}
-                            >
-                              원문 복원
-                            </button>
-                          ) : null}
-                        </div>
-                        <pre
-                          className="transform-review-body"
-                          data-testid="transform-preview-body"
-                          tabIndex={0}
-                          aria-label="AI가 정리한 미리보기 결과"
-                        >
-                          {activeDraft.previewBody}
-                        </pre>
-                      </section>
-
-                      <aside
-                        className="transform-review-panel transform-review-panel--source"
-                        data-testid="transform-original-note"
-                      >
-                        <div className="transform-review-panel-head">
-                          <div className="transform-review-panel-copy">
-                            <span className="transform-review-panel-label">현재 원문</span>
-                            <strong>적용 전 메모</strong>
-                            <p className="transform-review-panel-note">
-                              원문은 읽기 전용 비교 영역으로 유지됩니다.
-                            </p>
-                          </div>
-                        </div>
-                        <pre
-                          className="transform-review-body transform-review-body--source"
-                          data-testid="transform-original-body"
-                          tabIndex={0}
-                          aria-label="현재 메모 원문"
-                        >
-                          {activeNote.body}
-                        </pre>
-                      </aside>
-                    </section>
-                  ) : (
-                    <div className="editor-card">
-                      <label className="editor-field editor-field-body">
+                  {activeNote ? (
+                    <div className="sticky-note-body">
+                      <label className="editor-field editor-field-body sticky-note-field">
                         <textarea
-                          className="paper-editor"
+                          className="paper-editor sticky-note-editor"
                           data-testid="note-body-input"
                           value={activeNote.body}
                           placeholder="여기에 메모를 적으세요."
@@ -1808,86 +1695,359 @@ function App() {
                         />
                       </label>
                     </div>
+                  ) : (
+                    <section className="sticky-note-empty" data-testid="editor-empty-state">
+                      <strong>메모가 없습니다</strong>
+                      <p>왼쪽 상단의 + 버튼으로 새 스티커 메모를 추가하세요.</p>
+                    </section>
+                  )}
+                </article>
+
+              </div>
+            ) : (
+              <div className="paper">
+                <header className="paper-head">
+                  <div className="paper-topline">
+                    <div className="paper-heading paper-heading-compact">
+                      <span className="paper-kicker">{paperKicker}</span>
+                      {showPaperStatus ? <span className="paper-heading-status">{paperStatusLabel}</span> : null}
+                    </div>
+
+                    <div className="paper-heading-tools">
+                      <div className="paper-toolbar paper-toolbar-editor" role="toolbar" aria-label="메모 도구">
+                        <button
+                          className="paper-button paper-button-icon"
+                          type="button"
+                          data-testid="open-sticky-note-button"
+                          aria-label="스티커 메모 열기"
+                          title="스티커 메모"
+                          disabled={!activeNote}
+                          onClick={() => void openStickyNoteWindow()}
+                        >
+                          <ToolbarStickyIcon />
+                        </button>
+                        <button
+                          className="paper-button paper-button-icon"
+                          type="button"
+                          data-testid="editor-toggle-sidebar-button"
+                          aria-label={isSidebarOpen ? "목록 닫기" : "목록 열기"}
+                          title={isSidebarOpen ? "목록 닫기" : "목록 열기"}
+                          aria-controls="memo-sidebar"
+                          aria-expanded={isSidebarOpen}
+                          onClick={() => {
+                            setIsSidebarOpen((current) => !current);
+                          }}
+                        >
+                          <ToolbarSidebarIcon />
+                        </button>
+                        {recentlyDeleted ? (
+                          <button
+                            className="status-button paper-button-icon"
+                            type="button"
+                            aria-label="되돌리기"
+                            title="되돌리기"
+                            disabled={isMutationLocked}
+                            onClick={() => void undoDelete()}
+                          >
+                            <ToolbarUndoIcon />
+                          </button>
+                        ) : null}
+                        <button
+                          className="paper-button paper-button-icon"
+                          type="button"
+                          data-testid="organize-note-button"
+                          aria-label="AI 정리"
+                          title="AI 정리"
+                          disabled={isMutationLocked || isStickyMode || !activeNote}
+                          onClick={openAiPromptComposer}
+                        >
+                          <ToolbarSparklesIcon />
+                        </button>
+                        <button
+                          className="paper-button paper-button-icon"
+                          type="button"
+                          data-testid="copy-note-button"
+                          aria-label="메모 복사"
+                          title="메모 복사"
+                          disabled={!activeNote}
+                          onClick={() => void copyCurrentNote()}
+                        >
+                          <ToolbarCopyIcon />
+                        </button>
+                        <button
+                          className="paper-button paper-button-icon paper-button-primary header-create-note-button"
+                          type="button"
+                          data-testid="editor-create-note-button"
+                          aria-label="새 메모 만들기"
+                          title="새 메모 만들기"
+                          disabled={isMutationLocked}
+                          onClick={() => void handleCreateNote()}
+                        >
+                          <PlusIcon />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {isAiPromptOpen ? (
+                    <div className="ai-prompt-shell">
+                      <form
+                        id="ai-prompt-form"
+                        className="ai-prompt-form"
+                        data-testid="ai-prompt-form"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          startTransformPreview();
+                        }}
+                      >
+                        <label className="ai-prompt-input">
+                          <span className="visually-hidden">AI 정리 프롬프트</span>
+                          <input
+                            ref={aiPromptInputRef}
+                            type="text"
+                            data-testid="ai-prompt-input"
+                            value={aiPrompt}
+                            disabled={isMutationLocked}
+                            placeholder="예: 더 간결하게 요약해줘, 존댓말로 바꿔줘"
+                            onChange={(event) => setAiPrompt(event.target.value)}
+                          />
+                        </label>
+                        {activeDraft ? (
+                          <button
+                            className="paper-button"
+                            type="submit"
+                            data-testid="submit-ai-prompt-button"
+                            disabled={isMutationLocked}
+                          >
+                            다시 생성
+                          </button>
+                        ) : null}
+                      </form>
+                      <div className="ai-prompt-actions">
+                        {hasBackup && !activeDraft ? (
+                          <button
+                            className="paper-button transform-restore-button"
+                            type="button"
+                            data-testid="restore-note-button"
+                            disabled={isMutationLocked}
+                            onClick={restoreOriginal}
+                          >
+                            원문 복원
+                          </button>
+                        ) : null}
+                        {activeDraft ? (
+                          <>
+                            <button
+                              className="paper-button"
+                              type="button"
+                              data-testid="cancel-transform-button"
+                              onClick={cancelTransformPreview}
+                            >
+                              취소
+                            </button>
+                            <button
+                              className="paper-button paper-button-primary"
+                              type="button"
+                              data-testid="apply-transform-button"
+                              disabled={isMutationLocked}
+                              onClick={applyTransformDraft}
+                            >
+                              적용
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              className="paper-button paper-button-primary"
+                              type="submit"
+                              form="ai-prompt-form"
+                              data-testid="submit-ai-prompt-button"
+                              disabled={isMutationLocked || isPreviewActionCoolingDown}
+                            >
+                              미리보기
+                            </button>
+                            <button
+                              className="paper-button"
+                              type="button"
+                              data-testid="cancel-ai-prompt-button"
+                              onClick={closeAiPromptComposer}
+                            >
+                              취소
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                  {isMutationLocked && storageHealth ? (
+                    <div className="storage-lock-banner" role="alert" data-testid="storage-lock-alert">
+                      <strong>편집 잠금</strong>
+                      <span>{storageHealth.errorMessage ?? "저장소 연결 확인이 완료될 때까지 편집을 잠갔다."}</span>
+                    </div>
+                  ) : null}
+                </header>
+
+                <div className={`paper-body${activeDraft ? " is-preview-mode" : ""}`}>
+                  {activeNote ? (
+                    activeDraft ? (
+                      <section className="transform-review-layout" data-testid="transform-preview">
+                        <section className="transform-review-panel transform-review-panel--accent">
+                          <div className="transform-review-panel-head">
+                            <div className="transform-review-panel-copy">
+                              <span className="transform-review-panel-label">제안 결과</span>
+                              <strong>AI가 정리한 초안</strong>
+                              <p className="transform-review-panel-note">
+                                상단 프롬프트를 수정하고 다시 생성을 누르면 아래 초안이 갱신됩니다.
+                              </p>
+                            </div>
+                            {hasBackup ? (
+                              <button
+                                className="paper-button transform-restore-button"
+                                type="button"
+                                data-testid="restore-note-button"
+                                disabled={isMutationLocked}
+                                onClick={restoreOriginal}
+                              >
+                                원문 복원
+                              </button>
+                            ) : null}
+                          </div>
+                          <pre
+                            className="transform-review-body"
+                            data-testid="transform-preview-body"
+                            tabIndex={0}
+                            aria-label="AI가 정리한 미리보기 결과"
+                          >
+                            {activeDraft.previewBody}
+                          </pre>
+                        </section>
+
+                        <aside
+                          className="transform-review-panel transform-review-panel--source"
+                          data-testid="transform-original-note"
+                        >
+                          <div className="transform-review-panel-head">
+                            <div className="transform-review-panel-copy">
+                              <span className="transform-review-panel-label">현재 원문</span>
+                              <strong>적용 전 메모</strong>
+                              <p className="transform-review-panel-note">
+                                원문은 읽기 전용 비교 영역으로 유지됩니다.
+                              </p>
+                            </div>
+                          </div>
+                          <pre
+                            className="transform-review-body transform-review-body--source"
+                            data-testid="transform-original-body"
+                            tabIndex={0}
+                            aria-label="현재 메모 원문"
+                          >
+                            {activeNote.body}
+                          </pre>
+                        </aside>
+                      </section>
+                    ) : (
+                      <div className="editor-card">
+                        <label className="editor-field editor-field-body">
+                          <textarea
+                            className="paper-editor"
+                            data-testid="note-body-input"
+                            value={activeNote.body}
+                            placeholder="여기에 메모를 적으세요."
+                            disabled={isMutationLocked}
+                            readOnly={isMutationLocked}
+                            onChange={(event) =>
+                              patchActiveNote(
+                                {
+                                  body: event.target.value,
+                                  mode: hasBackup ? activeNote.mode : "default"
+                                },
+                                "메모 내용을 수정했다."
+                              )
+                            }
+                          />
+                        </label>
+                      </div>
+                    )
+                  ) : (
+                    <section className="editor-empty" data-testid="editor-empty-state">
+                      <strong>
+                        {isCollectionEmpty
+                          ? "메모가 없습니다"
+                          : isSelectionOutsideSearch
+                            ? "현재 메모가 검색 결과에 없습니다"
+                            : "찾은 메모가 없습니다"}
+                      </strong>
+                      <p>
+                        {isCollectionEmpty
+                          ? "새 메모를 만들거나 이전 삭제를 되돌리면 다시 시작할 수 있다."
+                          : isSelectionOutsideSearch
+                            ? "검색 결과 목록에서 다른 메모를 선택하거나 첫 결과를 바로 열 수 있다."
+                            : "다른 검색어를 입력하거나 검색을 해제하세요."}
+                      </p>
+
+                      <div className="empty-actions">
+                        {!isSidebarOpen ? (
+                          <button
+                            className="paper-button"
+                            type="button"
+                            data-testid="empty-open-sidebar-button"
+                            onClick={() => {
+                              setIsSidebarOpen(true);
+                            }}
+                          >
+                            목록 열기
+                          </button>
+                        ) : null}
+                        <button
+                          className="paper-button"
+                          type="button"
+                          data-testid="empty-create-note-button"
+                          ref={emptyCreateButtonRef}
+                          disabled={isMutationLocked}
+                          onClick={() => void handleCreateNote()}
+                        >
+                          새 메모
+                        </button>
+                        {isSelectionOutsideSearch && filteredNotes[0] ? (
+                          <button
+                            className="paper-button"
+                            type="button"
+                            data-testid="empty-open-first-result-button"
+                            ref={emptyFirstResultButtonRef}
+                            onClick={() => {
+                              setSelectedNoteId(filteredNotes[0].id);
+                            }}
+                          >
+                            첫 결과 열기
+                          </button>
+                        ) : null}
+                        {hasQuery ? (
+                          <button
+                            className="paper-button"
+                            type="button"
+                            data-testid="empty-clear-search-button"
+                            ref={emptyClearSearchButtonRef}
+                            onClick={() => handleSearch("")}
+                          >
+                            검색 해제
+                          </button>
+                        ) : null}
+                        {recentlyDeleted ? (
+                          <button
+                            className="paper-button"
+                            type="button"
+                            data-testid="empty-undo-delete-button"
+                            disabled={isMutationLocked}
+                            onClick={() => void undoDelete()}
+                          >
+                            되돌리기
+                          </button>
+                        ) : null}
+                      </div>
+                    </section>
                   )}
                 </div>
               </div>
-            ) : (
-              <section className="editor-empty" data-testid="editor-empty-state">
-                <strong>
-                  {isCollectionEmpty
-                    ? "메모가 없습니다"
-                    : isSelectionOutsideSearch
-                      ? "현재 메모가 검색 결과에 없습니다"
-                      : "찾은 메모가 없습니다"}
-                </strong>
-                <p>
-                  {isCollectionEmpty
-                    ? "새 메모를 만들거나 이전 삭제를 되돌리면 다시 시작할 수 있다."
-                    : isSelectionOutsideSearch
-                      ? "검색 결과 목록에서 다른 메모를 선택하거나 첫 결과를 바로 열 수 있다."
-                      : "다른 검색어를 입력하거나 검색을 해제하세요."}
-                </p>
-
-                <div className="empty-actions">
-                  {!isSidebarOpen ? (
-                    <button
-                      className="paper-button"
-                      type="button"
-                      data-testid="empty-open-sidebar-button"
-                      onClick={() => {
-                        setIsSidebarOpen(true);
-                      }}
-                    >
-                      목록 열기
-                    </button>
-                  ) : null}
-                  <button
-                    className="paper-button"
-                    type="button"
-                    data-testid="empty-create-note-button"
-                    ref={emptyCreateButtonRef}
-                    disabled={isMutationLocked}
-                    onClick={() => void handleCreateNote()}
-                  >
-                    새 메모
-                  </button>
-                  {isSelectionOutsideSearch && filteredNotes[0] ? (
-                    <button
-                      className="paper-button"
-                      type="button"
-                      data-testid="empty-open-first-result-button"
-                      ref={emptyFirstResultButtonRef}
-                      onClick={() => {
-                        setSelectedNoteId(filteredNotes[0].id);
-                      }}
-                    >
-                      첫 결과 열기
-                    </button>
-                  ) : null}
-                  {hasQuery ? (
-                    <button
-                      className="paper-button"
-                      type="button"
-                      data-testid="empty-clear-search-button"
-                      ref={emptyClearSearchButtonRef}
-                      onClick={() => handleSearch("")}
-                    >
-                      검색 해제
-                    </button>
-                  ) : null}
-                  {recentlyDeleted ? (
-                    <button
-                      className="paper-button"
-                      type="button"
-                      data-testid="empty-undo-delete-button"
-                      disabled={isMutationLocked}
-                      onClick={() => void undoDelete()}
-                    >
-                      되돌리기
-                    </button>
-                  ) : null}
-                </div>
-              </section>
             )}
           </section>
         </section>

@@ -15,12 +15,12 @@ const defaultMinimumSize = {
   height: 720
 };
 const stickyWindowDefaultSize = {
-  width: 420,
-  height: 360
+  width: 520,
+  height: 760
 };
 const stickyWindowMinimumSize = {
-  width: 300,
-  height: 260
+  width: 360,
+  height: 480
 };
 const isPlaywrightE2E = process.env.PLAYWRIGHT_E2E === "1";
 const userDataPathOverride = process.env.AI_NOTE_USER_DATA_PATH;
@@ -383,7 +383,7 @@ function createStickyNoteWindow(noteId = null) {
     height,
     minWidth: Math.min(stickyWindowMinimumSize.width, workArea.width),
     minHeight: Math.min(stickyWindowMinimumSize.height, workArea.height),
-    backgroundColor: "#f7f3ec",
+    backgroundColor: "#f4f4f7",
     frame: false,
     autoHideMenuBar: true,
     resizable: true,

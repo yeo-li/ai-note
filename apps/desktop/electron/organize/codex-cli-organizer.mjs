@@ -4,32 +4,138 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { OrganizeProviderError } from "./organize-provider.mjs";
 
-const defaultTimeoutMs = 20000;
+const defaultTimeoutMs = 300000;
 
 function buildInstruction(input) {
   const intentGuide =
-    input.intent === "polite"
-      ? "Rewrite the memo into a more polite and send-ready tone while preserving meaning."
-      : "Polish the memo for clarity, spacing, and natural phrasing while preserving meaning.";
+      input.intent === "polite"
+          ? "Rewrite into a polite, send-ready tone."
+          : "Improve clarity, spacing, and natural phrasing.";
 
-  const userPrompt = input.prompt?.trim() ? `Additional user instruction: ${input.prompt.trim()}` : "";
+  const userPrompt = input.prompt?.trim()
+      ? `User instruction (ABSOLUTE PRIORITY): ${input.prompt.trim()}`
+      : "No additional user instruction.";
 
   return [
-    "You are organizing a memo for an Electron desktop app.",
-    intentGuide,
+    "You are a deterministic memo rewriting engine.",
+    "You MUST behave like a strict transformation system, not a creative writer.",
+    "",
+    "====================",
+    "# SYSTEM CONTRACT",
+    "====================",
+    "You MUST transform input → output under strict rules.",
+    "This prompt is a CONTRACT, not a suggestion.",
+    "",
+    "====================",
+    "# PRIORITY ORDER (STRICT)",
+    "====================",
+    "1. User instruction",
+    "2. Output schema",
+    "3. Meaning preservation",
+    "4. Intent guidance",
+    "If conflict occurs → obey ONLY higher priority.",
+    "",
+    "====================",
+    "# TASK DEFINITION",
+    "====================",
+    "- Rewrite memo while preserving meaning.",
+    "- Do NOT change facts.",
+    "- Do NOT drop important information.",
+    "- Do NOT hallucinate.",
+    "",
+    "====================",
+    "# ALLOWED OPERATIONS",
+    "====================",
+    "- simplify wording",
+    "- restructure sentences",
+    "- improve readability",
+    "- adjust tone",
+    "- add minimal connective words ONLY if necessary",
+    "",
+    "====================",
+    "# FORBIDDEN OPERATIONS",
+    "====================",
+    "- adding new facts",
+    "- removing key meaning",
+    "- over-summarizing",
+    "- changing intent",
+    "- ignoring user instruction",
+    "",
+    "====================",
+    "# CLEANING RULE (ORIGINAL FIELD)",
+    "====================",
+    "- trim whitespace",
+    "- fix formatting ONLY",
+    "- DO NOT paraphrase",
+    "- DO NOT rewrite",
+    "",
+    "====================",
+    "# SUMMARY RULE",
+    "====================",
+    "- EXACTLY ONE Korean sentence",
+    "- MUST describe transformation",
+    "- MUST NOT describe content",
+    "- MUST be specific",
+    "- ≤20 characters recommended",
+    "- BAD examples:",
+    "  ✗ 수정함",
+    "  ✗ 개선함",
+    "- GOOD examples:",
+    "  ✓ 문장을 간결하게 축약",
+    "  ✓ 구조를 목록형으로 재구성",
+    "",
+    "====================",
+    "# OUTPUT SCHEMA (STRICT)",
+    "====================",
+    "{",
+    '  "summary": string,',
+    '  "original": string,',
+    '  "suggested": string',
+    "}",
+    "",
+    "====================",
+    "# OUTPUT RULES",
+    "====================",
+    "- Return ONLY JSON",
+    "- NO markdown",
+    "- NO explanation",
+    "- NO extra fields",
+    "- MUST be parseable JSON",
+    "- Escape quotes properly",
+    "- Preserve line breaks with \\n",
+    "",
+    "====================",
+    "# SELF VALIDATION (MANDATORY)",
+    "====================",
+    "Before output, internally verify:",
+    "1. Is JSON valid?",
+    "2. Did I follow priority rules?",
+    "3. Did I avoid hallucination?",
+    "4. Is summary compliant?",
+    "If ANY fails → fix before output.",
+    "",
+    "====================",
+    "# INPUT",
+    "====================",
+    "<instruction>",
     userPrompt,
-    "Return only valid JSON matching the provided schema.",
-    "The summary must be a short Korean sentence describing what changed.",
-    "The original field must contain the cleaned original memo body.",
-    "The suggested field must contain the rewritten memo body.",
+    "</instruction>",
+    "",
+    "<intent>",
+    intentGuide,
+    "</intent>",
+    "",
+    "<context>",
     `Intent: ${input.intent}`,
     `Title: ${input.title ?? ""}`,
+    "</context>",
+    "",
     "<memo>",
     input.body,
     "</memo>"
   ]
-    .filter(Boolean)
-    .join("\n\n");
+      .filter(Boolean)
+      .join("\n");
 }
 
 function buildSchema() {
@@ -156,7 +262,9 @@ export function createCodexCliOrganizeProvider({
           intent: input.intent,
           original: String(parsed.original),
           suggested: String(parsed.suggested),
-          summary: String(parsed.summary)
+          summary: String(parsed.summary),
+          provider: "codex",
+          fallbackErrorMessage: null
         };
       } catch (error) {
         if (error instanceof OrganizeProviderError) {

@@ -33,13 +33,16 @@ test("memo store persists create, update, and delete across instances", async ()
     const store = createMemoStore({ userDataPath });
     const created = await store.create({
       title: "Call notes",
-      body: "Need to send a short follow-up."
+      body: "Need to send a short follow-up.",
+      favorite: true
     });
     const updated = await store.update(created.id, {
-      body: "Need to send a short follow-up today."
+      body: "Need to send a short follow-up today.",
+      favorite: false
     });
 
     assert.equal(updated?.body, "Need to send a short follow-up today.");
+    assert.equal(updated?.favorite, false);
 
     const reloadedStore = createMemoStore({ userDataPath });
     const listed = await reloadedStore.list();
@@ -48,6 +51,7 @@ test("memo store persists create, update, and delete across instances", async ()
     assert.equal(listed[0]?.id, created.id);
     assert.equal(listed[0]?.title, "Call notes");
     assert.equal(listed[0]?.body, "Need to send a short follow-up today.");
+    assert.equal(listed[0]?.favorite, false);
 
     const removed = await reloadedStore.delete(created.id);
     const remaining = await reloadedStore.list();
@@ -68,6 +72,21 @@ test("memo store trims titles but keeps body formatting intact", async () => {
 
     assert.equal(created.title, "Weekly sync");
     assert.equal(created.body, "Line one\n  Line two");
+  });
+});
+
+test("memo store persists favorite flag updates", async () => {
+  await withTempStore(async (store) => {
+    const created = await store.create({
+      title: "Starred memo",
+      body: "Remember this",
+      favorite: false
+    });
+
+    const updated = await store.update(created.id, { favorite: true });
+
+    assert.equal(updated?.favorite, true);
+    assert.equal((await store.get(created.id))?.favorite, true);
   });
 });
 

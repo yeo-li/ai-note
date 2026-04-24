@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Memo, MemoChangeEvent, MemoCreateInput, MemoId, MemoUpdateInput } from "@ai-note/shared/memo";
+import type { Memo, MemoChangeEvent, MemoCreateInput, MemoId, MemoOrganizeIntent, MemoUpdateInput } from "@ai-note/shared/memo";
 import type { MemoStoreHealth } from "./shared/memo-bridge";
 import { buildMemoTitleFromBody, deriveNoteHeadline } from "./note-content";
 
@@ -370,6 +370,16 @@ function buildAiOrganizedBody(text: string, prompt: string) {
   }
 
   return previewBody;
+}
+
+function deriveOrganizeIntent(prompt: string): MemoOrganizeIntent {
+  const normalizedPrompt = prompt.trim().toLowerCase();
+
+  if (/(공손|존댓말|격식|정중|polite)/.test(normalizedPrompt)) {
+    return "polite";
+  }
+
+  return "polish";
 }
 
 type LaunchContext = {
@@ -1313,7 +1323,7 @@ function App() {
     setStatusMessage("AI 정리 입력창을 닫았어요.");
   }
 
-  function startTransformPreview() {
+  async function startTransformPreview() {
     if (isMutationLocked) {
       setStatusMessage("저장소 연결이 복구될 때까지 AI 정리를 실행할 수 없어요.");
       return;
@@ -1334,18 +1344,38 @@ function App() {
     }
 
     const trimmedPrompt = aiPrompt.trim();
-    const previewBody = buildAiOrganizedBody(activeNote.body, trimmedPrompt);
+    const organizeIntent = deriveOrganizeIntent(trimmedPrompt);
 
     setDeleteIntentId(null);
     setNoteMenuId(null);
-    setDraftTransform({
-      noteId: activeNote.id,
-      prompt: trimmedPrompt,
-      previewBody
-    });
-    setIsPreviewActionCoolingDown(false);
-    setIsAiPromptOpen(true);
-    setStatusMessage(trimmedPrompt ? "AI 정리 미리보기를 만들었어요." : "기본 AI 정리 미리보기를 만들었어요.");
+    setStatusMessage(trimmedPrompt ? "AI 정리 미리보기를 만들고 있어요." : "기본 AI 정리 미리보기를 만들고 있어요.");
+
+    if (!window.memoAPI) {
+      setStatusMessage("AI 정리 브리지를 찾지 못했어요.");
+      return;
+    }
+
+    try {
+      const result = await window.memoAPI.organize({
+        memoId: activeNote.id,
+        title: buildMemoTitleFromBody(activeNote.body),
+        body: activeNote.body,
+        intent: organizeIntent,
+        prompt: trimmedPrompt
+      });
+
+      setDraftTransform({
+        noteId: activeNote.id,
+        prompt: trimmedPrompt,
+        previewBody: result.suggested
+      });
+      setIsPreviewActionCoolingDown(false);
+      setIsAiPromptOpen(true);
+      setStatusMessage(result.summary);
+    } catch (error) {
+      setDraftTransform(null);
+      setStatusMessage(toErrorMessage(error));
+    }
   }
 
   function cancelTransformPreview() {

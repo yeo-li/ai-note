@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import { memoChannels } from "./memo-channels.mjs";
 import { createMemoSearchService } from "./search/memo-search-service.mjs";
 import { createLocalOrganizer } from "./organize/local-organizer.mjs";
+import { createCodexCliOrganizeProvider } from "./organize/codex-cli-organizer.mjs";
+import { createOrganizeOrchestrator } from "./organize/organize-orchestrator.mjs";
 import { createMemoStore } from "./store/memo-store.mjs";
 import { createMemoSqliteStore } from "./store/memo-sqlite-store.mjs";
 
@@ -133,6 +135,7 @@ function normalizeOrganizeInput(value) {
   const intent = value.intent === "polish" || value.intent === "polite" ? value.intent : null;
   const body = typeof value.body === "string" ? value.body : "";
   const title = typeof value.title === "string" ? value.title : "";
+  const prompt = typeof value.prompt === "string" ? value.prompt : "";
 
   if (!memoId || !intent) {
     return null;
@@ -142,7 +145,8 @@ function normalizeOrganizeInput(value) {
     memoId,
     intent,
     title,
-    body
+    body,
+    prompt
   };
 }
 
@@ -290,6 +294,24 @@ function createPrimaryMemoStore(userDataPath) {
   }
 }
 
+function createOrganizerForEnvironment() {
+  const organizeProvider = process.env.AI_NOTE_ORGANIZE_PROVIDER?.trim().toLowerCase();
+  const localOrganizer = createLocalOrganizer();
+
+  if (organizeProvider === "local" || isPlaywrightE2E) {
+    return localOrganizer;
+  }
+
+  if (organizeProvider === "codex" || !organizeProvider) {
+    return createOrganizeOrchestrator({
+      provider: createCodexCliOrganizeProvider(),
+      fallbackProvider: localOrganizer
+    });
+  }
+
+  return localOrganizer;
+}
+
 function loadRendererWindow(windowInstance, { stickyMode = false, noteId = null } = {}) {
   const query = new URLSearchParams();
 
@@ -416,7 +438,7 @@ app.whenReady().then(() => {
       return memoStore.list();
     }
   });
-  const organizer = createLocalOrganizer();
+  const organizer = createOrganizerForEnvironment();
 
   registerMemoHandlers(memoStore, memoSearchService, organizer, primaryMemoStore);
   ipcMain.handle("window:open-sticky-note", (_event, noteId) => {

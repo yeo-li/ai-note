@@ -86,7 +86,7 @@ test.describe("AI Note desktop smoke", () => {
     await appWindow.getByTestId("submit-ai-prompt-button").click();
     await appWindow.getByTestId("apply-transform-button").click();
 
-    await expect(bodyInput).toHaveValue("첫 항목, 두 번째 항목 입니다.");
+    await expect(bodyInput).toHaveValue("첫 항목 - 두 번째 항목 부탁드립니다.");
 
     await bodyInput.fill("변환 이후 추가 편집");
     await appWindow.getByTestId("organize-note-button").click();
@@ -101,7 +101,7 @@ test.describe("AI Note desktop smoke", () => {
     const bodyInput = appWindow.getByTestId("note-body-input");
     const draftBody = appWindow.getByTestId("transform-preview-body");
     const originalBody = "적용 전 수정\n첫 문장\n두 번째 문장";
-    const previewBody = "적용 전 수정 첫 문장 두 번째 문장";
+    const previewBody = "적용 전 수정.\n첫 문장.\n두 번째 문장.";
 
     await createButton.click();
     await bodyInput.fill(originalBody);
@@ -208,7 +208,7 @@ test.describe("AI Note desktop smoke", () => {
     await expect(appWindow.getByTestId("ai-prompt-form")).toBeVisible();
     await expect(appWindow.getByTestId("ai-prompt-input")).toHaveValue("목록으로 정리해줘");
     await expect(appWindow.getByTestId("submit-ai-prompt-button")).toHaveText("다시 생성");
-    await expect(previewBody).toContainText("- Preview and delete");
+    await expect(previewBody).toContainText("Preview and delete.");
     await appWindow.getByTestId("ai-prompt-input").fill("핵심만 요약해줘");
     await appWindow.getByTestId("submit-ai-prompt-button").click();
     await expect(appWindow.getByTestId("ai-prompt-input")).toHaveValue("핵심만 요약해줘");
@@ -254,7 +254,7 @@ test.describe("AI Note desktop smoke", () => {
     await appWindow.getByTestId("organize-note-button").click();
     await expect(appWindow.getByTestId("ai-prompt-form")).toBeVisible();
     await expect(restoreButton).toBeEnabled();
-    await expect(bodyInput).toHaveValue("Undo keeps restore path 삭제 전 원문, 복원 확인 입니다.");
+    await expect(bodyInput).toHaveValue("Please undo keeps restore path.\n삭제 전 원문 - 복원 확인 부탁드립니다.");
 
     await appWindow.getByTestId("selected-note-menu-button").click();
     await appWindow.getByTestId("selected-note-delete-button").click();
@@ -262,7 +262,7 @@ test.describe("AI Note desktop smoke", () => {
     await appWindow.getByTestId("confirm-delete-button").click();
     await appWindow.getByRole("button", { name: "되돌리기" }).first().click();
 
-    await expect(bodyInput).toHaveValue("Undo keeps restore path 삭제 전 원문, 복원 확인 입니다.");
+    await expect(bodyInput).toHaveValue("Please undo keeps restore path.\n삭제 전 원문 - 복원 확인 부탁드립니다.");
     await appWindow.getByTestId("organize-note-button").click();
     await expect(appWindow.getByTestId("ai-prompt-form")).toBeVisible();
     await expect(restoreButton).toBeEnabled();

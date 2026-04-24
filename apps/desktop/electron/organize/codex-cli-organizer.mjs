@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { OrganizeProviderError } from "./organize-provider.mjs";
 
 const defaultTimeoutMs = 300000;
+const defaultModel = "gpt-5.4-mini";
 
 function buildInstruction(input) {
   const intentGuide =
@@ -182,6 +183,7 @@ function mapCodexFailure(stderr, exitCode) {
 export function createCodexCliOrganizeProvider({
   runCommand = spawn,
   timeoutMs = defaultTimeoutMs,
+  model = defaultModel,
   cwd = process.cwd()
 } = {}) {
   return {
@@ -199,6 +201,8 @@ export function createCodexCliOrganizeProvider({
             "codex",
             [
               "exec",
+              "--model",
+              model,
               "--skip-git-repo-check",
               "--sandbox",
               "read-only",

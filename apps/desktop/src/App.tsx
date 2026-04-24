@@ -1447,19 +1447,19 @@ function App() {
     .filter(Boolean)
     .join(" ");
   const paperKicker = activeDraft
-    ? "AI Preview"
+    ? "AI 미리보기"
     : activeNote?.mode === "organized"
-      ? "Refined Memo"
+      ? "정리된 메모"
       : hasQuery
-        ? "Search"
-        : "Draft";
+        ? "검색 결과"
+        : "작성 중";
   const paperStatusLabel = isMutationLocked
-    ? "Read only"
+    ? "읽기 전용"
     : activeDraft
-      ? "Preview only"
+      ? "미리보기 전용"
       : recentlyDeleted
-        ? "Undo available"
-        : "Saved locally";
+        ? "되돌리기 가능"
+        : "로컬 저장 완료";
   const showPaperStatus = isMutationLocked || Boolean(activeDraft) || Boolean(recentlyDeleted);
   const sidebarCountLabel = hasQuery ? `결과 ${filteredNotes.length}개` : `메모 ${notes.length}개`;
   return (

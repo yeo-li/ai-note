@@ -100,6 +100,7 @@ test.describe("AI Note desktop smoke", () => {
     const createButton = appWindow.getByTestId("sidebar-create-note-button");
     const bodyInput = appWindow.getByTestId("note-body-input");
     const draftBody = appWindow.getByTestId("transform-preview-body");
+    const highlightedChanges = draftBody.locator(".transform-review-change");
     const originalBody = "적용 전 수정\n첫 문장\n두 번째 문장";
     const previewBody = "적용 전 수정.\n첫 문장.\n두 번째 문장.";
 
@@ -111,6 +112,8 @@ test.describe("AI Note desktop smoke", () => {
     await appWindow.getByTestId("submit-ai-prompt-button").click();
 
     await expect(draftBody).toContainText(previewBody);
+    await expect(highlightedChanges).toHaveCount(3);
+    await expect(appWindow.getByTestId("transform-original-body").locator(".transform-review-change")).toHaveCount(0);
 
     await appWindow.getByTestId("apply-transform-button").click();
 
@@ -121,10 +124,13 @@ test.describe("AI Note desktop smoke", () => {
     const createButton = appWindow.getByTestId("sidebar-create-note-button");
     const bodyInput = appWindow.getByTestId("note-body-input");
     const noteList = appWindow.getByTestId("note-list");
+    const favoriteButton = appWindow.getByTestId("selected-note-favorite-button");
 
     await createButton.click();
     await bodyInput.fill("favorite target\nkeep me starred");
-    await appWindow.getByTestId("selected-note-favorite-button").click();
+    await favoriteButton.click();
+    await expect(favoriteButton).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(favoriteButton).toHaveCSS("color", "rgb(0, 0, 0)");
 
     await createButton.click();
     await bodyInput.fill("regular target\nshould stay out");
@@ -135,8 +141,84 @@ test.describe("AI Note desktop smoke", () => {
     await expect(noteList).toContainText("favorite target");
     await expect(noteList).not.toContainText("regular target");
 
-    await appWindow.getByTestId("selected-note-favorite-button").click();
+    await favoriteButton.click();
     await expect(appWindow.getByTestId("sidebar-empty-state")).toBeVisible();
+  });
+
+  test("locks editing while AI generates and keeps the busy state on the original note", async ({ appWindow }) => {
+    const createButton = appWindow.getByTestId("sidebar-create-note-button");
+    const bodyInput = appWindow.getByTestId("note-body-input");
+    const noteList = appWindow.getByTestId("note-list");
+
+    await createButton.click();
+    await bodyInput.fill("busy target\n첫 문장\n두 번째 문장");
+
+    await createButton.click();
+    await bodyInput.fill("idle target\n다른 메모입니다");
+
+    const busyNote = noteList.locator('[data-testid^="note-list-item-"]', { hasText: "busy target" }).first();
+    const idleNote = noteList.locator('[data-testid^="note-list-item-"]', { hasText: "idle target" }).first();
+
+    await busyNote.click();
+    await appWindow.getByTestId("organize-note-button").click();
+    await appWindow.getByTestId("ai-prompt-input").fill("존댓말로 정리해줘");
+    await appWindow.getByTestId("submit-ai-prompt-button").click();
+
+    await expect(appWindow.getByTestId("transform-progress-banner")).toBeVisible();
+    await expect(appWindow.getByTestId("note-body-input")).toBeDisabled();
+
+    await idleNote.click();
+    await expect(appWindow.getByTestId("transform-progress-banner")).toBeHidden();
+    await expect(appWindow.getByTestId("note-body-input")).toBeEnabled();
+
+    await busyNote.click();
+    await expect(appWindow.getByTestId("transform-progress-banner")).toBeVisible();
+    await expect(appWindow.getByTestId("note-body-input")).toBeDisabled();
+
+    await expect(appWindow.getByTestId("transform-success-banner")).toContainText("초 만에 생성되었어요", { timeout: 4000 });
+    await expect(appWindow.getByTestId("transform-preview")).toBeVisible();
+  });
+
+  test("locks sticky note editing while the same memo is organizing", async ({ electronApp, appWindow }) => {
+    const bodyInput = appWindow.getByTestId("note-body-input");
+
+    await appWindow.getByTestId("sidebar-create-note-button").click();
+    await bodyInput.fill("sticky busy target\n같은 메모를 잠깁니다");
+
+    const stickyWindowPromise = electronApp.waitForEvent("window");
+    await appWindow.getByTestId("open-sticky-note-button").click();
+
+    const stickyWindow = await stickyWindowPromise;
+    await stickyWindow.waitForLoadState("domcontentloaded");
+    await stickyWindow.waitForSelector('[data-testid="note-body-input"]');
+
+    await appWindow.getByTestId("organize-note-button").click();
+    await appWindow.getByTestId("ai-prompt-input").fill("핵심만 요약해줘");
+    await appWindow.getByTestId("submit-ai-prompt-button").click();
+
+    await expect(stickyWindow.getByTestId("note-body-input")).toBeDisabled();
+    await expect(appWindow.getByTestId("transform-progress-banner")).toBeVisible();
+  });
+
+  test("search and in-note find close the AI organize surface", async ({ appWindow }) => {
+    const createButton = appWindow.getByTestId("sidebar-create-note-button");
+    const bodyInput = appWindow.getByTestId("note-body-input");
+
+    await createButton.click();
+    await bodyInput.fill("close overlays\nAI prompt should close");
+
+    await appWindow.getByTestId("organize-note-button").click();
+    await expect(appWindow.getByTestId("ai-prompt-form")).toBeVisible();
+
+    await appWindow.getByTestId("note-search-input").fill("close overlays");
+    await expect(appWindow.getByTestId("ai-prompt-form")).toBeHidden();
+
+    await appWindow.getByTestId("organize-note-button").click();
+    await expect(appWindow.getByTestId("ai-prompt-form")).toBeVisible();
+
+    await appWindow.getByTestId("note-find-toggle-button").click();
+    await expect(appWindow.getByTestId("ai-prompt-form")).toBeHidden();
+    await expect(appWindow.getByTestId("note-find-bar")).toBeVisible();
   });
 
   test("opens in-note find with platform shortcut and moves between matches", async ({ appWindow }) => {

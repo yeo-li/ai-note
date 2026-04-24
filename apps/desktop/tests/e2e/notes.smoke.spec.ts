@@ -237,6 +237,48 @@ test.describe("AI Note desktop smoke", () => {
     await expect(noteList.locator('[data-testid^="note-list-item-"]')).toHaveCount(countBeforeDelete);
   });
 
+  test("keeps the compare view scrollable for long AI previews", async ({ electronApp, appWindow }) => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      win?.setSize(960, 700);
+    });
+
+    const createButton = appWindow.getByTestId("sidebar-create-note-button");
+    const bodyInput = appWindow.getByTestId("note-body-input");
+    const previewBody = appWindow.getByTestId("transform-preview-body");
+    const originalBody = appWindow.getByTestId("transform-original-body");
+
+    const longBody = Array.from({ length: 80 }, (_, index) => `긴 비교 본문 ${index + 1}번째 줄입니다. 하단 스크롤 확인용 문장입니다.`).join("\n");
+
+    await createButton.click();
+    await bodyInput.fill(longBody);
+
+    await appWindow.getByTestId("organize-note-button").click();
+    await appWindow.getByTestId("ai-prompt-input").fill("존댓말로 정리해줘");
+    await appWindow.getByTestId("submit-ai-prompt-button").click();
+
+    await expect(appWindow.getByTestId("transform-preview")).toBeVisible();
+
+    for (const locator of [previewBody, originalBody]) {
+      const scrollState = await locator.evaluate((node) => {
+        const container = node as HTMLElement;
+        const beforeTop = container.scrollTop;
+
+        container.scrollTop = container.scrollHeight;
+
+        return {
+          beforeTop,
+          afterTop: container.scrollTop,
+          clientHeight: container.clientHeight,
+          scrollHeight: container.scrollHeight
+        };
+      });
+
+      expect(scrollState.scrollHeight).toBeGreaterThan(scrollState.clientHeight);
+      expect(scrollState.afterTop).toBeGreaterThan(scrollState.beforeTop);
+    }
+  });
+
   test("restores AI original backup after delete undo", async ({ appWindow }) => {
     const createButton = appWindow.getByTestId("sidebar-create-note-button");
     const bodyInput = appWindow.getByTestId("note-body-input");

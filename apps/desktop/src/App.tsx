@@ -31,6 +31,8 @@ type TransformDraft = {
   noteId: MemoId;
   prompt: string;
   previewBody: string;
+  provider: "codex" | "local" | null;
+  fallbackErrorMessage: string | null;
 };
 
 const initialNotes: Note[] = [
@@ -586,6 +588,8 @@ function App() {
   const [findQuery, setFindQuery] = useState("");
   const [findMatchIndex, setFindMatchIndex] = useState(0);
   const [isPreviewActionCoolingDown, setIsPreviewActionCoolingDown] = useState(false);
+  const [isTransformPreviewGenerating, setIsTransformPreviewGenerating] = useState(false);
+  const [transformErrorMessage, setTransformErrorMessage] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const aiPromptInputRef = useRef<HTMLInputElement | null>(null);
   const findInputRef = useRef<HTMLInputElement | null>(null);
@@ -861,6 +865,7 @@ function App() {
   useEffect(() => {
     setIsAiPromptOpen(false);
     setAiPrompt("");
+    setTransformErrorMessage(null);
   }, [activeNote?.id]);
 
   useEffect(() => {
@@ -1019,6 +1024,7 @@ function App() {
     setDeleteIntentId(null);
     setNoteMenuId(null);
     setDraftTransform(null);
+    setTransformErrorMessage(null);
     setIsAiPromptOpen(false);
     setAiPrompt("");
   }, [isStickyMode]);
@@ -1053,6 +1059,7 @@ function App() {
     setDeleteIntentId(null);
     setNoteMenuId(null);
     setDraftTransform(null);
+    setTransformErrorMessage(null);
 
     const persistencePatch = toMemoUpdateInput(update);
 
@@ -1199,6 +1206,7 @@ function App() {
     setNoteMenuId(null);
     setRecentlyDeleted(null);
     setDraftTransform(null);
+    setTransformErrorMessage(null);
     setIsAiPromptOpen(false);
     setAiPrompt("");
     setStatusMessage("새 메모를 만들고 바로 편집할 수 있게 열어두었어요.");
@@ -1252,6 +1260,7 @@ function App() {
     setDeleteIntentId(null);
     setNoteMenuId(null);
     setDraftTransform(null);
+    setTransformErrorMessage(null);
     setIsAiPromptOpen(false);
     setAiPrompt("");
 
@@ -1320,10 +1329,15 @@ function App() {
   function closeAiPromptComposer() {
     setIsAiPromptOpen(false);
     setAiPrompt("");
+    setTransformErrorMessage(null);
     setStatusMessage("AI 정리 입력창을 닫았어요.");
   }
 
   async function startTransformPreview() {
+    if (isTransformPreviewGenerating) {
+      return;
+    }
+
     if (isMutationLocked) {
       setStatusMessage("저장소 연결이 복구될 때까지 AI 정리를 실행할 수 없어요.");
       return;
@@ -1348,6 +1362,7 @@ function App() {
 
     setDeleteIntentId(null);
     setNoteMenuId(null);
+    setTransformErrorMessage(null);
     setStatusMessage(trimmedPrompt ? "AI 정리 미리보기를 만들고 있어요." : "기본 AI 정리 미리보기를 만들고 있어요.");
 
     if (!window.memoAPI) {
@@ -1356,6 +1371,7 @@ function App() {
     }
 
     try {
+      setIsTransformPreviewGenerating(true);
       const result = await window.memoAPI.organize({
         memoId: activeNote.id,
         title: buildMemoTitleFromBody(activeNote.body),
@@ -1367,20 +1383,32 @@ function App() {
       setDraftTransform({
         noteId: activeNote.id,
         prompt: trimmedPrompt,
-        previewBody: result.suggested
+        previewBody: result.suggested,
+        provider: result.provider ?? null,
+        fallbackErrorMessage: result.fallbackErrorMessage ?? null
       });
+      setTransformErrorMessage(
+        result.fallbackErrorMessage
+          ? `LLM 결과를 가져오지 못해 로컬 규칙으로 대신 정리했어요. ${result.fallbackErrorMessage}`
+          : null
+      );
       setIsPreviewActionCoolingDown(false);
       setIsAiPromptOpen(true);
       setStatusMessage(result.summary);
     } catch (error) {
       setDraftTransform(null);
-      setStatusMessage(toErrorMessage(error));
+      const message = toErrorMessage(error);
+      setTransformErrorMessage(`LLM 결과를 가져오지 못했어요. ${message}`);
+      setStatusMessage(message);
+    } finally {
+      setIsTransformPreviewGenerating(false);
     }
   }
 
   function cancelTransformPreview() {
     setNoteMenuId(null);
     setDraftTransform(null);
+    setTransformErrorMessage(null);
     setIsPreviewActionCoolingDown(true);
     if (previewActionCooldownRef.current !== null) {
       window.clearTimeout(previewActionCooldownRef.current);
@@ -1437,6 +1465,7 @@ function App() {
     setIsAiPromptOpen(false);
     setAiPrompt("");
     setDraftTransform(null);
+    setTransformErrorMessage(null);
     setNoteMenuId(null);
     setBackups((currentBackups) => {
       const nextBackups = { ...currentBackups };
@@ -1466,6 +1495,7 @@ function App() {
     }
 
     setDraftTransform(null);
+    setTransformErrorMessage(null);
     setIsAiPromptOpen(false);
     setAiPrompt("");
     setNoteMenuId(null);
@@ -2093,6 +2123,7 @@ function App() {
                         id="ai-prompt-form"
                         className="ai-prompt-form"
                         data-testid="ai-prompt-form"
+                        aria-busy={isTransformPreviewGenerating}
                         onSubmit={(event) => {
                           event.preventDefault();
                           startTransformPreview();
@@ -2105,32 +2136,33 @@ function App() {
                             type="text"
                             data-testid="ai-prompt-input"
                             value={aiPrompt}
-                            disabled={isMutationLocked}
+                            disabled={isMutationLocked || isTransformPreviewGenerating}
                             placeholder="예: 더 간결하게 요약해줘, 존댓말로 바꿔줘"
                             onChange={(event) => setAiPrompt(event.target.value)}
                           />
                         </label>
                         {activeDraft ? (
                           <button
-                            className="paper-button"
+                            className={`paper-button${isTransformPreviewGenerating ? " is-loading" : ""}`}
                             type="submit"
                             data-testid="submit-ai-prompt-button"
-                            disabled={isMutationLocked}
+                            aria-label={isTransformPreviewGenerating ? "AI 정리 초안을 다시 생성하는 중" : "AI 정리 초안 다시 생성"}
+                            disabled={isMutationLocked || isTransformPreviewGenerating}
                           >
-                            다시 생성
+                            {isTransformPreviewGenerating ? "생성 중…" : "다시 생성"}
                           </button>
                         ) : null}
                       </form>
                       <div className="ai-prompt-actions">
                         {hasBackup && !activeDraft ? (
-                          <button
-                            className="paper-button transform-restore-button"
-                            type="button"
-                            data-testid="restore-note-button"
-                            disabled={isMutationLocked}
-                            onClick={restoreOriginal}
-                          >
-                            원문 복원
+                            <button
+                              className="paper-button transform-restore-button"
+                              type="button"
+                              data-testid="restore-note-button"
+                              disabled={isMutationLocked || isTransformPreviewGenerating}
+                              onClick={restoreOriginal}
+                            >
+                              원문 복원
                           </button>
                         ) : null}
                         {activeDraft ? (
@@ -2139,6 +2171,7 @@ function App() {
                               className="paper-button"
                               type="button"
                               data-testid="cancel-transform-button"
+                              disabled={isTransformPreviewGenerating}
                               onClick={cancelTransformPreview}
                             >
                               취소
@@ -2147,7 +2180,7 @@ function App() {
                               className="paper-button paper-button-primary"
                               type="button"
                               data-testid="apply-transform-button"
-                              disabled={isMutationLocked}
+                              disabled={isMutationLocked || isTransformPreviewGenerating}
                               onClick={applyTransformDraft}
                             >
                               적용
@@ -2156,18 +2189,20 @@ function App() {
                         ) : (
                           <>
                             <button
-                              className="paper-button paper-button-primary"
+                              className={`paper-button paper-button-primary${isTransformPreviewGenerating ? " is-loading" : ""}`}
                               type="submit"
                               form="ai-prompt-form"
                               data-testid="submit-ai-prompt-button"
-                              disabled={isMutationLocked || isPreviewActionCoolingDown}
+                              aria-label={isTransformPreviewGenerating ? "AI 정리 미리보기를 생성하는 중" : "AI 정리 미리보기 생성"}
+                              disabled={isMutationLocked || isPreviewActionCoolingDown || isTransformPreviewGenerating}
                             >
-                              미리보기
+                              {isTransformPreviewGenerating ? "생성 중…" : "미리보기"}
                             </button>
                             <button
                               className="paper-button"
                               type="button"
                               data-testid="cancel-ai-prompt-button"
+                              disabled={isTransformPreviewGenerating}
                               onClick={closeAiPromptComposer}
                             >
                               취소
@@ -2175,6 +2210,16 @@ function App() {
                           </>
                         )}
                       </div>
+                      {transformErrorMessage ? (
+                        <div
+                          className={`transform-feedback-banner${activeDraft?.fallbackErrorMessage ? " is-warning" : " is-error"}`}
+                          role={activeDraft?.fallbackErrorMessage ? "status" : "alert"}
+                          data-testid={activeDraft?.fallbackErrorMessage ? "transform-fallback-banner" : "transform-error-banner"}
+                        >
+                          <strong>{activeDraft?.fallbackErrorMessage ? "로컬 정리로 대체됨" : "AI 정리 실패"}</strong>
+                          <span>{transformErrorMessage}</span>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                   {isMutationLocked && storageHealth ? (

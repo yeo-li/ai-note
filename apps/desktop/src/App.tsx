@@ -715,22 +715,6 @@ function App() {
       return;
     }
 
-    if (hasQuery) {
-      if (selectedNote) {
-        return;
-      }
-
-      if (filteredNotes.length > 0) {
-        setSelectedNoteId(filteredNotes[0].id);
-        return;
-      }
-
-      if (selectedNoteId !== notes[0].id) {
-        setSelectedNoteId(notes[0].id);
-      }
-      return;
-    }
-
     if (sidebarView === "favorites") {
       if (scopedNotes.length === 0) {
         return;
@@ -751,19 +735,11 @@ function App() {
     if (selectedNoteId !== notes[0].id) {
       setSelectedNoteId(notes[0].id);
     }
-  }, [filteredNotes, hasQuery, notes, scopedNotes, selectedNote, selectedNoteId, sidebarView]);
+  }, [notes, scopedNotes, selectedNote, selectedNoteId, sidebarView]);
 
   const activeNote = useMemo(() => {
     if (notes.length === 0) {
       return null;
-    }
-
-    if (hasQuery) {
-      if (filteredNotes.length === 0) {
-        return null;
-      }
-
-      return filteredNotes.find((note) => note.id === selectedNoteId) ?? null;
     }
 
     if (sidebarView === "favorites") {
@@ -775,12 +751,12 @@ function App() {
     }
 
     return selectedNote ?? notes[0];
-  }, [filteredNotes, hasQuery, notes, scopedNotes, selectedNote, selectedNoteId, sidebarView]);
+  }, [notes, scopedNotes, selectedNote, selectedNoteId, sidebarView]);
 
   const isCollectionEmpty = notes.length === 0;
   const isSidebarViewEmpty = scopedNotes.length === 0;
-  const isSelectionOutsideSearch =
-    (hasQuery || sidebarView === "favorites") && Boolean(selectedNote) && !filteredNotes.some((note) => note.id === selectedNoteId);
+  const isSelectionOutsideCurrentSidebarScope =
+    sidebarView === "favorites" && Boolean(selectedNote) && !scopedNotes.some((note) => note.id === selectedNoteId);
   const hasBackup = activeNote ? Boolean(backups[activeNote.id]) : false;
   const activeDraft =
     draftTransform && activeNote && draftTransform.noteId === activeNote.id ? draftTransform : null;
@@ -839,7 +815,7 @@ function App() {
   }, [isAiPromptOpen]);
 
   useEffect(() => {
-    if (activeNote || !hasQuery || typeof document === "undefined") {
+    if (activeNote || typeof document === "undefined") {
       return;
     }
 
@@ -854,7 +830,7 @@ function App() {
       searchInputRef.current;
 
     nextTarget?.focus();
-  }, [activeNote, hasQuery, isSelectionOutsideSearch]);
+  }, [activeNote, isSelectionOutsideCurrentSidebarScope]);
 
   useEffect(() => {
     return () => {
@@ -2038,20 +2014,14 @@ function App() {
                           ? "메모가 없습니다"
                           : sidebarView === "favorites" && !hasQuery && !activeNote
                             ? "즐겨찾기 메모가 없습니다"
-                            : isSelectionOutsideSearch
-                            ? "현재 메모가 검색 결과에 없습니다"
-                            : "찾은 메모가 없습니다"}
+                            : "선택한 메모가 없습니다"}
                       </strong>
                       <p>
                         {isCollectionEmpty
                           ? "새 메모를 만들거나 이전 삭제를 되돌리면 다시 시작할 수 있다."
                           : sidebarView === "favorites" && !hasQuery && !activeNote
                             ? "메모 목록에서 별을 누르면 즐겨찾기만 따로 모아볼 수 있습니다."
-                          : isSelectionOutsideSearch
-                            ? sidebarView === "favorites" && !hasQuery
-                              ? "즐겨찾기 목록에서 다른 메모를 선택하거나 별표를 다시 조정해 주세요."
-                              : "검색 결과 목록에서 다른 메모를 선택하거나 첫 결과를 바로 열 수 있다."
-                            : "다른 검색어를 입력하거나 검색을 해제하세요."}
+                            : "왼쪽 목록에서 메모를 선택하거나 새 메모를 만드세요."}
                       </p>
 
                       <div className="empty-actions">
@@ -2077,30 +2047,6 @@ function App() {
                         >
                           새 메모
                         </button>
-                        {isSelectionOutsideSearch && filteredNotes[0] ? (
-                          <button
-                            className="paper-button"
-                            type="button"
-                            data-testid="empty-open-first-result-button"
-                            ref={emptyFirstResultButtonRef}
-                            onClick={() => {
-                              setSelectedNoteId(filteredNotes[0].id);
-                            }}
-                          >
-                            첫 결과 열기
-                          </button>
-                        ) : null}
-                        {hasQuery ? (
-                          <button
-                            className="paper-button"
-                            type="button"
-                            data-testid="empty-clear-search-button"
-                            ref={emptyClearSearchButtonRef}
-                            onClick={() => handleSearch("")}
-                          >
-                            검색 해제
-                          </button>
-                        ) : null}
                         {recentlyDeleted ? (
                           <button
                             className="paper-button"

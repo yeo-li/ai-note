@@ -65,7 +65,7 @@ test.describe("AI Note desktop smoke", () => {
     await expect(appWindow.getByTestId("sidebar-empty-state")).toBeVisible();
     await expect(appWindow.getByTestId("editor-empty-state")).toBeHidden();
     await expect(bodyInput).toHaveValue(selectedBody);
-    await expect(appWindow.getByTestId("status-live-region")).toContainText("찾지 못했다");
+    await expect(appWindow.getByTestId("status-live-region")).toContainText("찾지 못했어요");
 
     await searchInput.clear();
 
@@ -137,6 +137,28 @@ test.describe("AI Note desktop smoke", () => {
 
     await appWindow.getByTestId("selected-note-favorite-button").click();
     await expect(appWindow.getByTestId("sidebar-empty-state")).toBeVisible();
+  });
+
+  test("opens in-note find with platform shortcut and moves between matches", async ({ appWindow }) => {
+    const createButton = appWindow.getByTestId("sidebar-create-note-button");
+    const bodyInput = appWindow.getByTestId("note-body-input");
+
+    await createButton.click();
+    await bodyInput.fill("find target\nalpha beta alpha beta");
+
+    await appWindow.keyboard.press(process.platform === "darwin" ? "Meta+F" : "Control+F");
+
+    await expect(appWindow.getByTestId("note-find-bar")).toBeVisible();
+    await expect(appWindow.getByTestId("note-find-input")).toBeFocused();
+
+    await appWindow.getByTestId("note-find-input").fill("alpha");
+    await expect(appWindow.getByTestId("note-find-count")).toContainText("1/2");
+
+    await appWindow.getByTestId("note-find-next-button").click();
+    await expect(appWindow.getByTestId("note-find-count")).toContainText("2/2");
+
+    await appWindow.getByTestId("note-find-close-button").click();
+    await expect(appWindow.getByTestId("note-find-bar")).toBeHidden();
   });
 
   test("keeps the adjacent visible note selected after deleting inside filtered results", async ({ appWindow }) => {

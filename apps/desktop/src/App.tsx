@@ -209,11 +209,11 @@ function getStorageStatusSummary(health: MemoStoreHealth | null) {
   }
 
   if (!health.ready) {
-    return "저장소 연결을 확인하지 못해 현재 편집을 잠갔다.";
+  return "저장소 연결을 확인하지 못해서 지금은 편집을 잠가두었어요.";
   }
 
   if (health.fallbackReason) {
-    return `SQLite 초기화에 실패해 ${getStorageKindLabel(health.storeKind)} 저장소로 전환했다.`;
+  return `SQLite 초기화에 실패해서 ${getStorageKindLabel(health.storeKind)} 저장소로 전환했어요.`;
   }
 
   return "";
@@ -497,6 +497,15 @@ function NoteFavoriteIcon() {
   );
 }
 
+function ToolbarFindIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="11" cy="11" r="6" />
+      <path d="m16 16 4 4" />
+    </svg>
+  );
+}
+
 function NoteMenuIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -505,6 +514,39 @@ function NoteMenuIcon() {
       <path d="M12 19h.01" />
     </svg>
   );
+}
+
+type FindMatch = {
+  start: number;
+  end: number;
+};
+
+function findMatchesInBody(body: string, query: string): FindMatch[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+
+  if (!normalizedQuery) {
+    return [];
+  }
+
+  const normalizedBody = body.toLocaleLowerCase();
+  const matches: FindMatch[] = [];
+  let searchIndex = 0;
+
+  while (searchIndex < normalizedBody.length) {
+    const matchIndex = normalizedBody.indexOf(normalizedQuery, searchIndex);
+
+    if (matchIndex === -1) {
+      break;
+    }
+
+    matches.push({
+      start: matchIndex,
+      end: matchIndex + normalizedQuery.length
+    });
+    searchIndex = matchIndex + normalizedQuery.length;
+  }
+
+  return matches;
 }
 
 function App() {
@@ -520,7 +562,7 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(!launchContext.stickyMode);
   const [isStickyMode, setIsStickyMode] = useState(launchContext.stickyMode);
   const [isStickyPinned, setIsStickyPinned] = useState(false);
-  const [statusMessage, setStatusMessage] = useState("저장소 연결 상태를 확인하고 있다.");
+  const [statusMessage, setStatusMessage] = useState("저장소 연결 상태를 확인하고 있어요.");
   const [storageHealth, setStorageHealth] = useState<MemoStoreHealth | null>(null);
   const [isStorageLocked, setIsStorageLocked] = useState(true);
   const [backups, setBackups] = useState<Record<MemoId, NoteBackup>>({});
@@ -530,9 +572,14 @@ function App() {
   const [draftTransform, setDraftTransform] = useState<TransformDraft | null>(null);
   const [isAiPromptOpen, setIsAiPromptOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
+  const [isFindBarOpen, setIsFindBarOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [findMatchIndex, setFindMatchIndex] = useState(0);
   const [isPreviewActionCoolingDown, setIsPreviewActionCoolingDown] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const aiPromptInputRef = useRef<HTMLInputElement | null>(null);
+  const findInputRef = useRef<HTMLInputElement | null>(null);
+  const noteBodyInputRef = useRef<HTMLTextAreaElement | null>(null);
   const previewActionCooldownRef = useRef<number | null>(null);
   const emptyCreateButtonRef = useRef<HTMLButtonElement | null>(null);
   const emptyFirstResultButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -562,12 +609,12 @@ function App() {
           bridgeConnected: false,
           ready: false,
           storeKind: "memory",
-          errorMessage: "memoAPI 브리지를 찾지 못했다."
+          errorMessage: "memoAPI 브리지를 찾지 못했어요."
         });
         setIsStorageLocked(true);
         setNotes([]);
         setSelectedNoteId("");
-        setStatusMessage("메모 저장소 브리지가 연결되지 않아 편집을 잠갔다.");
+        setStatusMessage("메모 저장소 브리지가 연결되지 않아서 편집을 잠가두었어요.");
         return;
       }
 
@@ -579,7 +626,7 @@ function App() {
                 bridgeConnected: true,
                 ready: false,
                 storeKind: "memory" as const,
-                errorMessage: "memoAPI.health 핸들러를 찾지 못했다."
+                errorMessage: "memoAPI.health 핸들러를 찾지 못했어요."
               };
 
         if (cancelled) {
@@ -592,7 +639,7 @@ function App() {
           setIsStorageLocked(true);
           setNotes([]);
           setSelectedNoteId("");
-          setStatusMessage(`저장소 연결 실패: ${health.errorMessage ?? "원인을 확인할 수 없다."}`);
+          setStatusMessage(`저장소 연결에 실패했어요: ${health.errorMessage ?? "원인을 확인할 수 없어요."}`);
           return;
         }
 
@@ -616,8 +663,8 @@ function App() {
           setSelectedNoteId(preferredSelectedNote);
           setStatusMessage(
             health.fallbackReason
-              ? `SQLite 초기화 실패로 ${storageLabel} 저장소를 사용 중이다.`
-              : `${storageLabel} 저장소를 불러왔다.`
+              ? `SQLite 초기화에 실패해서 ${storageLabel} 저장소를 사용하고 있어요.`
+              : `${storageLabel} 저장소를 불러왔어요.`
           );
           return;
         }
@@ -645,8 +692,8 @@ function App() {
         setSelectedNoteId(preferredSeededNote);
         setStatusMessage(
           health.fallbackReason
-            ? `SQLite 초기화 실패로 ${storageLabel} 저장소를 초기화했다.`
-            : `${storageLabel} 저장소를 초기화했다.`
+            ? `SQLite 초기화에 실패해서 ${storageLabel} 저장소를 초기화했어요.`
+            : `${storageLabel} 저장소를 초기화했어요.`
         );
       } catch (error) {
         if (!cancelled) {
@@ -660,7 +707,7 @@ function App() {
           setIsStorageLocked(true);
           setNotes([]);
           setSelectedNoteId("");
-          setStatusMessage(`저장소 연결이 중단되어 편집을 잠갔다: ${message}`);
+          setStatusMessage(`저장소 연결이 중단되어서 편집을 잠가두었어요: ${message}`);
         }
       }
     }
@@ -752,6 +799,7 @@ function App() {
 
     return selectedNote ?? notes[0];
   }, [notes, scopedNotes, selectedNote, selectedNoteId, sidebarView]);
+  const findMatches = useMemo(() => findMatchesInBody(activeNote?.body ?? "", findQuery), [activeNote?.body, findQuery]);
 
   const isCollectionEmpty = notes.length === 0;
   const isSidebarViewEmpty = scopedNotes.length === 0;
@@ -813,6 +861,51 @@ function App() {
     aiPromptInputRef.current?.focus();
     aiPromptInputRef.current?.select();
   }, [isAiPromptOpen]);
+
+  useEffect(() => {
+    if (!isFindBarOpen) {
+      return;
+    }
+
+    findInputRef.current?.focus();
+    findInputRef.current?.select();
+  }, [isFindBarOpen]);
+
+  useEffect(() => {
+    setIsFindBarOpen(false);
+    setFindQuery("");
+    setFindMatchIndex(0);
+  }, [activeNote?.id, isStickyMode]);
+
+  useEffect(() => {
+    if (!isFindBarOpen) {
+      return;
+    }
+
+    if (findMatches.length === 0) {
+      setFindMatchIndex(0);
+      return;
+    }
+
+    if (findMatchIndex >= findMatches.length) {
+      setFindMatchIndex(0);
+    }
+  }, [findMatchIndex, findMatches, isFindBarOpen]);
+
+  useEffect(() => {
+    if (!isFindBarOpen || !activeNote || findMatches.length === 0) {
+      return;
+    }
+
+    const target = findMatches[findMatchIndex] ?? findMatches[0];
+
+    if (!target || !noteBodyInputRef.current) {
+      return;
+    }
+
+    noteBodyInputRef.current.focus();
+    noteBodyInputRef.current.setSelectionRange(target.start, target.end);
+  }, [activeNote, findMatchIndex, findMatches, isFindBarOpen]);
 
   useEffect(() => {
     if (activeNote || typeof document === "undefined") {
@@ -922,7 +1015,7 @@ function App() {
 
   function patchActiveNote(update: Partial<Note>, message?: string) {
     if (isMutationLocked) {
-      setStatusMessage("저장소 연결이 복구될 때까지 편집이 잠겨 있다.");
+      setStatusMessage("저장소 연결이 복구될 때까지 편집이 잠겨 있어요.");
       return;
     }
 
@@ -961,7 +1054,7 @@ function App() {
           // IME 조합 입력(한글)에서 중복 입력처럼 보일 수 있어 로컬 상태를 유지한다.
         })
         .catch(() => {
-          setStatusMessage("메모 변경을 저장소에 반영하지 못했다.");
+          setStatusMessage("메모 변경을 저장소에 반영하지 못했어요.");
         });
     }
 
@@ -976,11 +1069,11 @@ function App() {
     setNoteMenuId(null);
 
     if (nextView === "favorites") {
-      setStatusMessage("즐겨찾기 메모만 보고 있다.");
+      setStatusMessage("즐겨찾기 메모만 보고 있어요.");
       return;
     }
 
-    setStatusMessage(hasQuery ? "현재 검색어로 전체 메모를 다시 보고 있다." : "전체 메모를 보고 있다.");
+    setStatusMessage(hasQuery ? "현재 검색어 기준으로 전체 메모를 다시 보고 있어요." : "전체 메모를 보고 있어요.");
   }
 
   function toggleFavorite(noteId: MemoId) {
@@ -1003,18 +1096,72 @@ function App() {
       )
     );
     setNoteMenuId(null);
-    setStatusMessage(nextFavorite ? "즐겨찾기에 추가했다." : "즐겨찾기에서 제거했다.");
+    setStatusMessage(nextFavorite ? "즐겨찾기에 추가했어요." : "즐겨찾기에서 뺐어요.");
 
     if (window.memoAPI) {
       void window.memoAPI.update(noteId, { favorite: nextFavorite }).catch(() => {
-        setStatusMessage("즐겨찾기 상태를 저장소에 반영하지 못했다.");
+        setStatusMessage("즐겨찾기 상태를 저장소에 반영하지 못했어요.");
       });
     }
   }
 
+  function openFindBar() {
+    if (!activeNote || isStickyMode) {
+      setStatusMessage("지금은 메모 본문 찾기를 열 수 없어요.");
+      return;
+    }
+
+    setIsFindBarOpen(true);
+    setStatusMessage("메모 안에서 찾기를 열었어요.");
+  }
+
+  function closeFindBar() {
+    setIsFindBarOpen(false);
+    setFindQuery("");
+    setFindMatchIndex(0);
+    noteBodyInputRef.current?.focus();
+    setStatusMessage("메모 안에서 찾기를 닫았어요.");
+  }
+
+  function moveFindMatch(direction: 1 | -1) {
+    if (findMatches.length === 0) {
+      setStatusMessage(`"${findQuery.trim()}"을 찾지 못했어요.`);
+      return;
+    }
+
+    setFindMatchIndex((currentIndex) => {
+      const nextIndex = (currentIndex + direction + findMatches.length) % findMatches.length;
+      return nextIndex;
+    });
+    setStatusMessage(`"${findQuery.trim()}" 검색 결과 ${findMatches.length}개 중에서 이동하고 있어요.`);
+  }
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handleKeydown = (event: KeyboardEvent) => {
+      const isFindShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f";
+
+      if (!isFindShortcut) {
+        return;
+      }
+
+      event.preventDefault();
+      openFindBar();
+    };
+
+    window.addEventListener("keydown", handleKeydown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeydown);
+    };
+  }, [activeNote, isStickyMode]);
+
   async function handleCreateNote() {
     if (isMutationLocked) {
-      setStatusMessage("저장소 연결이 복구될 때까지 새 메모를 만들 수 없다.");
+      setStatusMessage("저장소 연결이 복구될 때까지 새 메모를 만들 수 없어요.");
       return;
     }
 
@@ -1030,7 +1177,7 @@ function App() {
 
         nextNote = toNoteFromMemo(createdMemo);
       } catch {
-        setStatusMessage("새 메모를 만들지 못했다.");
+        setStatusMessage("새 메모를 만들지 못했어요.");
         return;
       }
     }
@@ -1044,19 +1191,19 @@ function App() {
     setDraftTransform(null);
     setIsAiPromptOpen(false);
     setAiPrompt("");
-    setStatusMessage("새 메모를 만들고 바로 편집 상태로 열었다.");
+    setStatusMessage("새 메모를 만들고 바로 편집할 수 있게 열어두었어요.");
   }
 
   async function handleCreateStickyNoteWindow() {
     if (isMutationLocked) {
-      setStatusMessage("저장소 연결이 복구될 때까지 새 스티커 메모를 만들 수 없다.");
+      setStatusMessage("저장소 연결이 복구될 때까지 새 스티커 메모를 만들 수 없어요.");
       return;
     }
 
     const openStickyNote = window.desktopAPI?.window?.openStickyNote;
 
     if (!openStickyNote) {
-      setStatusMessage("스티커 메모는 데스크톱 앱에서만 새 창으로 열 수 있다.");
+      setStatusMessage("스티커 메모는 데스크톱 앱에서만 새 창으로 열 수 있어요.");
       return;
     }
 
@@ -1072,7 +1219,7 @@ function App() {
 
         nextNote = toNoteFromMemo(createdMemo);
       } catch {
-        setStatusMessage("새 스티커 메모를 만들지 못했다.");
+        setStatusMessage("새 스티커 메모를 만들지 못했어요.");
         return;
       }
     }
@@ -1081,9 +1228,9 @@ function App() {
 
     try {
       await openStickyNote(nextNote.id);
-      setStatusMessage("새 스티커 메모를 추가했다.");
+      setStatusMessage("새 스티커 메모를 추가했어요.");
     } catch {
-      setStatusMessage("새 스티커 메모 창을 열지 못했다.");
+      setStatusMessage("새 스티커 메모 창을 열지 못했어요.");
     }
   }
 
@@ -1103,21 +1250,21 @@ function App() {
         setSelectedNoteId(selectedNote.id);
       }
 
-      setStatusMessage(sidebarView === "favorites" ? "즐겨찾기 목록을 다시 보고 있다." : "전체 메모를 다시 보고 있다.");
+      setStatusMessage(sidebarView === "favorites" ? "즐겨찾기 목록을 다시 보고 있어요." : "전체 메모를 다시 보고 있어요.");
       return;
     }
 
     if (selectedNote && matchesQuery(selectedNote, nextQuery)) {
-      setStatusMessage(`"${trimmedQuery}" 검색 결과 ${matchingNotes.length}개에서 현재 메모를 유지하고 있다.`);
+      setStatusMessage(`"${trimmedQuery}" 검색 결과 ${matchingNotes.length}개 안에서도 현재 메모를 그대로 보고 있어요.`);
       return;
     }
 
     if (matchingNotes.length > 0) {
-      setStatusMessage(`"${trimmedQuery}" 검색 결과 ${matchingNotes.length}개다. 목록에서 메모를 선택하세요.`);
+      setStatusMessage(`"${trimmedQuery}" 검색 결과가 ${matchingNotes.length}개 있어요. 목록에서 메모를 골라주세요.`);
       return;
     }
 
-    setStatusMessage(`"${trimmedQuery}"에 맞는 메모를 찾지 못했다.`);
+    setStatusMessage(`"${trimmedQuery}"에 맞는 메모를 찾지 못했어요.`);
   }
 
   function rememberOriginalIfNeeded() {
@@ -1140,12 +1287,12 @@ function App() {
 
   function openAiPromptComposer() {
     if (isMutationLocked) {
-      setStatusMessage("저장소 연결이 복구될 때까지 AI 정리를 실행할 수 없다.");
+      setStatusMessage("저장소 연결이 복구될 때까지 AI 정리를 실행할 수 없어요.");
       return;
     }
 
     if (isStickyMode) {
-      setStatusMessage("스티커 메모에서는 AI 정리 미리보기를 열 수 없다. 일반 모드에서 실행하세요.");
+      setStatusMessage("스티커 메모에서는 AI 정리 미리보기를 열 수 없어요. 일반 모드에서 실행해 주세요.");
       return;
     }
 
@@ -1157,23 +1304,23 @@ function App() {
     setNoteMenuId(null);
     setAiPrompt((currentPrompt) => currentPrompt || activeDraft?.prompt || "");
     setIsAiPromptOpen(true);
-    setStatusMessage("AI 정리 프롬프트 입력창을 열었다.");
+    setStatusMessage("AI 정리 입력창을 열어두었어요.");
   }
 
   function closeAiPromptComposer() {
     setIsAiPromptOpen(false);
     setAiPrompt("");
-    setStatusMessage("AI 정리 입력창을 닫았다.");
+    setStatusMessage("AI 정리 입력창을 닫았어요.");
   }
 
   function startTransformPreview() {
     if (isMutationLocked) {
-      setStatusMessage("저장소 연결이 복구될 때까지 AI 정리를 실행할 수 없다.");
+      setStatusMessage("저장소 연결이 복구될 때까지 AI 정리를 실행할 수 없어요.");
       return;
     }
 
     if (isStickyMode) {
-      setStatusMessage("스티커 메모에서는 AI 정리 미리보기를 열 수 없다. 일반 모드에서 실행하세요.");
+      setStatusMessage("스티커 메모에서는 AI 정리 미리보기를 열 수 없어요. 일반 모드에서 실행해 주세요.");
       return;
     }
 
@@ -1182,7 +1329,7 @@ function App() {
     }
 
     if (!activeNote.body.trim()) {
-      setStatusMessage("본문이 비어 있어서 정리할 내용이 없다.");
+      setStatusMessage("본문이 비어 있어서 정리할 내용이 없어요.");
       return;
     }
 
@@ -1198,7 +1345,7 @@ function App() {
     });
     setIsPreviewActionCoolingDown(false);
     setIsAiPromptOpen(true);
-    setStatusMessage(trimmedPrompt ? "AI 정리 미리보기를 만들었다." : "기본 AI 정리 미리보기를 만들었다.");
+    setStatusMessage(trimmedPrompt ? "AI 정리 미리보기를 만들었어요." : "기본 AI 정리 미리보기를 만들었어요.");
   }
 
   function cancelTransformPreview() {
@@ -1212,12 +1359,12 @@ function App() {
       setIsPreviewActionCoolingDown(false);
       previewActionCooldownRef.current = null;
     }, 220);
-    setStatusMessage("미리보기를 닫았다.");
+    setStatusMessage("미리보기를 닫았어요.");
   }
 
   function applyTransformDraft() {
     if (isMutationLocked) {
-      setStatusMessage("저장소 연결이 복구될 때까지 미리보기를 적용할 수 없다.");
+      setStatusMessage("저장소 연결이 복구될 때까지 미리보기를 적용할 수 없어요.");
       return;
     }
 
@@ -1232,18 +1379,18 @@ function App() {
         body: activeDraft.previewBody,
         mode: "organized"
       },
-      activeDraft.prompt ? "AI 정리 결과를 현재 메모에 반영했다." : "기본 AI 정리 결과를 반영했다."
+      activeDraft.prompt ? "AI 정리 결과를 현재 메모에 반영했어요." : "기본 AI 정리 결과를 반영했어요."
     );
   }
 
   function restoreOriginal() {
     if (isMutationLocked) {
-      setStatusMessage("저장소 연결이 복구될 때까지 원문 복원을 실행할 수 없다.");
+      setStatusMessage("저장소 연결이 복구될 때까지 원문 복원을 실행할 수 없어요.");
       return;
     }
 
     if (!activeNote || !backups[activeNote.id]) {
-      setStatusMessage("복원할 원문이 없다.");
+      setStatusMessage("복원할 원문이 없어요.");
       return;
     }
 
@@ -1254,7 +1401,7 @@ function App() {
         body: original.body,
         mode: original.mode
       },
-      "원문 상태로 다시 복원했다."
+      "원문 상태로 다시 복원했어요."
     );
 
     setIsAiPromptOpen(false);
@@ -1270,7 +1417,7 @@ function App() {
 
   function beginDeleteNote(noteId?: MemoId) {
     if (isMutationLocked) {
-      setStatusMessage("저장소 연결이 복구될 때까지 삭제를 실행할 수 없다.");
+      setStatusMessage("저장소 연결이 복구될 때까지 삭제할 수 없어요.");
       return;
     }
 
@@ -1280,7 +1427,7 @@ function App() {
 
     if (noteId && !targetNote) {
       setNoteMenuId(null);
-      setStatusMessage("삭제 대상을 찾지 못했다.");
+      setStatusMessage("삭제할 메모를 찾지 못했어요.");
       return;
     }
 
@@ -1298,7 +1445,7 @@ function App() {
 
   function cancelDeleteNote() {
     setDeleteIntentId(null);
-    setStatusMessage("삭제를 취소했다.");
+    setStatusMessage("삭제를 취소했어요.");
   }
 
   function toggleNoteMenu(noteId: MemoId) {
@@ -1308,7 +1455,7 @@ function App() {
 
   function confirmDeleteNote() {
     if (isMutationLocked) {
-      setStatusMessage("저장소 연결이 복구될 때까지 삭제를 실행할 수 없다.");
+      setStatusMessage("저장소 연결이 복구될 때까지 삭제할 수 없어요.");
       return;
     }
 
@@ -1358,18 +1505,18 @@ function App() {
       delete nextBackups[deleteTargetNote.id];
       return nextBackups;
     });
-    setStatusMessage("메모를 삭제했습니다. 되돌릴 수 있다.");
+      setStatusMessage("메모를 삭제했어요. 바로 되돌릴 수 있어요.");
 
     if (window.memoAPI) {
       void window.memoAPI.delete(deletedNoteId).catch(() => {
-        setStatusMessage("메모 삭제를 저장소에 반영하지 못했다.");
+      setStatusMessage("메모 삭제를 저장소에 반영하지 못했어요.");
       });
     }
   }
 
   async function undoDelete() {
     if (isMutationLocked) {
-      setStatusMessage("저장소 연결이 복구될 때까지 되돌리기를 실행할 수 없다.");
+      setStatusMessage("저장소 연결이 복구될 때까지 되돌리기를 실행할 수 없어요.");
       return;
     }
 
@@ -1389,7 +1536,7 @@ function App() {
 
         restoredNote = toNoteFromMemo(recreatedMemo, deletedSnapshot.note.mode);
       } catch {
-        setStatusMessage("삭제 복원을 저장소에 반영하지 못했다.");
+      setStatusMessage("삭제 복원을 저장소에 반영하지 못했어요.");
       }
     }
 
@@ -1421,21 +1568,21 @@ function App() {
     const openStickyNote = window.desktopAPI?.window?.openStickyNote;
 
     if (!openStickyNote) {
-      setStatusMessage("스티커 메모는 데스크톱 앱에서만 새 창으로 열 수 있다.");
+      setStatusMessage("스티커 메모는 데스크톱 앱에서만 새 창으로 열 수 있어요.");
       return;
     }
 
     try {
       await openStickyNote(activeNote?.id ?? null);
-      setStatusMessage("새 스티커 메모 창을 열었다.");
+      setStatusMessage("새 스티커 메모 창을 열어두었어요.");
     } catch {
-      setStatusMessage("스티커 메모 창을 열지 못했다.");
+      setStatusMessage("스티커 메모 창을 열지 못했어요.");
     }
   }
 
   async function toggleStickyPinned() {
     if (!isDedicatedStickyWindow) {
-      setStatusMessage("스티커 창에서만 고정 기능을 사용할 수 있다.");
+      setStatusMessage("스티커 창에서만 고정 기능을 사용할 수 있어요.");
       return;
     }
 
@@ -1449,9 +1596,9 @@ function App() {
     try {
       const pinned = await setStickyPinned(!isStickyPinned);
       setIsStickyPinned(pinned);
-      setStatusMessage(pinned ? "스티커 메모를 화면 최상단에 고정했다." : "스티커 메모 고정을 해제했다.");
+      setStatusMessage(pinned ? "스티커 메모를 화면 맨 위에 고정했어요." : "스티커 메모 고정을 해제했어요.");
     } catch {
-      setStatusMessage("스티커 메모 고정 상태를 변경하지 못했다.");
+      setStatusMessage("스티커 메모 고정 상태를 바꾸지 못했어요.");
     }
   }
 
@@ -1608,16 +1755,6 @@ function App() {
                       </button>
                       <div className="note-list-actions" data-note-menu-root="true" onClick={(event) => event.stopPropagation()}>
                         <button
-                          className={`note-list-favorite-button${note.favorite ? " is-favorite" : ""}`}
-                          type="button"
-                          data-testid={isSelected ? "selected-note-favorite-button" : `note-favorite-button-${note.id}`}
-                          aria-label={note.favorite ? `${noteLabel} 메모 즐겨찾기 해제` : `${noteLabel} 메모 즐겨찾기 추가`}
-                          aria-pressed={note.favorite}
-                          onClick={() => toggleFavorite(note.id)}
-                        >
-                          <NoteFavoriteIcon />
-                        </button>
-                        <button
                           className="note-list-menu-button"
                           type="button"
                           data-testid={isSelected ? "selected-note-menu-button" : undefined}
@@ -1650,17 +1787,17 @@ function App() {
               <section className="note-list sidebar-empty" data-testid="sidebar-empty-state">
                 <strong>
                   {isCollectionEmpty
-                    ? "메모가 없습니다"
+                    ? "메모가 없어요"
                     : sidebarView === "favorites" && !hasQuery
-                      ? "즐겨찾기가 없습니다"
-                      : "검색 결과가 없습니다"}
+                      ? "즐겨찾기가 없어요"
+                      : "검색 결과가 없어요"}
                 </strong>
                 <p>
                   {isCollectionEmpty
-                    ? "새 메모를 만들면 바로 목록에 나타난다."
+                    ? "새 메모를 만들면 바로 목록에 나타나요."
                     : sidebarView === "favorites" && !hasQuery
-                      ? "메모 목록에서 별을 누르면 즐겨찾기 목록에 모아볼 수 있습니다."
-                    : "다른 검색어를 입력하거나 검색을 해제하세요."}
+                      ? "메모 오른쪽 위 별 버튼을 누르면 즐겨찾기 목록에 모아볼 수 있어요."
+                      : "다른 검색어를 입력하거나 검색을 해제해 주세요."}
                 </p>
                 {storageStatusSummary ? (
                   <p
@@ -1677,7 +1814,7 @@ function App() {
               <span className={`${storageBadgeClassName} sidebar-foot-badge`} data-testid="storage-status-badge">
                 {storageBadgeLabel}
               </span>
-              {storageStatusSummary ? <p>{storageStatusSummary}</p> : <p>모든 메모는 로컬 저장소에 바로 반영됩니다.</p>}
+              {storageStatusSummary ? <p>{storageStatusSummary}</p> : <p>모든 메모는 로컬 저장소에 바로 반영돼요.</p>}
             </footer>
 
           </aside>
@@ -1728,8 +1865,9 @@ function App() {
                         <textarea
                           className="paper-editor sticky-note-editor"
                           data-testid="note-body-input"
+                          ref={noteBodyInputRef}
                           value={activeNote.body}
-                          placeholder="여기에 메모를 적으세요."
+                          placeholder="여기에 메모를 적어 주세요."
                           disabled={isMutationLocked}
                           readOnly={isMutationLocked}
                           onChange={(event) =>
@@ -1746,8 +1884,8 @@ function App() {
                     </div>
                   ) : (
                     <section className="sticky-note-empty" data-testid="editor-empty-state">
-                      <strong>메모가 없습니다</strong>
-                      <p>왼쪽 상단의 + 버튼으로 새 스티커 메모를 추가하세요.</p>
+                      <strong>메모가 없어요</strong>
+                      <p>왼쪽 위 + 버튼으로 새 스티커 메모를 추가해 주세요.</p>
                     </section>
                   )}
                 </article>
@@ -1765,68 +1903,159 @@ function App() {
 
                     <div className="paper-heading-tools">
                       <div className="paper-toolbar paper-toolbar-editor" role="toolbar" aria-label="메모 도구">
-                        <button
-                          className="paper-button paper-button-icon"
-                          type="button"
-                          data-testid="open-sticky-note-button"
-                          aria-label="스티커 메모 열기"
-                          title="스티커 메모"
-                          disabled={!activeNote}
-                          onClick={() => void openStickyNoteWindow()}
-                        >
-                          <ToolbarStickyIcon />
-                        </button>
-                        <button
-                          className="paper-button paper-button-icon"
-                          type="button"
-                          data-testid="editor-toggle-sidebar-button"
-                          aria-label={isSidebarOpen ? "목록 닫기" : "목록 열기"}
-                          title={isSidebarOpen ? "목록 닫기" : "목록 열기"}
-                          aria-controls="memo-sidebar"
-                          aria-expanded={isSidebarOpen}
-                          onClick={() => {
-                            setIsSidebarOpen((current) => !current);
-                          }}
-                        >
-                          <ToolbarSidebarIcon />
-                        </button>
-                        {recentlyDeleted ? (
+                        <div className="paper-toolbar-editor__group paper-toolbar-editor__group--left">
                           <button
-                            className="status-button paper-button-icon"
+                            className="paper-button paper-button-icon"
                             type="button"
-                            aria-label="되돌리기"
-                            title="되돌리기"
-                            disabled={isMutationLocked}
-                            onClick={() => void undoDelete()}
+                            data-testid="editor-toggle-sidebar-button"
+                            aria-label={isSidebarOpen ? "목록 닫기" : "목록 열기"}
+                            title={isSidebarOpen ? "목록 닫기" : "목록 열기"}
+                            aria-controls="memo-sidebar"
+                            aria-expanded={isSidebarOpen}
+                            onClick={() => {
+                              setIsSidebarOpen((current) => !current);
+                            }}
                           >
-                            <ToolbarUndoIcon />
+                            <ToolbarSidebarIcon />
                           </button>
-                        ) : null}
-                        <button
-                          className="paper-button paper-button-icon"
-                          type="button"
-                          data-testid="organize-note-button"
-                          aria-label="AI 정리"
-                          title="AI 정리"
-                          disabled={isMutationLocked || isStickyMode || !activeNote}
-                          onClick={openAiPromptComposer}
-                        >
-                          <ToolbarSparklesIcon />
-                        </button>
-                        <button
-                          className="paper-button paper-button-icon paper-button-primary header-create-note-button"
-                          type="button"
-                          data-testid="editor-create-note-button"
-                          aria-label="새 메모 만들기"
-                          title="새 메모 만들기"
-                          disabled={isMutationLocked}
-                          onClick={() => void handleCreateNote()}
-                        >
-                          <PlusIcon />
-                        </button>
+                        </div>
+                        <div className="paper-toolbar-editor__group paper-toolbar-editor__group--right">
+                          <button
+                            className="paper-button paper-button-icon"
+                            type="button"
+                            data-testid="open-sticky-note-button"
+                            aria-label="스티커 메모로 열기"
+                            title="스티커 메모로 열기"
+                            disabled={!activeNote}
+                            onClick={() => void openStickyNoteWindow()}
+                          >
+                            <ToolbarStickyIcon />
+                          </button>
+                          {recentlyDeleted ? (
+                            <button
+                              className="status-button paper-button-icon"
+                              type="button"
+                              aria-label="되돌리기"
+                              title="되돌리기"
+                              disabled={isMutationLocked}
+                              onClick={() => void undoDelete()}
+                            >
+                              <ToolbarUndoIcon />
+                            </button>
+                          ) : null}
+                          {activeNote ? (
+                            <button
+                              className={`paper-button paper-button-icon editor-favorite-button${activeNote.favorite ? " is-favorite" : ""}`}
+                              type="button"
+                              data-testid="selected-note-favorite-button"
+                              aria-label={activeNote.favorite ? "즐겨찾기를 해제해요" : "즐겨찾기에 추가해요"}
+                              aria-pressed={activeNote.favorite}
+                              onClick={() => toggleFavorite(activeNote.id)}
+                            >
+                              <NoteFavoriteIcon />
+                            </button>
+                          ) : null}
+                          <button
+                            className="paper-button paper-button-icon"
+                            type="button"
+                            data-testid="note-find-toggle-button"
+                            aria-label="메모 안에서 찾기"
+                            title="메모 안에서 찾기"
+                            disabled={!activeNote || isStickyMode}
+                            onClick={openFindBar}
+                          >
+                            <ToolbarFindIcon />
+                          </button>
+                          <button
+                            className="paper-button paper-button-icon"
+                            type="button"
+                            data-testid="organize-note-button"
+                            aria-label="AI로 정리하기"
+                            title="AI로 정리하기"
+                            disabled={isMutationLocked || isStickyMode || !activeNote}
+                            onClick={openAiPromptComposer}
+                          >
+                            <ToolbarSparklesIcon />
+                          </button>
+                          <button
+                            className="paper-button paper-button-icon paper-button-primary header-create-note-button"
+                            type="button"
+                            data-testid="editor-create-note-button"
+                            aria-label="새 메모 만들기"
+                            title="새 메모 만들기"
+                            disabled={isMutationLocked}
+                            onClick={() => void handleCreateNote()}
+                          >
+                            <PlusIcon />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
+
+                  {isFindBarOpen && activeNote && !activeDraft ? (
+                    <div className="note-find-bar" role="search" aria-label="메모 안에서 찾기" data-testid="note-find-bar">
+                      <label className="note-find-input-shell">
+                        <ToolbarFindIcon />
+                        <span className="visually-hidden">메모 안에서 찾기</span>
+                        <input
+                          ref={findInputRef}
+                          type="search"
+                          data-testid="note-find-input"
+                          value={findQuery}
+                          placeholder="이 메모에서 찾기"
+                          onChange={(event) => {
+                            setFindQuery(event.target.value);
+                            setFindMatchIndex(0);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              moveFindMatch(event.shiftKey ? -1 : 1);
+                            }
+
+                            if (event.key === "Escape") {
+                              event.preventDefault();
+                              closeFindBar();
+                            }
+                          }}
+                        />
+                      </label>
+                      <span className="note-find-count" data-testid="note-find-count">
+                        {findQuery.trim().length === 0 ? "찾을 내용을 입력해 주세요" : `${findMatches.length === 0 ? 0 : findMatchIndex + 1}/${findMatches.length}`}
+                      </span>
+                      <div className="note-find-actions">
+                        <button
+                          className="paper-button paper-button-icon"
+                          type="button"
+                          data-testid="note-find-prev-button"
+                          aria-label="이전 결과로 이동"
+                          disabled={findMatches.length === 0}
+                          onClick={() => moveFindMatch(-1)}
+                        >
+                          <ToolbarUndoIcon />
+                        </button>
+                        <button
+                          className="paper-button paper-button-icon"
+                          type="button"
+                          data-testid="note-find-next-button"
+                          aria-label="다음 결과로 이동"
+                          disabled={findMatches.length === 0}
+                          onClick={() => moveFindMatch(1)}
+                        >
+                          <ToolbarFindIcon />
+                        </button>
+                        <button
+                          className="paper-button"
+                          type="button"
+                          data-testid="note-find-close-button"
+                          onClick={closeFindBar}
+                        >
+                          닫기
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
 
                   {isAiPromptOpen ? (
                     <div className="ai-prompt-shell">
@@ -1921,7 +2150,7 @@ function App() {
                   {isMutationLocked && storageHealth ? (
                     <div className="storage-lock-banner" role="alert" data-testid="storage-lock-alert">
                       <strong>편집 잠금</strong>
-                      <span>{storageHealth.errorMessage ?? "저장소 연결 확인이 완료될 때까지 편집을 잠갔다."}</span>
+                      <span>{storageHealth.errorMessage ?? "저장소 연결 확인이 끝날 때까지 편집을 잠가두었어요."}</span>
                     </div>
                   ) : null}
                 </header>
@@ -1934,9 +2163,9 @@ function App() {
                           <div className="transform-review-panel-head">
                             <div className="transform-review-panel-copy">
                               <span className="transform-review-panel-label">제안 결과</span>
-                              <strong>AI가 정리한 초안</strong>
+                              <strong>AI가 정리한 초안이에요</strong>
                               <p className="transform-review-panel-note">
-                                상단 프롬프트를 수정하고 다시 생성을 누르면 아래 초안이 갱신됩니다.
+                                위 프롬프트를 수정하고 다시 생성하면 아래 초안도 함께 바뀌어요.
                               </p>
                             </div>
                             {hasBackup ? (
@@ -1947,7 +2176,7 @@ function App() {
                                 disabled={isMutationLocked}
                                 onClick={restoreOriginal}
                               >
-                                원문 복원
+                                원문으로 복원
                               </button>
                             ) : null}
                           </div>
@@ -1968,9 +2197,9 @@ function App() {
                           <div className="transform-review-panel-head">
                             <div className="transform-review-panel-copy">
                               <span className="transform-review-panel-label">현재 원문</span>
-                              <strong>적용 전 메모</strong>
+                              <strong>적용 전 메모예요</strong>
                               <p className="transform-review-panel-note">
-                                원문은 읽기 전용 비교 영역으로 유지됩니다.
+                                원문은 읽기 전용 비교 영역으로 그대로 보여드려요.
                               </p>
                             </div>
                           </div>
@@ -1990,8 +2219,9 @@ function App() {
                           <textarea
                             className="paper-editor"
                             data-testid="note-body-input"
+                            ref={noteBodyInputRef}
                             value={activeNote.body}
-                            placeholder="여기에 메모를 적으세요."
+                            placeholder="여기에 메모를 적어 주세요."
                             disabled={isMutationLocked}
                             readOnly={isMutationLocked}
                             onChange={(event) =>
@@ -2000,7 +2230,7 @@ function App() {
                                   body: event.target.value,
                                   mode: hasBackup ? activeNote.mode : "default"
                                 },
-                                "메모 내용을 수정했다."
+                                "메모 내용을 수정했어요."
                               )
                             }
                           />
@@ -2011,17 +2241,17 @@ function App() {
                     <section className="editor-empty" data-testid="editor-empty-state">
                       <strong>
                         {isCollectionEmpty
-                          ? "메모가 없습니다"
+                          ? "메모가 없어요"
                           : sidebarView === "favorites" && !hasQuery && !activeNote
-                            ? "즐겨찾기 메모가 없습니다"
-                            : "선택한 메모가 없습니다"}
+                            ? "즐겨찾기 메모가 없어요"
+                            : "선택한 메모가 없어요"}
                       </strong>
                       <p>
                         {isCollectionEmpty
-                          ? "새 메모를 만들거나 이전 삭제를 되돌리면 다시 시작할 수 있다."
+                          ? "새 메모를 만들거나 방금 삭제한 메모를 되돌리면 다시 시작할 수 있어요."
                           : sidebarView === "favorites" && !hasQuery && !activeNote
-                            ? "메모 목록에서 별을 누르면 즐겨찾기만 따로 모아볼 수 있습니다."
-                            : "왼쪽 목록에서 메모를 선택하거나 새 메모를 만드세요."}
+                            ? "메모 오른쪽 위 별 버튼을 누르면 즐겨찾기만 따로 모아볼 수 있어요."
+                            : "왼쪽 목록에서 메모를 선택하거나 새 메모를 만들어 주세요."}
                       </p>
 
                       <div className="empty-actions">

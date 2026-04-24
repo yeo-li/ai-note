@@ -53,6 +53,7 @@ test.describe("AI Note desktop smoke", () => {
     const firstNote = appWindow.getByTestId("note-list").locator('[data-testid^="note-list-item-"]').first();
     const searchInput = appWindow.getByTestId("note-search-input");
     const bodyInput = appWindow.getByTestId("note-body-input");
+    const noteList = appWindow.getByTestId("note-list");
 
     await firstNote.click();
     await expect(firstNote).toHaveAttribute("aria-current", "true");
@@ -60,8 +61,10 @@ test.describe("AI Note desktop smoke", () => {
 
     await searchInput.fill("does-not-match-anything");
 
-    await expect(appWindow.getByTestId("editor-empty-state")).toBeVisible();
+    await expect(noteList.locator('[data-testid^="note-list-item-"]')).toHaveCount(0);
     await expect(appWindow.getByTestId("sidebar-empty-state")).toBeVisible();
+    await expect(appWindow.getByTestId("editor-empty-state")).toBeHidden();
+    await expect(bodyInput).toHaveValue(selectedBody);
     await expect(appWindow.getByTestId("status-live-region")).toContainText("찾지 못했다");
 
     await searchInput.clear();

@@ -4,6 +4,7 @@ export type Memo = {
   id: MemoId;
   title: string;
   body: string;
+  favorite: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -30,6 +31,7 @@ export type MemoCreateInput = {
 export type MemoUpdateInput = {
   title?: string;
   body?: string;
+  favorite?: boolean;
 };
 
 export type MemoSearchResult = {

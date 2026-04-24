@@ -40,6 +40,7 @@ function ensureSchema(db) {
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       body TEXT NOT NULL,
+      favorite INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -56,6 +57,13 @@ function ensureSchema(db) {
   ).run({
     appliedAt: new Date().toISOString()
   });
+
+  const memoColumns = db.prepare("PRAGMA table_info(memos)").all();
+  const hasFavoriteColumn = memoColumns.some((column) => column.name === "favorite");
+
+  if (!hasFavoriteColumn) {
+    db.exec("ALTER TABLE memos ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0;");
+  }
 }
 
 function rowToMemo(row) {
@@ -67,6 +75,7 @@ function rowToMemo(row) {
     id: row.id,
     title: row.title,
     body: row.body,
+    favorite: row.favorite === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   });
@@ -113,8 +122,8 @@ function migrateLegacyStoreIfNeeded(db, userDataPath) {
 
   const insertMemoStatement = db.prepare(
     `
-      INSERT OR REPLACE INTO memos (id, title, body, created_at, updated_at)
-      VALUES (@id, @title, @body, @createdAt, @updatedAt)
+      INSERT OR REPLACE INTO memos (id, title, body, favorite, created_at, updated_at)
+      VALUES (@id, @title, @body, @favorite, @createdAt, @updatedAt)
     `
   );
   const upsertMetadataStatement = db.prepare(
@@ -131,6 +140,7 @@ function migrateLegacyStoreIfNeeded(db, userDataPath) {
         id: normalized.id || randomUUID(),
         title: normalized.title,
         body: normalized.body,
+        favorite: normalized.favorite ? 1 : 0,
         createdAt: normalized.createdAt,
         updatedAt: normalized.updatedAt
       });
@@ -153,6 +163,7 @@ function createStatements(db) {
     list: db.prepare(
       `
         SELECT id, title, body, created_at, updated_at
+               , favorite
         FROM memos
         ORDER BY updated_at DESC, created_at DESC
       `
@@ -160,6 +171,7 @@ function createStatements(db) {
     get: db.prepare(
       `
         SELECT id, title, body, created_at, updated_at
+               , favorite
         FROM memos
         WHERE id = @id
         LIMIT 1
@@ -167,8 +179,8 @@ function createStatements(db) {
     ),
     insert: db.prepare(
       `
-        INSERT INTO memos (id, title, body, created_at, updated_at)
-        VALUES (@id, @title, @body, @createdAt, @updatedAt)
+        INSERT INTO memos (id, title, body, favorite, created_at, updated_at)
+        VALUES (@id, @title, @body, @favorite, @createdAt, @updatedAt)
       `
     ),
     update: db.prepare(
@@ -176,6 +188,7 @@ function createStatements(db) {
         UPDATE memos
         SET title = @title,
             body = @body,
+            favorite = @favorite,
             updated_at = @updatedAt
         WHERE id = @id
       `
@@ -240,6 +253,7 @@ export function createMemoSqliteStore({ userDataPath, dbPath } = {}) {
           id: randomUUID(),
           title: input.title ?? "",
           body: input.body ?? "",
+          favorite: input.favorite ?? false,
           createdAt: now,
           updatedAt: now
         });
@@ -248,6 +262,7 @@ export function createMemoSqliteStore({ userDataPath, dbPath } = {}) {
           id: memo.id,
           title: memo.title,
           body: memo.body,
+          favorite: memo.favorite ? 1 : 0,
           createdAt: memo.createdAt,
           updatedAt: memo.updatedAt
         });
@@ -264,17 +279,21 @@ export function createMemoSqliteStore({ userDataPath, dbPath } = {}) {
           return null;
         }
 
+        const shouldRefreshTimestamp = typeof updates.title === "string" || typeof updates.body === "string";
+
         const nextMemo = normalizeMemo({
           ...currentMemo,
           title: updates.title ?? currentMemo.title,
           body: updates.body ?? currentMemo.body,
-          updatedAt: new Date().toISOString()
+          favorite: typeof updates.favorite === "boolean" ? updates.favorite : currentMemo.favorite,
+          updatedAt: shouldRefreshTimestamp ? new Date().toISOString() : currentMemo.updatedAt
         });
 
         statements.update.run({
           id: memoId,
           title: nextMemo.title,
           body: nextMemo.body,
+          favorite: nextMemo.favorite ? 1 : 0,
           updatedAt: nextMemo.updatedAt
         });
 

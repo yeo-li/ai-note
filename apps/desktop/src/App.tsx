@@ -8,10 +8,13 @@ type TransformMode = "default" | "organized";
 type Note = {
   id: MemoId;
   body: string;
+  favorite: boolean;
   updatedAt: string;
   dateLabel: string;
   mode: TransformMode;
 };
+
+type SidebarView = "all" | "favorites";
 
 type NoteBackup = {
   body: string;
@@ -95,7 +98,11 @@ const initialNotes: Note[] = [
     body:
       "짧은 피드백 하나가 작업 속도를 크게 바꾸는 순간이 있었다.\n\n문제를 크게 설명하기보다 지금 막히는 지점을 정확히 짚어주는 피드백이 가장 강력했다."
   }
-];
+].map((note): Note => ({
+  ...note,
+  mode: note.mode as TransformMode,
+  favorite: false
+}));
 
 function matchesQuery(note: Note, query: string) {
   const normalizedQuery = query.trim().toLowerCase();
@@ -126,6 +133,7 @@ function createNote(): Note {
   return {
     id: `note-${Date.now()}`,
     body: "",
+    favorite: false,
     mode: "default",
     ...nowStamp()
   };
@@ -158,6 +166,7 @@ function toNoteFromMemo(memo: Memo, mode: TransformMode = "default"): Note {
   return {
     id: memo.id,
     body: memo.body,
+    favorite: memo.favorite ?? false,
     updatedAt: formatUpdatedAtFromIso(memo.updatedAt),
     dateLabel: formatDateLabelFromIso(memo.updatedAt),
     mode
@@ -168,12 +177,13 @@ function upsertSyncedNote(currentNotes: Note[], memo: Memo) {
   const incomingNote = toNoteFromMemo(memo);
   const existingNote = currentNotes.find((note) => note.id === incomingNote.id);
   const mergedNote = existingNote
-    ? {
-        ...existingNote,
-        body: incomingNote.body,
-        updatedAt: incomingNote.updatedAt,
-        dateLabel: incomingNote.dateLabel
-      }
+      ? {
+          ...existingNote,
+          body: incomingNote.body,
+          favorite: incomingNote.favorite,
+          updatedAt: incomingNote.updatedAt,
+          dateLabel: incomingNote.dateLabel
+        }
     : incomingNote;
 
   return [mergedNote, ...currentNotes.filter((note) => note.id !== mergedNote.id)];
@@ -222,15 +232,19 @@ function toErrorMessage(error: unknown) {
 }
 
 function toMemoUpdateInput(update: Partial<Note>): MemoUpdateInput {
-  if (typeof update.body !== "string") {
-    return {};
+  const patch: MemoUpdateInput = {};
+
+  if (typeof update.body === "string") {
+    patch.body = update.body;
+    // 저장소/검색 계층과의 호환성을 위해 title은 본문 첫 줄에서 파생한다.
+    patch.title = buildMemoTitleFromBody(update.body);
   }
 
-  return {
-    body: update.body,
-    // 저장소/검색 계층과의 호환성을 위해 title은 본문 첫 줄에서 파생한다.
-    title: buildMemoTitleFromBody(update.body)
-  };
+  if (typeof update.favorite === "boolean") {
+    patch.favorite = update.favorite;
+  }
+
+  return patch;
 }
 
 function normalizeParagraphs(text: string) {
@@ -398,17 +412,6 @@ function StickyPinIcon() {
   );
 }
 
-function BrandNoteIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M14 3v5h5" />
-      <path d="M5 3h9l5 5v13H5z" />
-      <path d="M8 13h8" />
-      <path d="M8 17h6" />
-    </svg>
-  );
-}
-
 function PlusIcon() {
   return (
     <svg className="plus-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -422,7 +425,7 @@ function SearchIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <circle cx="11" cy="11" r="6" />
-      <path d="m20 20-4.2-4.2" />
+      <path d="m16 16 4 4" />
     </svg>
   );
 }
@@ -451,11 +454,9 @@ function SidebarFavoriteIcon() {
 function ToolbarStickyIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M7 4h10" />
-      <path d="M7 20h10" />
-      <path d="M6 8h12" />
-      <path d="M6 16h12" />
-      <path d="M9 12h6" />
+      <path d="M14 4h6v6" />
+      <path d="m10 14 10-10" />
+      <path d="M20 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4" />
     </svg>
   );
 }
@@ -463,8 +464,9 @@ function ToolbarStickyIcon() {
 function ToolbarSidebarIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="3" y="4" width="18" height="16" rx="0" />
-      <path d="M9 4v16" />
+      <path d="M4 7h16" />
+      <path d="M4 12h16" />
+      <path d="M4 17h10" />
     </svg>
   );
 }
@@ -487,11 +489,10 @@ function ToolbarUndoIcon() {
   );
 }
 
-function ToolbarCopyIcon() {
+function NoteFavoriteIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="9" y="8" width="10" height="12" rx="0" />
-      <path d="M5 16V4h10" />
+      <path d="m12 3.8 2.5 5 5.5.8-4 3.9.9 5.6-4.9-2.6-4.9 2.6.9-5.6-4-3.9 5.5-.8z" />
     </svg>
   );
 }
@@ -515,6 +516,7 @@ function App() {
   const [notes, setNotes] = useState(initialNotes);
   const [selectedNoteId, setSelectedNoteId] = useState<MemoId | "">(initialNotes[0]?.id ?? "");
   const [query, setQuery] = useState("");
+  const [sidebarView, setSidebarView] = useState<SidebarView>("all");
   const [isSidebarOpen, setIsSidebarOpen] = useState(!launchContext.stickyMode);
   const [isStickyMode, setIsStickyMode] = useState(launchContext.stickyMode);
   const [isStickyPinned, setIsStickyPinned] = useState(false);
@@ -537,9 +539,13 @@ function App() {
   const emptyClearSearchButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const hasQuery = query.trim().length > 0;
+  const scopedNotes = useMemo(
+    () => notes.filter((note) => (sidebarView === "favorites" ? note.favorite : true)),
+    [notes, sidebarView]
+  );
   const filteredNotes = useMemo(
-    () => notes.filter((note) => matchesQuery(note, query)),
-    [notes, query]
+    () => scopedNotes.filter((note) => matchesQuery(note, query)),
+    [scopedNotes, query]
   );
   const selectedNote = notes.find((note) => note.id === selectedNoteId) ?? null;
 
@@ -709,19 +715,43 @@ function App() {
       return;
     }
 
-    if (selectedNote) {
+    if (hasQuery) {
+      if (selectedNote) {
+        return;
+      }
+
+      if (filteredNotes.length > 0) {
+        setSelectedNoteId(filteredNotes[0].id);
+        return;
+      }
+
+      if (selectedNoteId !== notes[0].id) {
+        setSelectedNoteId(notes[0].id);
+      }
       return;
     }
 
-    if (hasQuery && filteredNotes.length > 0) {
-      setSelectedNoteId(filteredNotes[0].id);
+    if (sidebarView === "favorites") {
+      if (scopedNotes.length === 0) {
+        return;
+      }
+
+      if (scopedNotes.some((note) => note.id === selectedNoteId)) {
+        return;
+      }
+
+      setSelectedNoteId(scopedNotes[0].id);
+      return;
+    }
+
+    if (selectedNote) {
       return;
     }
 
     if (selectedNoteId !== notes[0].id) {
       setSelectedNoteId(notes[0].id);
     }
-  }, [filteredNotes, hasQuery, notes, selectedNote, selectedNoteId]);
+  }, [filteredNotes, hasQuery, notes, scopedNotes, selectedNote, selectedNoteId, sidebarView]);
 
   const activeNote = useMemo(() => {
     if (notes.length === 0) {
@@ -736,20 +766,33 @@ function App() {
       return filteredNotes.find((note) => note.id === selectedNoteId) ?? null;
     }
 
+    if (sidebarView === "favorites") {
+      if (scopedNotes.length === 0) {
+        return null;
+      }
+
+      return scopedNotes.find((note) => note.id === selectedNoteId) ?? null;
+    }
+
     return selectedNote ?? notes[0];
-  }, [filteredNotes, hasQuery, notes, selectedNote, selectedNoteId]);
+  }, [filteredNotes, hasQuery, notes, scopedNotes, selectedNote, selectedNoteId, sidebarView]);
 
   const isCollectionEmpty = notes.length === 0;
+  const isSidebarViewEmpty = scopedNotes.length === 0;
   const isSelectionOutsideSearch =
-    hasQuery && Boolean(selectedNote) && !filteredNotes.some((note) => note.id === selectedNoteId);
+    (hasQuery || sidebarView === "favorites") && Boolean(selectedNote) && !filteredNotes.some((note) => note.id === selectedNoteId);
   const hasBackup = activeNote ? Boolean(backups[activeNote.id]) : false;
   const activeDraft =
     draftTransform && activeNote && draftTransform.noteId === activeNote.id ? draftTransform : null;
-  const noteCountLabel = isCollectionEmpty
-    ? "메모가 없다"
+  const noteCountLabel = isSidebarViewEmpty
+    ? sidebarView === "favorites"
+      ? "즐겨찾기가 없다"
+      : "메모가 없다"
     : hasQuery
       ? `${filteredNotes.length}개의 검색 결과`
-      : `${notes.length}개의 메모`;
+      : sidebarView === "favorites"
+        ? `${scopedNotes.length}개의 즐겨찾기`
+        : `${notes.length}개의 메모`;
   const deleteTargetNote = deleteIntentId ? notes.find((note) => note.id === deleteIntentId) ?? null : null;
   const deleteTargetHeadline = deleteTargetNote ? deriveNoteHeadline(deleteTargetNote.body) : "";
   const isDeleteModalOpen = Boolean(deleteTargetNote);
@@ -844,10 +887,13 @@ function App() {
       return;
     }
 
-    if ((hasQuery && !filteredNotes.some((note) => note.id === noteMenuId)) || !notes.some((note) => note.id === noteMenuId)) {
+    if (
+      ((hasQuery || sidebarView === "favorites") && !filteredNotes.some((note) => note.id === noteMenuId)) ||
+      !notes.some((note) => note.id === noteMenuId)
+    ) {
       setNoteMenuId(null);
     }
-  }, [filteredNotes, hasQuery, noteMenuId, notes]);
+  }, [filteredNotes, hasQuery, noteMenuId, notes, sidebarView]);
 
   useEffect(() => {
     if (!noteMenuId || typeof window === "undefined") {
@@ -909,7 +955,8 @@ function App() {
     }
 
     const activeNoteId = activeNote.id;
-    const stamp = nowStamp();
+    const shouldRefreshTimestamp = typeof update.body === "string";
+    const stamp = shouldRefreshTimestamp ? nowStamp() : null;
 
     setNotes((currentNotes) =>
       currentNotes.map((note) =>
@@ -917,8 +964,8 @@ function App() {
           ? {
               ...note,
               ...update,
-              updatedAt: stamp.updatedAt,
-              dateLabel: update.dateLabel ?? stamp.dateLabel
+              updatedAt: stamp?.updatedAt ?? note.updatedAt,
+              dateLabel: update.dateLabel ?? stamp?.dateLabel ?? note.dateLabel
             }
           : note
       )
@@ -944,6 +991,48 @@ function App() {
 
     if (message) {
       setStatusMessage(message);
+    }
+  }
+
+  function switchSidebarView(nextView: SidebarView) {
+    setSidebarView(nextView);
+    setDeleteIntentId(null);
+    setNoteMenuId(null);
+
+    if (nextView === "favorites") {
+      setStatusMessage("즐겨찾기 메모만 보고 있다.");
+      return;
+    }
+
+    setStatusMessage(hasQuery ? "현재 검색어로 전체 메모를 다시 보고 있다." : "전체 메모를 보고 있다.");
+  }
+
+  function toggleFavorite(noteId: MemoId) {
+    const targetNote = notes.find((note) => note.id === noteId);
+
+    if (!targetNote) {
+      return;
+    }
+
+    const nextFavorite = !targetNote.favorite;
+
+    setNotes((currentNotes) =>
+      currentNotes.map((note) =>
+        note.id === noteId
+          ? {
+              ...note,
+              favorite: nextFavorite
+            }
+          : note
+      )
+    );
+    setNoteMenuId(null);
+    setStatusMessage(nextFavorite ? "즐겨찾기에 추가했다." : "즐겨찾기에서 제거했다.");
+
+    if (window.memoAPI) {
+      void window.memoAPI.update(noteId, { favorite: nextFavorite }).catch(() => {
+        setStatusMessage("즐겨찾기 상태를 저장소에 반영하지 못했다.");
+      });
     }
   }
 
@@ -1024,7 +1113,7 @@ function App() {
 
   function handleSearch(nextQuery: string) {
     const trimmedQuery = nextQuery.trim();
-    const matchingNotes = notes.filter((note) => matchesQuery(note, nextQuery));
+    const matchingNotes = scopedNotes.filter((note) => matchesQuery(note, nextQuery));
 
     setQuery(nextQuery);
     setDeleteIntentId(null);
@@ -1038,7 +1127,7 @@ function App() {
         setSelectedNoteId(selectedNote.id);
       }
 
-      setStatusMessage("전체 메모를 다시 보고 있다.");
+      setStatusMessage(sidebarView === "favorites" ? "즐겨찾기 목록을 다시 보고 있다." : "전체 메모를 다시 보고 있다.");
       return;
     }
 
@@ -1241,41 +1330,6 @@ function App() {
     setNoteMenuId((currentNoteMenuId) => (currentNoteMenuId === noteId ? null : noteId));
   }
 
-  async function copyCurrentNote() {
-    if (!activeNote) {
-      return;
-    }
-
-    const text = activeNote.body;
-
-    try {
-      if (window.desktopAPI?.clipboard?.writeText) {
-        window.desktopAPI.clipboard.writeText(text);
-      } else if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const textarea = document.createElement("textarea");
-        textarea.value = text;
-        textarea.setAttribute("readonly", "");
-        textarea.style.position = "absolute";
-        textarea.style.left = "-9999px";
-        document.body.appendChild(textarea);
-        textarea.select();
-
-        const copied = document.execCommand("copy");
-        document.body.removeChild(textarea);
-
-        if (!copied) {
-          throw new Error("copy failed");
-        }
-      }
-
-      setStatusMessage("현재 메모를 클립보드에 복사했다.");
-    } catch {
-      setStatusMessage("클립보드 복사에 실패했다.");
-    }
-  }
-
   function confirmDeleteNote() {
     if (isMutationLocked) {
       setStatusMessage("저장소 연결이 복구될 때까지 삭제를 실행할 수 없다.");
@@ -1289,7 +1343,7 @@ function App() {
 
     const deletedNoteId = deleteTargetNote.id;
     const deletedBackup = backups[deleteTargetNote.id] ?? null;
-    const currentVisibleNotes = hasQuery ? filteredNotes : notes;
+    const currentVisibleNotes = hasQuery ? filteredNotes : sidebarView === "favorites" ? scopedNotes : notes;
     const deletedIndex = notes.findIndex((note) => note.id === deleteTargetNote.id);
     const deletedVisibleIndex = currentVisibleNotes.findIndex((note) => note.id === deleteTargetNote.id);
     const shouldKeepSelection = selectedNoteId.length > 0 && selectedNoteId !== deleteTargetNote.id;
@@ -1300,7 +1354,8 @@ function App() {
     }
 
     const nextNotes = notes.filter((note) => note.id !== deleteTargetNote.id);
-    const visibleNotes = hasQuery ? nextNotes.filter((note) => matchesQuery(note, query)) : nextNotes;
+    const scopedNextNotes = nextNotes.filter((note) => (sidebarView === "favorites" ? note.favorite : true));
+    const visibleNotes = hasQuery ? scopedNextNotes.filter((note) => matchesQuery(note, query)) : scopedNextNotes;
     const fallbackSelected =
       visibleNotes[Math.min(Math.max(deletedVisibleIndex, 0), Math.max(visibleNotes.length - 1, 0))] ??
       nextNotes[Math.min(deletedIndex, Math.max(nextNotes.length - 1, 0))] ??
@@ -1448,13 +1503,6 @@ function App() {
   ]
     .filter(Boolean)
     .join(" ");
-  const paperKicker = activeDraft
-    ? "AI 미리보기"
-    : activeNote?.mode === "organized"
-      ? "정리된 메모"
-      : hasQuery
-        ? "검색 결과"
-        : "작성 중";
   const paperStatusLabel = isMutationLocked
     ? "읽기 전용"
     : activeDraft
@@ -1463,7 +1511,11 @@ function App() {
         ? "되돌리기 가능"
         : "로컬 저장 완료";
   const showPaperStatus = isMutationLocked || Boolean(activeDraft) || Boolean(recentlyDeleted);
-  const sidebarCountLabel = hasQuery ? `결과 ${filteredNotes.length}개` : `메모 ${notes.length}개`;
+  const sidebarCountLabel = hasQuery
+    ? `결과 ${filteredNotes.length}개`
+    : sidebarView === "favorites"
+      ? `즐겨찾기 ${scopedNotes.length}개`
+      : `메모 ${notes.length}개`;
   return (
     <main className="page" data-testid="page-root">
       <section className={appShellClassName} data-testid="app-shell">
@@ -1475,9 +1527,6 @@ function App() {
             <div className="sidebar-head">
               <div className="sidebar-brand">
                 <div className="sidebar-brand-copy">
-                  <span className="sidebar-brand-mark" aria-hidden="true">
-                    <BrandNoteIcon />
-                  </span>
                   <span className="sidebar-brand-text">
                     <strong>AI Note</strong>
                   </span>
@@ -1523,17 +1572,19 @@ function App() {
 
               <nav className="sidebar-nav" aria-label="사이드바 탐색">
                 <button
-                  className={`sidebar-nav-item${!hasQuery ? " is-active" : ""}`}
+                  className={`sidebar-nav-item${sidebarView === "all" ? " is-active" : ""}`}
                   type="button"
-                  onClick={() => handleSearch("")}
+                  data-testid="sidebar-all-view-button"
+                  onClick={() => switchSidebarView("all")}
                 >
                   <SidebarListIcon />
                   <span>전체 메모</span>
                 </button>
                 <button
-                  className="sidebar-nav-item"
+                  className={`sidebar-nav-item${sidebarView === "favorites" ? " is-active" : ""}`}
                   type="button"
-                  onClick={() => setStatusMessage("즐겨찾기 구분은 아직 준비 중입니다.")}
+                  data-testid="sidebar-favorites-view-button"
+                  onClick={() => switchSidebarView("favorites")}
                 >
                   <SidebarFavoriteIcon />
                   <span>즐겨찾기</span>
@@ -1542,7 +1593,7 @@ function App() {
             </div>
 
             <div className="sidebar-section-heading">
-              <span>최근</span>
+              <span>{sidebarView === "favorites" ? "즐겨찾기" : "최근"}</span>
               <span>{sidebarCountLabel}</span>
             </div>
 
@@ -1581,6 +1632,16 @@ function App() {
                       </button>
                       <div className="note-list-actions" data-note-menu-root="true" onClick={(event) => event.stopPropagation()}>
                         <button
+                          className={`note-list-favorite-button${note.favorite ? " is-favorite" : ""}`}
+                          type="button"
+                          data-testid={isSelected ? "selected-note-favorite-button" : `note-favorite-button-${note.id}`}
+                          aria-label={note.favorite ? `${noteLabel} 메모 즐겨찾기 해제` : `${noteLabel} 메모 즐겨찾기 추가`}
+                          aria-pressed={note.favorite}
+                          onClick={() => toggleFavorite(note.id)}
+                        >
+                          <NoteFavoriteIcon />
+                        </button>
+                        <button
                           className="note-list-menu-button"
                           type="button"
                           data-testid={isSelected ? "selected-note-menu-button" : undefined}
@@ -1611,10 +1672,18 @@ function App() {
               </ul>
             ) : (
               <section className="note-list sidebar-empty" data-testid="sidebar-empty-state">
-                <strong>{isCollectionEmpty ? "메모가 없습니다" : "검색 결과가 없습니다"}</strong>
+                <strong>
+                  {isCollectionEmpty
+                    ? "메모가 없습니다"
+                    : sidebarView === "favorites" && !hasQuery
+                      ? "즐겨찾기가 없습니다"
+                      : "검색 결과가 없습니다"}
+                </strong>
                 <p>
                   {isCollectionEmpty
                     ? "새 메모를 만들면 바로 목록에 나타난다."
+                    : sidebarView === "favorites" && !hasQuery
+                      ? "메모 목록에서 별을 누르면 즐겨찾기 목록에 모아볼 수 있습니다."
                     : "다른 검색어를 입력하거나 검색을 해제하세요."}
                 </p>
                 {storageStatusSummary ? (
@@ -1712,10 +1781,11 @@ function App() {
               <div className="paper">
                 <header className="paper-head">
                   <div className="paper-topline">
-                    <div className="paper-heading paper-heading-compact">
-                      <span className="paper-kicker">{paperKicker}</span>
-                      {showPaperStatus ? <span className="paper-heading-status">{paperStatusLabel}</span> : null}
-                    </div>
+                    {showPaperStatus ? (
+                      <div className="paper-heading paper-heading-compact">
+                        <span className="paper-heading-status">{paperStatusLabel}</span>
+                      </div>
+                    ) : <div />}
 
                     <div className="paper-heading-tools">
                       <div className="paper-toolbar paper-toolbar-editor" role="toolbar" aria-label="메모 도구">
@@ -1766,17 +1836,6 @@ function App() {
                           onClick={openAiPromptComposer}
                         >
                           <ToolbarSparklesIcon />
-                        </button>
-                        <button
-                          className="paper-button paper-button-icon"
-                          type="button"
-                          data-testid="copy-note-button"
-                          aria-label="메모 복사"
-                          title="메모 복사"
-                          disabled={!activeNote}
-                          onClick={() => void copyCurrentNote()}
-                        >
-                          <ToolbarCopyIcon />
                         </button>
                         <button
                           className="paper-button paper-button-icon paper-button-primary header-create-note-button"
@@ -1977,15 +2036,21 @@ function App() {
                       <strong>
                         {isCollectionEmpty
                           ? "메모가 없습니다"
-                          : isSelectionOutsideSearch
+                          : sidebarView === "favorites" && !hasQuery && !activeNote
+                            ? "즐겨찾기 메모가 없습니다"
+                            : isSelectionOutsideSearch
                             ? "현재 메모가 검색 결과에 없습니다"
                             : "찾은 메모가 없습니다"}
                       </strong>
                       <p>
                         {isCollectionEmpty
                           ? "새 메모를 만들거나 이전 삭제를 되돌리면 다시 시작할 수 있다."
+                          : sidebarView === "favorites" && !hasQuery && !activeNote
+                            ? "메모 목록에서 별을 누르면 즐겨찾기만 따로 모아볼 수 있습니다."
                           : isSelectionOutsideSearch
-                            ? "검색 결과 목록에서 다른 메모를 선택하거나 첫 결과를 바로 열 수 있다."
+                            ? sidebarView === "favorites" && !hasQuery
+                              ? "즐겨찾기 목록에서 다른 메모를 선택하거나 별표를 다시 조정해 주세요."
+                              : "검색 결과 목록에서 다른 메모를 선택하거나 첫 결과를 바로 열 수 있다."
                             : "다른 검색어를 입력하거나 검색을 해제하세요."}
                       </p>
 

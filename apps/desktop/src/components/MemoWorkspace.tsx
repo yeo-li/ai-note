@@ -41,6 +41,7 @@ function createFallbackMemo(overrides: Partial<Memo> = {}): Memo {
         : `memo-${Math.random().toString(36).slice(2, 10)}`),
     title: overrides.title ?? "",
     body: overrides.body ?? "",
+    favorite: overrides.favorite ?? false,
     createdAt: timestamp,
     updatedAt: overrides.updatedAt ?? timestamp
   };

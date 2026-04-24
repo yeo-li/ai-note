@@ -25,11 +25,16 @@ function normalizeBody(value) {
   return value;
 }
 
+function normalizeFavorite(value) {
+  return value === true;
+}
+
 export function normalizeMemo(memo) {
   return {
     id: typeof memo.id === "string" && memo.id.length > 0 ? memo.id : randomUUID(),
     title: normalizeTitle(memo.title),
     body: normalizeBody(memo.body),
+    favorite: normalizeFavorite(memo.favorite),
     createdAt: normalizeTimestamp(memo.createdAt),
     updatedAt: normalizeTimestamp(memo.updatedAt)
   };
@@ -40,6 +45,7 @@ export function cloneMemo(memo) {
     id: memo.id,
     title: memo.title,
     body: memo.body,
+    favorite: memo.favorite,
     createdAt: memo.createdAt,
     updatedAt: memo.updatedAt
   };

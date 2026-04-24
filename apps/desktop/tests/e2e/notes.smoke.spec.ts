@@ -114,6 +114,28 @@ test.describe("AI Note desktop smoke", () => {
     await expect(bodyInput).toHaveValue(previewBody);
   });
 
+  test("shows only starred memos in the favorites view", async ({ appWindow }) => {
+    const createButton = appWindow.getByTestId("sidebar-create-note-button");
+    const bodyInput = appWindow.getByTestId("note-body-input");
+    const noteList = appWindow.getByTestId("note-list");
+
+    await createButton.click();
+    await bodyInput.fill("favorite target\nkeep me starred");
+    await appWindow.getByTestId("selected-note-favorite-button").click();
+
+    await createButton.click();
+    await bodyInput.fill("regular target\nshould stay out");
+
+    await appWindow.getByTestId("sidebar-favorites-view-button").click();
+
+    await expect(noteList.locator('[data-testid^="note-list-item-"]')).toHaveCount(1);
+    await expect(noteList).toContainText("favorite target");
+    await expect(noteList).not.toContainText("regular target");
+
+    await appWindow.getByTestId("selected-note-favorite-button").click();
+    await expect(appWindow.getByTestId("sidebar-empty-state")).toBeVisible();
+  });
+
   test("keeps the adjacent visible note selected after deleting inside filtered results", async ({ appWindow }) => {
     const createButton = appWindow.getByTestId("sidebar-create-note-button");
     const noteList = appWindow.getByTestId("note-list");

@@ -243,43 +243,17 @@ textarea:focus-visible {
 .sidebar-brand-copy {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 0;
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 44px;
-}
-
-.sidebar-brand-mark {
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0;
-  background: var(--surface-dark);
-  color: #ffffff;
-  box-shadow: none;
-  flex: 0 0 auto;
-}
-
-.sidebar-brand-mark svg {
-  width: 16px;
-  height: 16px;
-}
-
-.sidebar-brand-mark svg path {
-  stroke: currentColor;
-  stroke-width: 1.8;
-  fill: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  min-height: 32px;
 }
 
 .sidebar-brand-text {
   display: flex;
   align-items: center;
   min-width: 0;
-  min-height: 42px;
+  min-height: 32px;
 }
 
 .note-list-state,
@@ -369,13 +343,13 @@ textarea:focus-visible {
   border-radius: 0;
   background: transparent;
   border: 0;
-  border-bottom: 1px solid rgba(17, 17, 17, 0.08);
+  border-bottom: 0;
   box-shadow: none;
 }
 
 .sidebar-search:focus-within,
 .paper-search:focus-within {
-  border-color: rgba(17, 17, 17, 0.38);
+  border-color: transparent;
   background: transparent;
   box-shadow: none;
 }
@@ -388,8 +362,8 @@ textarea:focus-visible {
   flex: 0 0 auto;
 }
 
-.sidebar-search svg path,
-.paper-search svg path {
+.sidebar-search svg :is(path, circle, rect, line, polyline, polygon),
+.paper-search svg :is(path, circle, rect, line, polyline, polygon) {
   stroke: currentColor;
   stroke-width: 2;
   fill: none;
@@ -484,7 +458,7 @@ textarea:focus-visible {
   flex: 0 0 auto;
 }
 
-.sidebar-nav-item svg path {
+.sidebar-nav-item svg :is(path, circle, rect, line, polyline, polygon) {
   stroke: currentColor;
   stroke-width: 1.9;
   fill: none;
@@ -644,7 +618,7 @@ textarea:focus-visible {
   height: 18px;
 }
 
-.paper-button-icon svg path {
+.paper-button-icon svg :is(path, circle, rect, line, polyline, polygon) {
   stroke: currentColor;
   stroke-width: 1.9;
   fill: none;
@@ -747,17 +721,15 @@ textarea:focus-visible {
 
 .note-list-actions {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   align-self: flex-start;
-  opacity: 0;
+  opacity: 1;
   transition: opacity 140ms ease;
 }
 
-.note-list-item:hover .note-list-actions,
-.note-list-item.is-selected .note-list-actions,
-.note-list-item:focus-within .note-list-actions {
-  opacity: 1;
-}
-
+.note-list-favorite-button,
 .note-list-menu-button {
   width: 28px;
   min-width: 28px;
@@ -773,6 +745,7 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
+.note-list-favorite-button:hover,
 .note-list-menu-button:hover {
   transform: none;
   background: #f0f0f0;
@@ -781,17 +754,31 @@ textarea:focus-visible {
   box-shadow: none;
 }
 
-.note-list-menu-button svg {
-  width: 14px;
-  height: 14px;
+.note-list-favorite-button.is-favorite {
+  color: var(--text-main);
 }
 
-.note-list-menu-button svg path {
+.note-list-favorite-button svg,
+.note-list-menu-button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.note-list-favorite-button svg :is(path, circle, rect, line, polyline, polygon),
+.note-list-menu-button svg :is(path, circle, rect, line, polyline, polygon) {
   stroke: currentColor;
-  stroke-width: 2.2;
+  stroke-width: 1.9;
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.note-list-menu-button {
+  color: rgba(17, 17, 17, 0.3);
+}
+
+.note-list-menu-button:hover {
+  color: var(--text-main);
 }
 
 .note-list-menu {
@@ -981,7 +968,7 @@ textarea:focus-visible {
   min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  padding: 26px clamp(24px, 5vw, 36px) 30px;
+  padding: 18px clamp(22px, 4vw, 30px) 0;
   border-radius: 0;
   border: 0;
   background: #ffffff;
@@ -993,7 +980,7 @@ textarea:focus-visible {
   align-items: center;
   justify-content: space-between;
   min-height: 28px;
-  margin-bottom: 18px;
+  margin-bottom: 8px;
   -webkit-app-region: drag;
 }
 
@@ -1068,7 +1055,7 @@ textarea:focus-visible {
   height: 19px;
 }
 
-.sticky-note-toolbar__button svg path {
+.sticky-note-toolbar__button svg :is(path, circle, rect, line, polyline, polygon) {
   stroke: currentColor;
   stroke-width: 1.9;
   fill: none;
@@ -1085,12 +1072,13 @@ textarea:focus-visible {
 
 .sticky-note-body {
   display: grid;
+  align-self: stretch;
 }
 
 .sticky-note-editor {
   height: 100%;
   min-height: 100%;
-  padding: 0;
+  padding: 0 0 2px;
   background: transparent;
   color: rgba(17, 17, 17, 0.9);
   font-size: clamp(1.02rem, 1.8vw, 1.08rem);
@@ -1134,7 +1122,7 @@ textarea:focus-visible {
   display: grid;
   gap: 12px;
   padding: 16px clamp(18px, 2vw, 28px) 8px;
-  border-bottom: 1px solid rgba(17, 17, 17, 0.06);
+  border-bottom: 0;
   background: #ffffff;
   backdrop-filter: none;
 }
@@ -1149,6 +1137,10 @@ textarea:focus-visible {
   display: grid;
   gap: 4px;
   min-width: 0;
+}
+
+.paper-topline > .paper-heading:empty {
+  display: none;
 }
 
 .paper-heading-compact {
@@ -1239,8 +1231,8 @@ textarea:focus-visible {
 }
 
 .paper-toolbar-editor .paper-button-icon svg {
-  width: 14px;
-  height: 14px;
+  width: 17px;
+  height: 17px;
 }
 
 .paper-toolbar-editor .paper-button-primary,
@@ -1314,13 +1306,13 @@ textarea:focus-visible {
   padding: 0 16px;
   border-radius: 0;
   border: 0;
-  border-bottom: 1px solid rgba(17, 17, 17, 0.08);
+  border-bottom: 0;
   background: transparent;
   box-shadow: none;
 }
 
 .ai-prompt-input:focus-within {
-  border-color: rgba(17, 17, 17, 0.4);
+  border-color: transparent;
   background: transparent;
   box-shadow: none;
 }
@@ -1759,7 +1751,7 @@ textarea:focus-visible {
 
   .sticky-note-card {
     height: 100%;
-    padding: 18px 14px 18px;
+    padding: 18px 14px 0;
     border-radius: 0;
   }
 

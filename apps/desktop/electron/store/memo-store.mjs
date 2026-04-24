@@ -97,6 +97,7 @@ export function createMemoStore({ userDataPath }) {
           id: randomUUID(),
           title: input.title ?? "",
           body: input.body ?? "",
+          favorite: input.favorite ?? false,
           createdAt: now,
           updatedAt: now
         });
@@ -118,11 +119,14 @@ export function createMemoStore({ userDataPath }) {
           return null;
         }
 
+        const shouldRefreshTimestamp = typeof updates.title === "string" || typeof updates.body === "string";
+
         const nextMemo = normalizeMemo({
           ...currentMemo,
           title: updates.title ?? currentMemo.title,
           body: updates.body ?? currentMemo.body,
-          updatedAt: new Date().toISOString()
+          favorite: typeof updates.favorite === "boolean" ? updates.favorite : currentMemo.favorite,
+          updatedAt: shouldRefreshTimestamp ? new Date().toISOString() : currentMemo.updatedAt
         });
 
         store.memos = [nextMemo, ...store.memos.filter((memo) => memo.id !== memoId)];

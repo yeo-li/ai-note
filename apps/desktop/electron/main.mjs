@@ -99,7 +99,8 @@ function normalizeMemoInput(value) {
 
   return {
     title: typeof value.title === "string" ? value.title : undefined,
-    body: typeof value.body === "string" ? value.body : undefined
+    body: typeof value.body === "string" ? value.body : undefined,
+    favorite: typeof value.favorite === "boolean" ? value.favorite : undefined
   };
 }
 

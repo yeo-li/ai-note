@@ -48,6 +48,7 @@ export type MemoOrganizeInput = {
   title?: string;
   body: string;
   intent: MemoOrganizeIntent;
+  prompt?: string;
 };
 
 export type MemoOrganizeResult = {

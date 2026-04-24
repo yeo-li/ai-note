@@ -382,124 +382,126 @@ function readLaunchContext(): LaunchContext {
 
 function StickyCloseIcon() {
   return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M5 5l6 6M11 5l-6 6" />
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
     </svg>
   );
 }
 
 function StickyPinIcon() {
   return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M6.2 2.6h3.6l.7 2.7 1.6 1.8v1H3.9v-1l1.6-1.8.7-2.7z" />
-      <path d="M8 8.2v4" />
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 17v5" />
+      <path d="M8 3h8l-1.5 5 3.5 4v1H6v-1l3.5-4z" />
     </svg>
   );
 }
 
 function BrandNoteIcon() {
   return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M4.2 2.7h5l2.6 2.6v8.1H4.2z" />
-      <path d="M9.2 2.7v2.6h2.6" />
-      <path d="M5.8 8h4.4" />
-      <path d="M5.8 10.5h4.4" />
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M14 3v5h5" />
+      <path d="M5 3h9l5 5v13H5z" />
+      <path d="M8 13h8" />
+      <path d="M8 17h6" />
     </svg>
   );
 }
 
 function PlusIcon() {
   return (
-    <svg className="plus-icon" viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M7.1 3.3h1.8v3.8h3.8v1.8H8.9v3.8H7.1V8.9H3.3V7.1h3.8z" />
+    <svg className="plus-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
     </svg>
   );
 }
 
 function SearchIcon() {
   return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M7.1 11.7a4.6 4.6 0 1 0 0-9.2 4.6 4.6 0 0 0 0 9.2Z" />
-      <path d="m10.7 10.8 2.8 2.7" />
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="11" cy="11" r="6" />
+      <path d="m20 20-4.2-4.2" />
     </svg>
   );
 }
 
 function SidebarListIcon() {
   return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M5.1 3.3h6.6v9.4H5.1z" />
-      <path d="M3.2 5.2h.01" />
-      <path d="M3.2 8h.01" />
-      <path d="M3.2 10.8h.01" />
-      <path d="M6.7 5.2h3.3" />
-      <path d="M6.7 8h3.3" />
-      <path d="M6.7 10.8h3.3" />
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 6h12" />
+      <path d="M8 12h12" />
+      <path d="M8 18h12" />
+      <path d="M4 6h.01" />
+      <path d="M4 12h.01" />
+      <path d="M4 18h.01" />
     </svg>
   );
 }
 
 function SidebarFavoriteIcon() {
   return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="m8 2.7 1.5 3 3.3.5-2.4 2.3.6 3.3L8 10.2 5 11.8l.6-3.3-2.4-2.3 3.3-.5z" />
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m12 3.8 2.5 5 5.5.8-4 3.9.9 5.6-4.9-2.6-4.9 2.6.9-5.6-4-3.9 5.5-.8z" />
     </svg>
   );
 }
 
 function ToolbarStickyIcon() {
   return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M4.5 3.1h7v9.8h-7z" />
-      <path d="M6 5.7h4" />
-      <path d="M6 8h4" />
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 4h10" />
+      <path d="M7 20h10" />
+      <path d="M6 8h12" />
+      <path d="M6 16h12" />
+      <path d="M9 12h6" />
     </svg>
   );
 }
 
 function ToolbarSidebarIcon() {
   return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M3.3 3.2h9.4v9.6H3.3z" />
-      <path d="M6.2 3.2v9.6" />
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="0" />
+      <path d="M9 4v16" />
     </svg>
   );
 }
 
 function ToolbarSparklesIcon() {
   return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M8 2.7l1.1 2.8 2.8 1.1-2.8 1.1L8 10.5 6.9 7.7 4.1 6.6l2.8-1.1z" />
-      <path d="M11.9 10.1l.5 1.3 1.3.5-1.3.5-.5 1.3-.5-1.3-1.3-.5 1.3-.5z" />
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 3.5 13.8 8 18.5 9.8 13.8 11.6 12 16.1 10.2 11.6 5.5 9.8 10.2 8z" />
+      <path d="M18.5 15.5 19.3 17.4 21.2 18.2 19.3 19 18.5 20.9 17.7 19 15.8 18.2 17.7 17.4z" />
     </svg>
   );
 }
 
 function ToolbarUndoIcon() {
   return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M6.1 5.1H3.7v2.4" />
-      <path d="M3.8 7.5a4.7 4.7 0 1 1 2.6 4.2" />
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9 7H4v5" />
+      <path d="M4.6 11.5A8 8 0 1 1 8 18" />
     </svg>
   );
 }
 
 function ToolbarCopyIcon() {
   return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M5.1 4.1h6.4v7.2H5.1z" />
-      <path d="M3.3 11.9V5.9" />
-      <path d="M3.3 5.9h5.2" />
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="9" y="8" width="10" height="12" rx="0" />
+      <path d="M5 16V4h10" />
     </svg>
   );
 }
 
 function NoteMenuIcon() {
   return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M4.1 8h.01" />
-      <path d="M8 8h.01" />
-      <path d="M11.9 8h.01" />
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 5h.01" />
+      <path d="M12 12h.01" />
+      <path d="M12 19h.01" />
     </svg>
   );
 }
@@ -1642,15 +1644,16 @@ function App() {
                   <div className="sticky-note-toolbar" role="toolbar" aria-label="스티커 메모 도구" data-testid="sticky-toolbar">
                     <div className="sticky-note-toolbar__actions sticky-note-toolbar__actions--left">
                       <button
-                        className="sticky-note-toolbar__button sticky-note-toolbar__button--new"
+                        className="sticky-note-toolbar__button sticky-note-toolbar__button--close"
                         type="button"
-                        data-testid="sticky-mode-new-note-button"
-                        aria-label="새 스티커 메모 만들기"
-                        disabled={isMutationLocked}
-                        onClick={() => void handleCreateStickyNoteWindow()}
+                        data-testid="sticky-mode-exit-button"
+                        aria-label={isDedicatedStickyWindow ? "스티커 창 닫기" : "일반 모드로 돌아가기"}
+                        onClick={closeStickySurface}
                       >
-                        <PlusIcon />
+                        <StickyCloseIcon />
                       </button>
+                    </div>
+                    <div className="sticky-note-toolbar__actions sticky-note-toolbar__actions--right">
                       <button
                         className={`sticky-note-toolbar__button sticky-note-toolbar__button--pin${isStickyPinned ? " is-pinned" : ""}`}
                         type="button"
@@ -1662,13 +1665,14 @@ function App() {
                         <StickyPinIcon />
                       </button>
                       <button
-                        className="sticky-note-toolbar__button sticky-note-toolbar__button--close"
+                        className="sticky-note-toolbar__button sticky-note-toolbar__button--new"
                         type="button"
-                        data-testid="sticky-mode-exit-button"
-                        aria-label={isDedicatedStickyWindow ? "스티커 창 닫기" : "일반 모드로 돌아가기"}
-                        onClick={closeStickySurface}
+                        data-testid="sticky-mode-new-note-button"
+                        aria-label="새 스티커 메모 만들기"
+                        disabled={isMutationLocked}
+                        onClick={() => void handleCreateStickyNoteWindow()}
                       >
-                        <StickyCloseIcon />
+                        <PlusIcon />
                       </button>
                     </div>
                   </div>

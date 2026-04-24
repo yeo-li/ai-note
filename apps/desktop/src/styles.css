@@ -40,7 +40,7 @@
   --sticky-note-icon-pressed: rgba(0, 0, 0, 0.96);
   --sticky-note-focus-ring: #111111;
   --sticky-note-focus-shadow: 0 0 0 3px rgba(17, 17, 17, 0.12);
-  --editor-measure: min(100%, 980px);
+  --editor-measure: min(100%, 1320px);
   font-family:
     "Avenir Next",
     "SF Pro Display",
@@ -263,13 +263,13 @@ textarea:focus-visible {
 }
 
 .sidebar-brand-mark svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 
 .sidebar-brand-mark svg path {
   stroke: currentColor;
-  stroke-width: 1.55;
+  stroke-width: 1.8;
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -346,14 +346,17 @@ textarea:focus-visible {
 
 .sidebar-create-button svg,
 .header-create-note-button svg {
-  width: 13px;
-  height: 13px;
+  width: 16px;
+  height: 16px;
 }
 
 .sidebar-create-button svg path,
 .header-create-note-button svg path {
-  fill: currentColor;
-  stroke: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .sidebar-search,
@@ -379,8 +382,8 @@ textarea:focus-visible {
 
 .sidebar-search svg,
 .paper-search svg {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   color: var(--text-soft);
   flex: 0 0 auto;
 }
@@ -388,7 +391,7 @@ textarea:focus-visible {
 .sidebar-search svg path,
 .paper-search svg path {
   stroke: currentColor;
-  stroke-width: 1.7;
+  stroke-width: 2;
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -475,15 +478,15 @@ textarea:focus-visible {
 }
 
 .sidebar-nav-item svg {
-  width: 18px;
-  height: 18px;
+  width: 19px;
+  height: 19px;
   color: currentColor;
   flex: 0 0 auto;
 }
 
 .sidebar-nav-item svg path {
   stroke: currentColor;
-  stroke-width: 1.7;
+  stroke-width: 1.9;
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -637,13 +640,13 @@ textarea:focus-visible {
 }
 
 .paper-button-icon svg {
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
 }
 
 .paper-button-icon svg path {
   stroke: currentColor;
-  stroke-width: 1.8;
+  stroke-width: 1.9;
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -956,6 +959,7 @@ textarea:focus-visible {
   position: relative;
   min-height: 0;
   background: #ffffff;
+  display: grid;
 }
 
 .app-shell.is-sticky-mode .editor-pane {
@@ -987,19 +991,27 @@ textarea:focus-visible {
 .sticky-note-toolbar {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
   min-height: 28px;
-  margin-bottom: clamp(34px, 7vh, 64px);
+  margin-bottom: 18px;
   -webkit-app-region: drag;
 }
 
 .sticky-note-toolbar__actions {
   display: inline-flex;
   align-items: center;
-  gap: 18px;
+  gap: 10px;
   padding: 0;
   pointer-events: auto;
   -webkit-app-region: no-drag;
+}
+
+.sticky-note-toolbar__actions--left {
+  justify-content: flex-start;
+}
+
+.sticky-note-toolbar__actions--right {
+  justify-content: flex-end;
 }
 
 .sticky-note-toolbar__button {
@@ -1052,21 +1064,16 @@ textarea:focus-visible {
 }
 
 .sticky-note-toolbar__button svg {
-  width: 18px;
-  height: 18px;
+  width: 19px;
+  height: 19px;
 }
 
 .sticky-note-toolbar__button svg path {
   stroke: currentColor;
-  stroke-width: 1.65;
+  stroke-width: 1.9;
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-
-.sticky-note-toolbar__button .plus-icon path {
-  fill: currentColor;
-  stroke: none;
 }
 
 .sticky-note-body,
@@ -1074,6 +1081,10 @@ textarea:focus-visible {
 .sticky-note-field.editor-field-body {
   min-height: 0;
   height: 100%;
+}
+
+.sticky-note-body {
+  display: grid;
 }
 
 .sticky-note-editor {
@@ -1122,7 +1133,7 @@ textarea:focus-visible {
 .paper-head {
   display: grid;
   gap: 12px;
-  padding: 16px clamp(24px, 3vw, 40px) 12px;
+  padding: 16px clamp(18px, 2vw, 28px) 8px;
   border-bottom: 1px solid rgba(17, 17, 17, 0.06);
   background: #ffffff;
   backdrop-filter: none;
@@ -1209,7 +1220,7 @@ textarea:focus-visible {
   align-items: center;
   justify-content: flex-end;
   flex-wrap: nowrap;
-  gap: 8px;
+  gap: 4px;
   min-height: 40px;
 }
 
@@ -1270,7 +1281,7 @@ textarea:focus-visible {
   z-index: 2;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
   -webkit-app-region: no-drag;
 }
@@ -1393,12 +1404,12 @@ textarea:focus-visible {
 .paper-body {
   min-height: 0;
   overflow: auto;
-  padding: 0 clamp(24px, 3vw, 42px) 0;
+  padding: 0 clamp(18px, 2vw, 28px) 0;
   scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  align-items: center;
+  gap: 8px;
+  align-items: stretch;
 }
 
 .paper-body.is-preview-mode {
@@ -1438,7 +1449,7 @@ textarea:focus-visible {
   min-width: 0;
   min-height: 0;
   width: 100%;
-  padding: 20px 24px 24px;
+  padding: 16px 18px 16px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -1486,7 +1497,7 @@ textarea:focus-visible {
 }
 
 .transform-review-panel-head strong {
-  font-size: 0.92rem;
+  font-size: 0.88rem;
   font-weight: 600;
   line-height: 1.3;
 }
@@ -1517,8 +1528,8 @@ textarea:focus-visible {
   white-space: pre-wrap;
   color: var(--text-main);
   font-family: inherit;
-  font-size: 0.98rem;
-  line-height: 1.78;
+  font-size: 0.96rem;
+  line-height: 1.7;
   background: transparent;
 }
 
@@ -1548,7 +1559,7 @@ textarea:focus-visible {
   gap: 0;
   width: var(--editor-measure);
   margin: 0 auto;
-  padding: clamp(8px, 1.2vw, 14px) 0 clamp(28px, 4vw, 42px);
+  padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -1579,17 +1590,17 @@ textarea:focus-visible {
 
 .paper-editor {
   width: 100%;
-  min-height: 0;
+  min-height: 100%;
   height: 100%;
   border: 0;
   background: transparent;
   outline: none;
   resize: none;
-  padding: clamp(12px, 1.5vw, 18px) 0 clamp(30px, 4vw, 48px);
+  padding: 4px 0 0;
   margin: 0;
   border-radius: 0;
   font-size: 1.04rem;
-  line-height: 1.78;
+  line-height: 1.72;
   color: var(--text-main);
   background: transparent;
   box-shadow: none;
@@ -1610,8 +1621,8 @@ textarea:focus-visible {
   align-self: center;
   display: grid;
   gap: 12px;
-  padding: 56px 0;
-  width: min(100%, 760px);
+  padding: 28px 0;
+  width: min(100%, 980px);
   border-radius: 0;
   border: 0;
   background: transparent;
@@ -1732,13 +1743,13 @@ textarea:focus-visible {
 
   .paper-head,
   .paper-body {
-    padding-left: 14px;
-    padding-right: 14px;
+    padding-left: 12px;
+    padding-right: 12px;
   }
 
   .editor-empty {
     width: 100%;
-    padding: 36px 0;
+    padding: 24px 0;
     border-radius: 0;
   }
 
@@ -1748,7 +1759,7 @@ textarea:focus-visible {
 
   .sticky-note-card {
     height: 100%;
-    padding: 24px 18px 24px;
+    padding: 18px 14px 18px;
     border-radius: 0;
   }
 
@@ -1767,13 +1778,13 @@ textarea:focus-visible {
 
   .editor-card {
     width: 100%;
-    padding: 8px 0 22px;
+    padding: 0;
     border-radius: 0;
   }
 
   .paper-editor {
     min-height: 300px;
-    padding: 10px 0 24px;
+    padding: 2px 0 0;
     line-height: 1.72;
   }
 

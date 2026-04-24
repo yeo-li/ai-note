@@ -56,4 +56,6 @@ export type MemoOrganizeResult = {
   original: string;
   suggested: string;
   summary: string;
+  provider?: "codex" | "local";
+  fallbackErrorMessage?: string | null;
 };

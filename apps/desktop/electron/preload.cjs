@@ -13,7 +13,8 @@ const memoChannels = {
   organize: "memo:organize"
 };
 const memoEventChannels = {
-  changed: "memo:changed"
+  changed: "memo:changed",
+  organizeState: "memo:organize-state-changed"
 };
 const windowChannels = {
   openStickyNote: "window:open-sticky-note",
@@ -42,6 +43,9 @@ const memoAPI = {
   search(query) {
     return ipcRenderer.invoke(memoChannels.search, query);
   },
+  organizeState() {
+    return ipcRenderer.invoke(memoChannels.organizeState);
+  },
   organize(input) {
     return ipcRenderer.invoke(memoChannels.organize, input);
   },
@@ -58,6 +62,21 @@ const memoAPI = {
 
     return () => {
       ipcRenderer.off(memoEventChannels.changed, wrappedListener);
+    };
+  },
+  onDidOrganizeState(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+
+    const wrappedListener = (_event, changeEvent) => {
+      listener(changeEvent);
+    };
+
+    ipcRenderer.on(memoEventChannels.organizeState, wrappedListener);
+
+    return () => {
+      ipcRenderer.off(memoEventChannels.organizeState, wrappedListener);
     };
   }
 };

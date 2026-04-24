@@ -44,8 +44,10 @@ type MemoAPI = {
   update(id: UpdateMemoRequest["memoId"], patch: UpdateMemoRequest["patch"]): Promise<UpdateMemoResponse["memo"]>;
   delete(id: DeleteMemoRequest["memoId"]): Promise<DeleteMemoResponse["deleted"]>;
   search(query: SearchMemosRequest["query"]): Promise<SearchMemosResponse["results"]>;
+  organizeState(): Promise<string[]>;
   organize(input: OrganizeMemoRequest["input"]): Promise<OrganizeMemoResponse["result"]>;
   onDidChange(listener: (event: MemoChangeEvent) => void): () => void;
+  onDidOrganizeState(listener: (event: { memoId: string; busy: boolean }) => void): () => void;
 };
 
 declare global {

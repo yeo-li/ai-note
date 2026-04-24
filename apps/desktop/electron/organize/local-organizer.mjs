@@ -194,7 +194,17 @@ function buildSummary(intent, prompt) {
     : "띄어쓰기와 문장 끝 표현을 다듬어 읽기 쉽게 정리했습니다.";
 }
 
-export function createLocalOrganizer() {
+function wait(delayMs) {
+  if (delayMs <= 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
+}
+
+export function createLocalOrganizer({ delayMs = 0 } = {}) {
   return {
     async organize({ intent, body = "", prompt = "" }) {
       if (!supportedIntents.has(intent)) {
@@ -213,6 +223,8 @@ export function createLocalOrganizer() {
           fallbackErrorMessage: null
         };
       }
+
+      await wait(delayMs);
 
       const suggested = applyPromptTransforms(buildSuggestion(original, intent), prompt, intent);
       const summary = buildSummary(intent, prompt);

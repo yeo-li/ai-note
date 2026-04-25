@@ -18,12 +18,21 @@ function createFakeChild() {
 }
 
 test("codex cli organize provider parses structured output from output-last-message", async () => {
+  let stdinPrompt = "";
+
   const provider = createCodexCliOrganizeProvider({
     runCommand(command, args) {
       assert.equal(command, "codex");
+      const modelIndex = args.indexOf("--model");
       const outputIndex = args.indexOf("--output-last-message");
+      assert.notEqual(modelIndex, -1);
+      assert.equal(args[modelIndex + 1], "gpt-5.4-mini");
       const outputPath = args[outputIndex + 1];
       const child = createFakeChild();
+
+      child.stdin.write = (value) => {
+        stdinPrompt += value;
+      };
 
       queueMicrotask(() => {
         writeFileSync(
@@ -46,6 +55,9 @@ test("codex cli organize provider parses structured output from output-last-mess
   const result = await provider.organize({ memoId: "memo-1", body: "원문", intent: "polish", prompt: "더 자연스럽게" });
   assert.equal(result.suggested, "정리된 원문");
   assert.equal(result.summary, "읽기 좋게 정리했어요.");
+  assert.match(stdinPrompt, /1\. User instruction/);
+  assert.match(stdinPrompt, /User instruction \(ABSOLUTE PRIORITY\): 더 자연스럽게/);
+  assert.match(stdinPrompt, /This prompt is a CONTRACT, not a suggestion\./);
 });
 
 test("codex cli organize provider maps missing binary to a user-facing error", async () => {

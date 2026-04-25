@@ -3,6 +3,11 @@ import type { Memo, MemoChangeEvent, MemoCreateInput, MemoId, MemoOrganizeIntent
 import type { MemoStoreHealth } from "./shared/memo-bridge";
 import { buildMemoTitleFromBody, deriveNoteHeadline } from "./note-content";
 
+type DiffSegment = {
+  text: string;
+  changed: boolean;
+};
+
 type TransformMode = "default" | "organized";
 
 type Note = {
@@ -31,6 +36,23 @@ type TransformDraft = {
   noteId: MemoId;
   prompt: string;
   previewBody: string;
+  provider: "codex" | "local" | null;
+  fallbackErrorMessage: string | null;
+};
+
+type TransformFeedback = {
+  kind: "success" | "warning" | "error";
+  title: string;
+  message: string;
+};
+
+type TransformSession = {
+  noteId: MemoId;
+  isOpen: boolean;
+  prompt: string;
+  draft: TransformDraft | null;
+  feedback: TransformFeedback | null;
+  startedAt: number | null;
 };
 
 const initialNotes: Note[] = [
@@ -115,6 +137,133 @@ function matchesQuery(note: Note, query: string) {
     .join(" ")
     .toLowerCase()
     .includes(normalizedQuery);
+}
+
+function tokenizeDiffText(text: string) {
+  return text.match(/\s+|[^\s]+/g) ?? [];
+}
+
+function buildLineDiffSegments(originalLine: string, previewLine: string) {
+  const originalTokens = tokenizeDiffText(originalLine);
+  const previewTokens = tokenizeDiffText(previewLine);
+  const lcs = Array.from({ length: originalTokens.length + 1 }, () => Array(previewTokens.length + 1).fill(0));
+
+  for (let originalIndex = originalTokens.length - 1; originalIndex >= 0; originalIndex -= 1) {
+    for (let previewIndex = previewTokens.length - 1; previewIndex >= 0; previewIndex -= 1) {
+      lcs[originalIndex][previewIndex] =
+        originalTokens[originalIndex] === previewTokens[previewIndex]
+          ? lcs[originalIndex + 1][previewIndex + 1] + 1
+          : Math.max(lcs[originalIndex + 1][previewIndex], lcs[originalIndex][previewIndex + 1]);
+    }
+  }
+
+  const segments: DiffSegment[] = [];
+  let currentText = "";
+  let currentChanged: boolean | null = null;
+  let originalIndex = 0;
+  let previewIndex = 0;
+
+  const flushSegment = () => {
+    if (!currentText) {
+      return;
+    }
+
+    segments.push({ text: currentText, changed: currentChanged ?? false });
+    currentText = "";
+  };
+
+  const appendSegmentText = (text: string, changed: boolean) => {
+    if (!text) {
+      return;
+    }
+
+    if (currentChanged === changed) {
+      currentText += text;
+      return;
+    }
+
+    flushSegment();
+    currentText = text;
+    currentChanged = changed;
+  };
+
+  while (previewIndex < previewTokens.length) {
+    if (originalIndex < originalTokens.length && originalTokens[originalIndex] === previewTokens[previewIndex]) {
+      appendSegmentText(previewTokens[previewIndex], false);
+      originalIndex += 1;
+      previewIndex += 1;
+      continue;
+    }
+
+    const skipPreviewScore = previewIndex + 1 <= previewTokens.length ? lcs[originalIndex]?.[previewIndex + 1] ?? 0 : 0;
+    const skipOriginalScore = originalIndex + 1 <= originalTokens.length ? lcs[originalIndex + 1]?.[previewIndex] ?? 0 : 0;
+
+    if (originalIndex === originalTokens.length || skipPreviewScore >= skipOriginalScore) {
+      appendSegmentText(previewTokens[previewIndex], true);
+      previewIndex += 1;
+      continue;
+    }
+
+    originalIndex += 1;
+  }
+
+  flushSegment();
+
+  return segments;
+}
+
+function buildPreviewDiffSegments(original: string, preview: string) {
+  const originalLines = original.split("\n");
+  const previewLines = preview.split("\n");
+  const segments: DiffSegment[] = [];
+
+  for (let lineIndex = 0; lineIndex < previewLines.length; lineIndex += 1) {
+    const originalLine = originalLines[lineIndex] ?? "";
+    const previewLine = previewLines[lineIndex] ?? "";
+
+    if (previewLine === originalLine) {
+      segments.push({ text: previewLine, changed: false });
+    } else {
+      segments.push(...buildLineDiffSegments(originalLine, previewLine));
+    }
+
+    if (lineIndex < previewLines.length - 1) {
+      segments.push({ text: "\n", changed: false });
+    }
+  }
+
+  return segments;
+}
+
+function formatElapsedSeconds(elapsedMs: number) {
+  const elapsedSeconds = elapsedMs / 1000;
+
+  if (elapsedSeconds < 10) {
+    return `${elapsedSeconds.toFixed(1)}초`;
+  }
+
+  return `${Math.round(elapsedSeconds)}초`;
+}
+
+function getProgressFeedback(elapsedMs: number) {
+  if (elapsedMs < 2500) {
+    return {
+      title: "AI 정리 준비 중",
+      message: "메모 흐름을 읽고 초안 방향을 잡고 있어요."
+    };
+  }
+
+  if (elapsedMs < 6000) {
+    return {
+      title: "AI 정리 진행 중",
+      message: "문장을 다듬고 요청한 톤으로 바꾸는 중이에요."
+    };
+  }
+
+  return {
+    title: "거의 다 완료되었어요",
+    message: "마지막 문장과 형식을 정리하고 있어요."
+  };
 }
 
 function nowStamp() {
@@ -579,13 +728,13 @@ function App() {
   const [deleteIntentId, setDeleteIntentId] = useState<MemoId | null>(null);
   const [noteMenuId, setNoteMenuId] = useState<MemoId | null>(null);
   const [recentlyDeleted, setRecentlyDeleted] = useState<DeletedNoteState | null>(null);
-  const [draftTransform, setDraftTransform] = useState<TransformDraft | null>(null);
-  const [isAiPromptOpen, setIsAiPromptOpen] = useState(false);
-  const [aiPrompt, setAiPrompt] = useState("");
+  const [transformSession, setTransformSession] = useState<TransformSession | null>(null);
   const [isFindBarOpen, setIsFindBarOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [findMatchIndex, setFindMatchIndex] = useState(0);
   const [isPreviewActionCoolingDown, setIsPreviewActionCoolingDown] = useState(false);
+  const [organizingNotes, setOrganizingNotes] = useState<Record<MemoId, number>>({});
+  const [progressNow, setProgressNow] = useState(() => Date.now());
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const aiPromptInputRef = useRef<HTMLInputElement | null>(null);
   const findInputRef = useRef<HTMLInputElement | null>(null);
@@ -742,7 +891,16 @@ function App() {
         setDeleteIntentId((currentDeleteIntentId) => (currentDeleteIntentId === memoId ? null : currentDeleteIntentId));
         setNoteMenuId((currentNoteMenuId) => (currentNoteMenuId === memoId ? null : currentNoteMenuId));
         setRecentlyDeleted((currentDeletedState) => (currentDeletedState?.note.id === memoId ? null : currentDeletedState));
-        setDraftTransform((currentDraft) => (currentDraft?.noteId === memoId ? null : currentDraft));
+        setTransformSession((currentSession) => (currentSession?.noteId === memoId ? null : currentSession));
+        setOrganizingNotes((currentNotes) => {
+          if (!currentNotes[memoId]) {
+            return currentNotes;
+          }
+
+          const nextNotes = { ...currentNotes };
+          delete nextNotes[memoId];
+          return nextNotes;
+        });
         setBackups((currentBackups) => {
           if (!currentBackups[memoId]) {
             return currentBackups;
@@ -761,6 +919,53 @@ function App() {
 
     return () => {
       unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!window.memoAPI) {
+      return;
+    }
+
+    let cancelled = false;
+
+    if (typeof window.memoAPI.organizeState === "function") {
+      void window.memoAPI.organizeState().then((memoIds) => {
+        if (cancelled || !Array.isArray(memoIds)) {
+          return;
+        }
+
+        const startedAt = Date.now();
+        setOrganizingNotes(Object.fromEntries(memoIds.map((memoId) => [memoId, startedAt])) as Record<MemoId, number>);
+      });
+    }
+
+    const unsubscribe = window.memoAPI.onDidOrganizeState?.(({ memoId, busy }) => {
+      setOrganizingNotes((currentNotes) => {
+        if (busy) {
+          if (currentNotes[memoId]) {
+            return currentNotes;
+          }
+
+          return {
+            ...currentNotes,
+            [memoId]: Date.now()
+          };
+        }
+
+        if (!currentNotes[memoId]) {
+          return currentNotes;
+        }
+
+        const nextNotes = { ...currentNotes };
+        delete nextNotes[memoId];
+        return nextNotes;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
     };
   }, []);
 
@@ -816,8 +1021,30 @@ function App() {
   const isSelectionOutsideCurrentSidebarScope =
     sidebarView === "favorites" && Boolean(selectedNote) && !scopedNotes.some((note) => note.id === selectedNoteId);
   const hasBackup = activeNote ? Boolean(backups[activeNote.id]) : false;
-  const activeDraft =
-    draftTransform && activeNote && draftTransform.noteId === activeNote.id ? draftTransform : null;
+  const activeTransformSession =
+    transformSession && activeNote && transformSession.noteId === activeNote.id ? transformSession : null;
+  const activeDraft = activeTransformSession?.draft ?? null;
+  const isAiPromptOpen = activeTransformSession?.isOpen ?? false;
+  const activeAiPrompt = activeTransformSession?.prompt ?? "";
+  const activeOrganizingStartedAt = activeNote ? organizingNotes[activeNote.id] ?? null : null;
+  const isTransformPreviewGenerating = Boolean(activeOrganizingStartedAt);
+  const isAnyTransformGenerating = Object.keys(organizingNotes).length > 0;
+  const activeTransformFeedback = useMemo(() => {
+    if (activeOrganizingStartedAt) {
+      const elapsedMs = Math.max(progressNow - activeOrganizingStartedAt, 0);
+      return {
+        kind: "progress" as const,
+        ...getProgressFeedback(elapsedMs)
+      };
+    }
+
+    return activeTransformSession?.feedback ?? null;
+  }, [activeOrganizingStartedAt, activeTransformSession?.feedback, progressNow]);
+  const isActiveNoteBusy = Boolean(activeOrganizingStartedAt);
+  const previewDiffSegments = useMemo(
+    () => (activeDraft && activeNote ? buildPreviewDiffSegments(activeNote.body, activeDraft.previewBody) : []),
+    [activeDraft, activeNote]
+  );
   const noteCountLabel = isSidebarViewEmpty
     ? sidebarView === "favorites"
       ? "즐겨찾기가 없다"
@@ -831,6 +1058,7 @@ function App() {
   const deleteTargetHeadline = deleteTargetNote ? deriveNoteHeadline(deleteTargetNote.body) : "";
   const isDeleteModalOpen = Boolean(deleteTargetNote);
   const isMutationLocked = isStorageLocked || !storageHealth?.ready;
+  const isEditorLocked = isMutationLocked || isActiveNoteBusy;
   const storageKindLabel = storageHealth ? getStorageKindLabel(storageHealth.storeKind) : "확인 중";
   const storageBadgeLabel = storageHealth
     ? `저장소 ${storageKindLabel}`
@@ -844,24 +1072,55 @@ function App() {
     .filter(Boolean)
     .join(" ");
 
-  useEffect(() => {
-    setDraftTransform((currentDraft) => {
-      if (!currentDraft) {
-        return currentDraft;
+  function openTransformSession(noteId: MemoId, nextPrompt?: string) {
+    setTransformSession((currentSession) => {
+      if (currentSession?.noteId === noteId) {
+        return {
+          ...currentSession,
+          isOpen: true,
+          prompt: typeof nextPrompt === "string" ? nextPrompt : currentSession.prompt
+        };
       }
 
-      if (!activeNote || currentDraft.noteId !== activeNote.id) {
-        return null;
-      }
-
-      return currentDraft;
+      return {
+        noteId,
+        isOpen: true,
+        prompt: nextPrompt ?? "",
+        draft: null,
+        feedback: null,
+        startedAt: null
+      };
     });
-  }, [activeNote]);
+  }
 
-  useEffect(() => {
-    setIsAiPromptOpen(false);
-    setAiPrompt("");
-  }, [activeNote?.id]);
+  function closeActiveTransformSession({ clearDraft = false, clearPrompt = false, clearFeedback = true } = {}) {
+    setTransformSession((currentSession) => {
+      if (!activeNote || !currentSession || currentSession.noteId !== activeNote.id) {
+        return currentSession;
+      }
+
+      const nextSession = {
+        ...currentSession,
+        isOpen: false,
+        draft: clearDraft ? null : currentSession.draft,
+        prompt: clearPrompt ? "" : currentSession.prompt,
+        feedback: clearFeedback ? null : currentSession.feedback
+      };
+
+      const shouldDropSession = !nextSession.isOpen && !nextSession.draft && !nextSession.prompt && !nextSession.feedback;
+      return shouldDropSession ? null : nextSession;
+    });
+  }
+
+  function updateActiveTransformSession(updater: (session: TransformSession) => TransformSession | null) {
+    setTransformSession((currentSession) => {
+      if (!activeNote || !currentSession || currentSession.noteId !== activeNote.id) {
+        return currentSession;
+      }
+
+      return updater(currentSession);
+    });
+  }
 
   useEffect(() => {
     if (!isAiPromptOpen) {
@@ -886,6 +1145,21 @@ function App() {
     setFindQuery("");
     setFindMatchIndex(0);
   }, [activeNote?.id, isStickyMode]);
+
+  useEffect(() => {
+    if (!isAnyTransformGenerating) {
+      return;
+    }
+
+    setProgressNow(Date.now());
+    const timer = window.setInterval(() => {
+      setProgressNow(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [isAnyTransformGenerating]);
 
   useEffect(() => {
     if (!isFindBarOpen) {
@@ -927,9 +1201,6 @@ function App() {
     }
 
     const nextTarget =
-      emptyFirstResultButtonRef.current ??
-      emptyClearSearchButtonRef.current ??
-      emptyCreateButtonRef.current ??
       searchInputRef.current;
 
     nextTarget?.focus();
@@ -1018,9 +1289,7 @@ function App() {
     setIsSidebarOpen(false);
     setDeleteIntentId(null);
     setNoteMenuId(null);
-    setDraftTransform(null);
-    setIsAiPromptOpen(false);
-    setAiPrompt("");
+    setTransformSession(null);
   }, [isStickyMode]);
 
   function patchActiveNote(update: Partial<Note>, message?: string) {
@@ -1052,7 +1321,7 @@ function App() {
 
     setDeleteIntentId(null);
     setNoteMenuId(null);
-    setDraftTransform(null);
+    updateActiveTransformSession((session) => ({ ...session, draft: null, feedback: null }));
 
     const persistencePatch = toMemoUpdateInput(update);
 
@@ -1121,15 +1390,18 @@ function App() {
       return;
     }
 
+    closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
     setIsFindBarOpen(true);
     setStatusMessage("메모 안에서 찾기를 열었어요.");
   }
 
-  function closeFindBar() {
+  function closeFindBar({ restoreEditorFocus = true }: { restoreEditorFocus?: boolean } = {}) {
     setIsFindBarOpen(false);
     setFindQuery("");
     setFindMatchIndex(0);
-    noteBodyInputRef.current?.focus();
+    if (restoreEditorFocus) {
+      noteBodyInputRef.current?.focus();
+    }
     setStatusMessage("메모 안에서 찾기를 닫았어요.");
   }
 
@@ -1198,9 +1470,6 @@ function App() {
     setDeleteIntentId(null);
     setNoteMenuId(null);
     setRecentlyDeleted(null);
-    setDraftTransform(null);
-    setIsAiPromptOpen(false);
-    setAiPrompt("");
     setStatusMessage("새 메모를 만들고 바로 편집할 수 있게 열어두었어요.");
   }
 
@@ -1251,9 +1520,8 @@ function App() {
     setQuery(nextQuery);
     setDeleteIntentId(null);
     setNoteMenuId(null);
-    setDraftTransform(null);
-    setIsAiPromptOpen(false);
-    setAiPrompt("");
+    closeFindBar({ restoreEditorFocus: false });
+    closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
 
     if (!trimmedQuery) {
       if (selectedNote) {
@@ -1312,18 +1580,21 @@ function App() {
 
     setDeleteIntentId(null);
     setNoteMenuId(null);
-    setAiPrompt((currentPrompt) => currentPrompt || activeDraft?.prompt || "");
-    setIsAiPromptOpen(true);
+    closeFindBar();
+    openTransformSession(activeNote.id, activeTransformSession?.prompt || activeDraft?.prompt || "");
     setStatusMessage("AI 정리 입력창을 열어두었어요.");
   }
 
   function closeAiPromptComposer() {
-    setIsAiPromptOpen(false);
-    setAiPrompt("");
+    closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
     setStatusMessage("AI 정리 입력창을 닫았어요.");
   }
 
   async function startTransformPreview() {
+    if (isAnyTransformGenerating) {
+      return;
+    }
+
     if (isMutationLocked) {
       setStatusMessage("저장소 연결이 복구될 때까지 AI 정리를 실행할 수 없어요.");
       return;
@@ -1343,11 +1614,25 @@ function App() {
       return;
     }
 
-    const trimmedPrompt = aiPrompt.trim();
+    const trimmedPrompt = activeAiPrompt.trim();
     const organizeIntent = deriveOrganizeIntent(trimmedPrompt);
+    const startedAt = Date.now();
 
     setDeleteIntentId(null);
     setNoteMenuId(null);
+    openTransformSession(activeNote.id, trimmedPrompt);
+    updateActiveTransformSession((session) => ({
+      ...session,
+      isOpen: true,
+      prompt: trimmedPrompt,
+      draft: null,
+      feedback: null,
+      startedAt
+    }));
+    setOrganizingNotes((currentNotes) => ({
+      ...currentNotes,
+      [activeNote.id]: startedAt
+    }));
     setStatusMessage(trimmedPrompt ? "AI 정리 미리보기를 만들고 있어요." : "기본 AI 정리 미리보기를 만들고 있어요.");
 
     if (!window.memoAPI) {
@@ -1364,23 +1649,70 @@ function App() {
         prompt: trimmedPrompt
       });
 
-      setDraftTransform({
-        noteId: activeNote.id,
-        prompt: trimmedPrompt,
-        previewBody: result.suggested
-      });
+      const elapsedLabel = formatElapsedSeconds(Date.now() - startedAt);
+
+      updateActiveTransformSession((session) => ({
+        ...session,
+        isOpen: true,
+        startedAt,
+        draft: {
+          noteId: activeNote.id,
+          prompt: trimmedPrompt,
+          previewBody: result.suggested,
+          provider: result.provider ?? null,
+          fallbackErrorMessage: result.fallbackErrorMessage ?? null
+        },
+        feedback: result.fallbackErrorMessage
+          ? {
+              kind: "warning",
+              title: "로컬 정리로 대체됨",
+              message: `${elapsedLabel} 만에 초안을 만들었어요. ${result.fallbackErrorMessage}`
+            }
+          : {
+              kind: "success",
+              title: "AI 정리 완료",
+              message: `${elapsedLabel} 만에 생성되었어요. ${result.summary}`
+            }
+      }));
       setIsPreviewActionCoolingDown(false);
-      setIsAiPromptOpen(true);
       setStatusMessage(result.summary);
     } catch (error) {
-      setDraftTransform(null);
-      setStatusMessage(toErrorMessage(error));
+      const message = toErrorMessage(error);
+      updateActiveTransformSession((session) => ({
+        ...session,
+        isOpen: true,
+        draft: null,
+        feedback: {
+          kind: "error",
+          title: "AI 정리 실패",
+          message: `LLM 결과를 가져오지 못했어요. ${message}`
+        }
+      }));
+      setStatusMessage(message);
+    } finally {
+      setOrganizingNotes((currentNotes) => {
+        if (!currentNotes[activeNote.id]) {
+          return currentNotes;
+        }
+
+        const nextNotes = { ...currentNotes };
+        delete nextNotes[activeNote.id];
+        return nextNotes;
+      });
+      updateActiveTransformSession((session) => ({
+        ...session,
+        startedAt: null
+      }));
     }
   }
 
   function cancelTransformPreview() {
     setNoteMenuId(null);
-    setDraftTransform(null);
+    updateActiveTransformSession((session) => ({
+      ...session,
+      draft: null,
+      feedback: null
+    }));
     setIsPreviewActionCoolingDown(true);
     if (previewActionCooldownRef.current !== null) {
       window.clearTimeout(previewActionCooldownRef.current);
@@ -1434,9 +1766,7 @@ function App() {
       "원문 상태로 다시 복원했어요."
     );
 
-    setIsAiPromptOpen(false);
-    setAiPrompt("");
-    setDraftTransform(null);
+    closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
     setNoteMenuId(null);
     setBackups((currentBackups) => {
       const nextBackups = { ...currentBackups };
@@ -1465,9 +1795,7 @@ function App() {
       return;
     }
 
-    setDraftTransform(null);
-    setIsAiPromptOpen(false);
-    setAiPrompt("");
+    closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
     setNoteMenuId(null);
     setDeleteIntentId(targetNote.id);
     setStatusMessage(`"${deriveNoteHeadline(targetNote.body)}" 메모를 삭제할까요?`);
@@ -1522,9 +1850,7 @@ function App() {
     setSelectedNoteId(nextSelected?.id ?? "");
     setDeleteIntentId(null);
     setNoteMenuId(null);
-    setDraftTransform(null);
-    setIsAiPromptOpen(false);
-    setAiPrompt("");
+    closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
     setRecentlyDeleted({
       note: deleteTargetNote,
       index: deletedIndex,
@@ -1589,8 +1915,6 @@ function App() {
     setSelectedNoteId(restoredNote.id);
     setNoteMenuId(null);
     setRecentlyDeleted(null);
-    setIsAiPromptOpen(false);
-    setAiPrompt("");
     setStatusMessage("삭제한 메모를 되돌렸다.");
   }
 
@@ -1658,12 +1982,14 @@ function App() {
     .join(" ");
   const paperStatusLabel = isMutationLocked
     ? "읽기 전용"
+    : isTransformPreviewGenerating
+      ? "AI 생성 중"
     : activeDraft
       ? "미리보기 전용"
       : recentlyDeleted
         ? "되돌리기 가능"
         : "로컬 저장 완료";
-  const showPaperStatus = isMutationLocked || Boolean(activeDraft) || Boolean(recentlyDeleted);
+  const showPaperStatus = isMutationLocked || isTransformPreviewGenerating || Boolean(activeDraft) || Boolean(recentlyDeleted);
   const sidebarCountLabel = hasQuery
     ? `결과 ${filteredNotes.length}개`
     : sidebarView === "favorites"
@@ -1705,22 +2031,14 @@ function App() {
                 <span className="visually-hidden">메모 검색</span>
                 <input
                   ref={searchInputRef}
-                  type="search"
+                  type="text"
                   placeholder="메모 검색"
                   data-testid="note-search-input"
+                  autoComplete="off"
+                  spellCheck={false}
                   value={query}
                   onChange={(event) => handleSearch(event.target.value)}
                 />
-                {hasQuery ? (
-                  <button
-                    className="sidebar-search-button"
-                    type="button"
-                    aria-label="검색어 지우기"
-                    onClick={() => handleSearch("")}
-                  >
-                    지우기
-                  </button>
-                ) : null}
               </label>
 
               <nav className="sidebar-nav" aria-label="사이드바 탐색">
@@ -1892,16 +2210,16 @@ function App() {
                   {activeNote ? (
                     <div className="sticky-note-body">
                       <label className="editor-field editor-field-body sticky-note-field">
-                        <textarea
-                          className="paper-editor sticky-note-editor"
-                          data-testid="note-body-input"
-                          ref={noteBodyInputRef}
-                          value={activeNote.body}
-                          placeholder="여기에 메모를 적어 주세요."
-                          disabled={isMutationLocked}
-                          readOnly={isMutationLocked}
-                          onChange={(event) =>
-                            patchActiveNote(
+                          <textarea
+                            className="paper-editor sticky-note-editor"
+                            data-testid="note-body-input"
+                            ref={noteBodyInputRef}
+                            value={activeNote.body}
+                            placeholder="여기에 메모를 적어 주세요."
+                            disabled={isEditorLocked}
+                            readOnly={isEditorLocked}
+                            onChange={(event) =>
+                              patchActiveNote(
                               {
                                 body: event.target.value,
                                 mode: hasBackup ? activeNote.mode : "default"
@@ -1980,31 +2298,32 @@ function App() {
                               data-testid="selected-note-favorite-button"
                               aria-label={activeNote.favorite ? "즐겨찾기를 해제해요" : "즐겨찾기에 추가해요"}
                               aria-pressed={activeNote.favorite}
+                              disabled={isActiveNoteBusy}
                               onClick={() => toggleFavorite(activeNote.id)}
                             >
                               <NoteFavoriteIcon />
                             </button>
                           ) : null}
-                          <button
-                            className="paper-button paper-button-icon"
-                            type="button"
-                            data-testid="note-find-toggle-button"
-                            aria-label="메모 안에서 찾기"
-                            title="메모 안에서 찾기"
-                            disabled={!activeNote || isStickyMode}
-                            onClick={openFindBar}
-                          >
+                            <button
+                              className="paper-button paper-button-icon"
+                              type="button"
+                              data-testid="note-find-toggle-button"
+                              aria-label="메모 안에서 찾기"
+                              title="메모 안에서 찾기"
+                              disabled={!activeNote || isStickyMode || isTransformPreviewGenerating}
+                              onClick={openFindBar}
+                            >
                             <ToolbarFindIcon />
                           </button>
-                          <button
-                            className="paper-button paper-button-icon"
-                            type="button"
-                            data-testid="organize-note-button"
-                            aria-label="AI로 정리하기"
-                            title="AI로 정리하기"
-                            disabled={isMutationLocked || isStickyMode || !activeNote}
-                            onClick={openAiPromptComposer}
-                          >
+                            <button
+                              className="paper-button paper-button-icon"
+                              type="button"
+                              data-testid="organize-note-button"
+                              aria-label="AI로 정리하기"
+                              title="AI로 정리하기"
+                              disabled={isMutationLocked || isStickyMode || !activeNote || isAnyTransformGenerating}
+                              onClick={openAiPromptComposer}
+                            >
                             <ToolbarSparklesIcon />
                           </button>
                           <button
@@ -2079,7 +2398,7 @@ function App() {
                           className="paper-button"
                           type="button"
                           data-testid="note-find-close-button"
-                          onClick={closeFindBar}
+                              onClick={() => closeFindBar()}
                         >
                           닫기
                         </button>
@@ -2093,6 +2412,7 @@ function App() {
                         id="ai-prompt-form"
                         className="ai-prompt-form"
                         data-testid="ai-prompt-form"
+                        aria-busy={isTransformPreviewGenerating}
                         onSubmit={(event) => {
                           event.preventDefault();
                           startTransformPreview();
@@ -2104,33 +2424,39 @@ function App() {
                             ref={aiPromptInputRef}
                             type="text"
                             data-testid="ai-prompt-input"
-                            value={aiPrompt}
-                            disabled={isMutationLocked}
+                            value={activeAiPrompt}
+                            disabled={isMutationLocked || isTransformPreviewGenerating}
                             placeholder="예: 더 간결하게 요약해줘, 존댓말로 바꿔줘"
-                            onChange={(event) => setAiPrompt(event.target.value)}
+                            onChange={(event) =>
+                              updateActiveTransformSession((session) => ({
+                                ...session,
+                                prompt: event.target.value
+                              }))
+                            }
                           />
                         </label>
                         {activeDraft ? (
                           <button
-                            className="paper-button"
+                            className={`paper-button${isTransformPreviewGenerating ? " is-loading" : ""}`}
                             type="submit"
                             data-testid="submit-ai-prompt-button"
-                            disabled={isMutationLocked}
+                            aria-label={isTransformPreviewGenerating ? "AI 정리 초안을 다시 생성하는 중" : "AI 정리 초안 다시 생성"}
+                            disabled={isMutationLocked || isTransformPreviewGenerating}
                           >
-                            다시 생성
+                            {isTransformPreviewGenerating ? "생성 중…" : "다시 생성"}
                           </button>
                         ) : null}
                       </form>
                       <div className="ai-prompt-actions">
                         {hasBackup && !activeDraft ? (
-                          <button
-                            className="paper-button transform-restore-button"
-                            type="button"
-                            data-testid="restore-note-button"
-                            disabled={isMutationLocked}
-                            onClick={restoreOriginal}
-                          >
-                            원문 복원
+                            <button
+                              className="paper-button transform-restore-button"
+                              type="button"
+                              data-testid="restore-note-button"
+                              disabled={isMutationLocked || isTransformPreviewGenerating}
+                              onClick={restoreOriginal}
+                            >
+                              원문 복원
                           </button>
                         ) : null}
                         {activeDraft ? (
@@ -2139,6 +2465,7 @@ function App() {
                               className="paper-button"
                               type="button"
                               data-testid="cancel-transform-button"
+                              disabled={isTransformPreviewGenerating}
                               onClick={cancelTransformPreview}
                             >
                               취소
@@ -2147,7 +2474,7 @@ function App() {
                               className="paper-button paper-button-primary"
                               type="button"
                               data-testid="apply-transform-button"
-                              disabled={isMutationLocked}
+                              disabled={isMutationLocked || isTransformPreviewGenerating}
                               onClick={applyTransformDraft}
                             >
                               적용
@@ -2156,18 +2483,20 @@ function App() {
                         ) : (
                           <>
                             <button
-                              className="paper-button paper-button-primary"
+                              className={`paper-button paper-button-primary${isTransformPreviewGenerating ? " is-loading" : ""}`}
                               type="submit"
                               form="ai-prompt-form"
                               data-testid="submit-ai-prompt-button"
-                              disabled={isMutationLocked || isPreviewActionCoolingDown}
+                              aria-label={isTransformPreviewGenerating ? "AI 정리 미리보기를 생성하는 중" : "AI 정리 미리보기 생성"}
+                              disabled={isMutationLocked || isPreviewActionCoolingDown || isTransformPreviewGenerating}
                             >
-                              미리보기
+                              {isTransformPreviewGenerating ? "생성 중…" : "미리보기"}
                             </button>
                             <button
                               className="paper-button"
                               type="button"
                               data-testid="cancel-ai-prompt-button"
+                              disabled={isTransformPreviewGenerating}
                               onClick={closeAiPromptComposer}
                             >
                               취소
@@ -2175,6 +2504,16 @@ function App() {
                           </>
                         )}
                       </div>
+                      {activeTransformFeedback ? (
+                        <div
+                          className={`transform-feedback-banner is-${activeTransformFeedback.kind}`}
+                          role={activeTransformFeedback.kind === "error" ? "alert" : "status"}
+                          data-testid={`transform-${activeTransformFeedback.kind}-banner`}
+                        >
+                          <strong>{activeTransformFeedback.title}</strong>
+                          <span>{activeTransformFeedback.message}</span>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                   {isMutationLocked && storageHealth ? (
@@ -2216,7 +2555,15 @@ function App() {
                             tabIndex={0}
                             aria-label="AI가 정리한 미리보기 결과"
                           >
-                            {activeDraft.previewBody}
+                            {previewDiffSegments.map((segment, index) =>
+                              segment.changed ? (
+                                <span key={`${index}-${segment.text}`} className="transform-review-change">
+                                  {segment.text}
+                                </span>
+                              ) : (
+                                <span key={`${index}-${segment.text}`}>{segment.text}</span>
+                              )
+                            )}
                           </pre>
                         </section>
 
@@ -2252,8 +2599,8 @@ function App() {
                             ref={noteBodyInputRef}
                             value={activeNote.body}
                             placeholder="여기에 메모를 적어 주세요."
-                            disabled={isMutationLocked}
-                            readOnly={isMutationLocked}
+                            disabled={isEditorLocked}
+                            readOnly={isEditorLocked}
                             onChange={(event) =>
                               patchActiveNote(
                                 {

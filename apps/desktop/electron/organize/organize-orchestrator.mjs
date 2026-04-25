@@ -21,7 +21,13 @@ export function createOrganizeOrchestrator({ provider, fallbackProvider = null }
           throw error;
         }
 
-        return safeFallbackProvider.organize(input);
+        const fallbackResult = await safeFallbackProvider.organize(input);
+
+        return {
+          ...fallbackResult,
+          provider: fallbackResult.provider ?? "local",
+          fallbackErrorMessage: error.message
+        };
       }
     }
   };

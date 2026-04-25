@@ -27,8 +27,10 @@ const stickyWindowMinimumSize = {
 const isPlaywrightE2E = process.env.PLAYWRIGHT_E2E === "1";
 const userDataPathOverride = process.env.AI_NOTE_USER_DATA_PATH;
 const memoEventChannels = {
-  changed: "memo:changed"
+  changed: "memo:changed",
+  organizeState: "memo:organize-state-changed"
 };
+const organizingMemoIds = new Set();
 
 if (userDataPathOverride) {
   app.setPath("userData", userDataPathOverride);
@@ -172,6 +174,22 @@ function broadcastMemoChange(event, changeEvent) {
   }
 }
 
+function broadcastOrganizeStateChange(changeEvent) {
+  for (const browserWindow of BrowserWindow.getAllWindows()) {
+    if (browserWindow.isDestroyed()) {
+      continue;
+    }
+
+    const { webContents } = browserWindow;
+
+    if (webContents.isDestroyed()) {
+      continue;
+    }
+
+    webContents.send(memoEventChannels.organizeState, changeEvent);
+  }
+}
+
 function registerMemoHandlers(memoStore, memoSearchService, organizer, memoStoreContext) {
   ipcMain.handle(memoChannels.health, async () => {
     const baseHealth = {
@@ -255,6 +273,8 @@ function registerMemoHandlers(memoStore, memoSearchService, organizer, memoStore
     return normalizedQuery ? memoSearchService.search(normalizedQuery) : [];
   });
 
+  ipcMain.handle(memoChannels.organizeState, async () => Array.from(organizingMemoIds));
+
   ipcMain.handle(memoChannels.organize, async (_event, input) => {
     const organizeInput = normalizeOrganizeInput(input);
 
@@ -262,7 +282,15 @@ function registerMemoHandlers(memoStore, memoSearchService, organizer, memoStore
       throw new Error("잘못된 정리 요청입니다.");
     }
 
-    return organizer.organize(organizeInput);
+    organizingMemoIds.add(organizeInput.memoId);
+    broadcastOrganizeStateChange({ memoId: organizeInput.memoId, busy: true });
+
+    try {
+      return await organizer.organize(organizeInput);
+    } finally {
+      organizingMemoIds.delete(organizeInput.memoId);
+      broadcastOrganizeStateChange({ memoId: organizeInput.memoId, busy: false });
+    }
   });
 }
 
@@ -296,7 +324,9 @@ function createPrimaryMemoStore(userDataPath) {
 
 function createOrganizerForEnvironment() {
   const organizeProvider = process.env.AI_NOTE_ORGANIZE_PROVIDER?.trim().toLowerCase();
-  const localOrganizer = createLocalOrganizer();
+  const localOrganizer = createLocalOrganizer({
+    delayMs: isPlaywrightE2E ? 900 : 0
+  });
 
   if (organizeProvider === "local" || isPlaywrightE2E) {
     return localOrganizer;

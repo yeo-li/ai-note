@@ -583,6 +583,24 @@ textarea:focus-visible {
   background: #ebebeb;
 }
 
+.paper-button.is-loading,
+.paper-button.is-loading:hover {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.paper-button.is-loading::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  animation: paper-button-spinner 700ms linear infinite;
+}
+
 .link-button:disabled:hover,
 .paper-button:disabled:hover,
 .status-button:disabled:hover {
@@ -601,6 +619,16 @@ textarea:focus-visible {
 .link-button-primary:hover,
 .paper-button-primary:hover {
   background: var(--brand-hover);
+}
+
+@keyframes paper-button-spinner {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .paper-button-icon {
@@ -937,8 +965,10 @@ textarea:focus-visible {
 .editor-pane {
   position: relative;
   min-height: 0;
+  height: 100%;
   background: #ffffff;
   display: grid;
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .app-shell.is-sticky-mode .editor-pane {
@@ -1108,6 +1138,7 @@ textarea:focus-visible {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
+  min-height: 0;
   background: #ffffff;
 }
 
@@ -1276,18 +1307,18 @@ textarea:focus-visible {
 }
 
 .editor-favorite-button.is-favorite {
-  background: #111111;
-  color: #ffffff;
+  background: transparent;
+  color: #111111;
 }
 
 .editor-favorite-button.is-favorite:hover {
-  background: #000000;
-  color: #ffffff;
+  background: #f1f1f1;
+  color: #000000;
 }
 
 .editor-favorite-button.is-favorite svg path {
   fill: currentColor;
-  stroke: currentColor;
+  stroke: none;
 }
 
 .note-find-bar {
@@ -1424,6 +1455,42 @@ textarea:focus-visible {
   font-size: 0.8rem;
 }
 
+.transform-feedback-banner {
+  display: grid;
+  gap: 4px;
+  padding: 10px 14px;
+  border-radius: 0;
+  border: 0;
+  border-left: 2px solid rgba(17, 17, 17, 0.9);
+  background: #f5f5f5;
+  color: #111111;
+  font-size: 0.8rem;
+}
+
+.transform-feedback-banner strong {
+  font-size: 0.78rem;
+}
+
+.transform-feedback-banner.is-warning {
+  background: #f3f3f3;
+  color: #2f2f2f;
+}
+
+.transform-feedback-banner.is-success {
+  background: #f4f4f4;
+  color: #1f1f1f;
+}
+
+.transform-feedback-banner.is-progress {
+  background: #f5f5f5;
+  color: #222222;
+}
+
+.transform-feedback-banner.is-error {
+  background: #f1f1f1;
+  color: #111111;
+}
+
 .delete-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1485,6 +1552,9 @@ textarea:focus-visible {
 .paper-body.is-preview-mode {
   overflow: hidden;
   padding-bottom: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
   align-items: stretch;
 }
 
@@ -1498,6 +1568,7 @@ textarea:focus-visible {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   flex: 1 1 auto;
+  height: 100%;
   min-height: 0;
   align-items: stretch;
   gap: 0;
@@ -1518,6 +1589,8 @@ textarea:focus-visible {
   gap: 12px;
   min-width: 0;
   min-height: 0;
+  height: 100%;
+  max-height: 100%;
   width: 100%;
   padding: 16px 18px 16px;
   border: 0;
@@ -1592,6 +1665,8 @@ textarea:focus-visible {
   margin: 0;
   min-width: 0;
   min-height: 0;
+  height: 100%;
+  max-height: 100%;
   overflow: auto;
   padding: 2px 0 0;
   scrollbar-gutter: stable;
@@ -1601,6 +1676,11 @@ textarea:focus-visible {
   font-size: 0.96rem;
   line-height: 1.7;
   background: transparent;
+}
+
+.transform-review-change {
+  color: #d46a1f;
+  font-weight: 600;
 }
 
 .transform-review-body:focus-visible {

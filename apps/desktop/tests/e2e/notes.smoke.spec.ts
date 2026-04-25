@@ -123,6 +123,40 @@ test.describe("AI Note desktop smoke", () => {
     await expect(bodyInput).toHaveValue(previewBody);
   });
 
+  test("saves applies edits and deletes AI prompt templates", async ({ appWindow }) => {
+    await appWindow.getByTestId("sidebar-create-note-button").click();
+    await appWindow.getByTestId("note-body-input").fill("template target\n본문입니다");
+
+    await appWindow.getByTestId("organize-note-button").click();
+    await expect(appWindow.getByTestId("ai-template-panel")).toBeVisible();
+
+    await appWindow.getByTestId("ai-prompt-input").fill("존댓말로 정리해줘");
+    await appWindow.getByTestId("save-prompt-template-button").click();
+    await appWindow.getByTestId("prompt-template-name-input").fill("존댓말 템플릿");
+    await appWindow.getByTestId("prompt-template-prompt-input").fill("존댓말로 정리해줘");
+    await appWindow.getByRole("button", { name: "템플릿 저장" }).click();
+
+    const templateItem = appWindow.getByTestId("ai-template-list").getByRole("button", { name: "존댓말 템플릿" });
+    await expect(templateItem).toBeVisible();
+
+    await appWindow.getByTestId("ai-prompt-input").fill("다른 프롬프트");
+    await templateItem.click();
+    await expect(appWindow.getByTestId("ai-prompt-input")).toHaveValue("존댓말로 정리해줘");
+
+    await appWindow.getByRole("button", { name: "수정" }).click();
+    await appWindow.getByTestId("prompt-template-name-input").fill("수정된 템플릿");
+    await appWindow.getByTestId("prompt-template-prompt-input").fill("핵심만 요약해줘");
+    await appWindow.getByRole("button", { name: "수정 저장" }).click();
+
+    const updatedTemplateItem = appWindow.getByTestId("ai-template-list").getByRole("button", { name: "수정된 템플릿" });
+    await expect(updatedTemplateItem).toBeVisible();
+    await updatedTemplateItem.click();
+    await expect(appWindow.getByTestId("ai-prompt-input")).toHaveValue("핵심만 요약해줘");
+
+    await appWindow.getByRole("button", { name: "삭제" }).click();
+    await expect(updatedTemplateItem).toHaveCount(0);
+  });
+
   test("shows only starred memos in the favorites view", async ({ appWindow }) => {
     const createButton = appWindow.getByTestId("sidebar-create-note-button");
     const bodyInput = appWindow.getByTestId("note-body-input");

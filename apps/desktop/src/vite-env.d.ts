@@ -19,6 +19,7 @@ import type {
   UpdateMemoResponse
 } from "@ai-note/shared/memo-api";
 import type { MemoStoreHealth } from "./shared/memo-bridge";
+import type { PromptTemplate, PromptTemplateCreateInput, PromptTemplateUpdateInput } from "./shared/prompt-template-bridge";
 
 type DesktopAPI = {
   platform: string;
@@ -50,10 +51,18 @@ type MemoAPI = {
   onDidOrganizeState(listener: (event: { memoId: string; busy: boolean }) => void): () => void;
 };
 
+type PromptTemplateAPI = {
+  list(): Promise<PromptTemplate[]>;
+  create(input: PromptTemplateCreateInput): Promise<PromptTemplate>;
+  update(id: string, patch: PromptTemplateUpdateInput): Promise<PromptTemplate | null>;
+  delete(id: string): Promise<boolean>;
+};
+
 declare global {
   interface Window {
     desktopAPI?: DesktopAPI;
     memoAPI?: MemoAPI;
+    promptTemplateAPI?: PromptTemplateAPI;
   }
 }
 

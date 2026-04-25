@@ -16,6 +16,12 @@ const memoEventChannels = {
   changed: "memo:changed",
   organizeState: "memo:organize-state-changed"
 };
+const promptTemplateChannels = {
+  list: "prompt-template:list",
+  create: "prompt-template:create",
+  update: "prompt-template:update",
+  delete: "prompt-template:delete"
+};
 const windowChannels = {
   openStickyNote: "window:open-sticky-note",
   setStickyPinned: "window:set-sticky-pinned"
@@ -81,6 +87,21 @@ const memoAPI = {
   }
 };
 
+const promptTemplateAPI = {
+  list() {
+    return ipcRenderer.invoke(promptTemplateChannels.list);
+  },
+  create(input) {
+    return ipcRenderer.invoke(promptTemplateChannels.create, input);
+  },
+  update(id, patch) {
+    return ipcRenderer.invoke(promptTemplateChannels.update, id, patch);
+  },
+  delete(id) {
+    return ipcRenderer.invoke(promptTemplateChannels.delete, id);
+  }
+};
+
 contextBridge.exposeInMainWorld("desktopAPI", {
   platform: process.platform,
   window: {
@@ -99,3 +120,4 @@ contextBridge.exposeInMainWorld("desktopAPI", {
 });
 
 contextBridge.exposeInMainWorld("memoAPI", memoAPI);
+contextBridge.exposeInMainWorld("promptTemplateAPI", promptTemplateAPI);

@@ -55,6 +55,13 @@ type TransformSession = {
   startedAt: number | null;
 };
 
+type ComposeSession = {
+  isOpen: boolean;
+  prompt: string;
+  selectedMemoIds: MemoId[];
+  isGenerating: boolean;
+};
+
 const initialNotes: Note[] = [
   {
     id: "note-1",
@@ -732,11 +739,18 @@ function App() {
   const [isFindBarOpen, setIsFindBarOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [findMatchIndex, setFindMatchIndex] = useState(0);
+  const [composeSession, setComposeSession] = useState<ComposeSession>({
+    isOpen: false,
+    prompt: "",
+    selectedMemoIds: [],
+    isGenerating: false
+  });
   const [isPreviewActionCoolingDown, setIsPreviewActionCoolingDown] = useState(false);
   const [organizingNotes, setOrganizingNotes] = useState<Record<MemoId, number>>({});
   const [progressNow, setProgressNow] = useState(() => Date.now());
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const aiPromptInputRef = useRef<HTMLInputElement | null>(null);
+  const composePromptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const findInputRef = useRef<HTMLInputElement | null>(null);
   const noteBodyInputRef = useRef<HTMLTextAreaElement | null>(null);
   const previewActionCooldownRef = useRef<number | null>(null);
@@ -1122,6 +1136,89 @@ function App() {
     });
   }
 
+  function openComposeSession() {
+    setDeleteIntentId(null);
+    setNoteMenuId(null);
+    closeFindBar();
+    closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
+    setComposeSession((currentSession) => ({
+      ...currentSession,
+      isOpen: true,
+      selectedMemoIds: activeNote ? Array.from(new Set([...currentSession.selectedMemoIds, activeNote.id])) : currentSession.selectedMemoIds
+    }));
+    setStatusMessage("여러 메모를 조합할 초안 입력창을 열었어요.");
+  }
+
+  function closeComposeSession() {
+    setComposeSession({
+      isOpen: false,
+      prompt: "",
+      selectedMemoIds: [],
+      isGenerating: false
+    });
+    setStatusMessage("메모 조합 입력창을 닫았어요.");
+  }
+
+  function toggleComposeMemoSelection(noteId: MemoId) {
+    setComposeSession((currentSession) => ({
+      ...currentSession,
+      selectedMemoIds: currentSession.selectedMemoIds.includes(noteId)
+        ? currentSession.selectedMemoIds.filter((currentId) => currentId !== noteId)
+        : [...currentSession.selectedMemoIds, noteId]
+    }));
+  }
+
+  async function startComposeDraft() {
+    const trimmedPrompt = composeSession.prompt.trim();
+
+    if (!window.memoAPI) {
+      setStatusMessage("메모 조합 API를 찾지 못했어요.");
+      return;
+    }
+
+    if (composeSession.selectedMemoIds.length === 0) {
+      setStatusMessage("조합할 메모를 하나 이상 선택해 주세요.");
+      return;
+    }
+
+    if (!trimmedPrompt) {
+      setStatusMessage("새 메모 초안을 만들 프롬프트를 입력해 주세요.");
+      return;
+    }
+
+    setComposeSession((currentSession) => ({
+      ...currentSession,
+      isGenerating: true
+    }));
+
+    try {
+      const result = await window.memoAPI.compose({
+        memoIds: composeSession.selectedMemoIds,
+        prompt: trimmedPrompt,
+        intent: deriveOrganizeIntent(trimmedPrompt)
+      });
+
+      const createdMemo = await window.memoAPI.create({
+        title: buildMemoTitleFromBody(result.result.suggested),
+        body: result.result.suggested
+      });
+
+      const nextNote = toNoteFromMemo(createdMemo);
+
+      setNotes((currentNotes) => [nextNote, ...currentNotes.filter((note) => note.id !== nextNote.id)]);
+      setSelectedNoteId(nextNote.id);
+      closeComposeSession();
+      openTransformSession(nextNote.id, trimmedPrompt);
+      setStatusMessage(`${result.sourceCount}개의 메모를 바탕으로 새 초안 메모를 만들었어요.`);
+    } catch (error) {
+      setStatusMessage(toErrorMessage(error));
+      setComposeSession((currentSession) => ({
+        ...currentSession,
+        isGenerating: false
+      }));
+    }
+  }
+
   useEffect(() => {
     if (!isAiPromptOpen) {
       return;
@@ -1130,6 +1227,15 @@ function App() {
     aiPromptInputRef.current?.focus();
     aiPromptInputRef.current?.select();
   }, [isAiPromptOpen]);
+
+  useEffect(() => {
+    if (!composeSession.isOpen) {
+      return;
+    }
+
+    composePromptInputRef.current?.focus();
+    composePromptInputRef.current?.select();
+  }, [composeSession.isOpen]);
 
   useEffect(() => {
     if (!isFindBarOpen) {
@@ -1293,6 +1399,12 @@ function App() {
     setDeleteIntentId(null);
     setNoteMenuId(null);
     setTransformSession(null);
+    setComposeSession({
+      isOpen: false,
+      prompt: "",
+      selectedMemoIds: [],
+      isGenerating: false
+    });
   }, [isStickyMode]);
 
   function patchActiveNote(update: Partial<Note>, message?: string) {
@@ -1523,6 +1635,11 @@ function App() {
     setNoteMenuId(null);
     closeFindBar();
     closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
+    setComposeSession((currentSession) => ({
+      ...currentSession,
+      isOpen: false,
+      isGenerating: false
+    }));
 
     if (!trimmedQuery) {
       if (selectedNote) {
@@ -1582,6 +1699,7 @@ function App() {
     setDeleteIntentId(null);
     setNoteMenuId(null);
     closeFindBar();
+    closeComposeSession();
     openTransformSession(activeNote.id, activeTransformSession?.prompt || activeDraft?.prompt || "");
     setStatusMessage("AI 정리 입력창을 열어두었어요.");
   }
@@ -2336,6 +2454,24 @@ function App() {
                             <ToolbarSparklesIcon />
                           </button>
                           <button
+                            className={`paper-button paper-button-icon${composeSession.isOpen ? " is-active" : ""}`}
+                            type="button"
+                            data-testid="compose-note-button"
+                            aria-label="여러 메모 조합하기"
+                            title="여러 메모 조합하기"
+                            disabled={isMutationLocked || isStickyMode || isAnyTransformGenerating}
+                            onClick={() => {
+                              if (composeSession.isOpen) {
+                                closeComposeSession();
+                                return;
+                              }
+
+                              openComposeSession();
+                            }}
+                          >
+                            <ToolbarSparklesIcon />
+                          </button>
+                          <button
                             className="paper-button paper-button-icon paper-button-primary header-create-note-button"
                             type="button"
                             data-testid="editor-create-note-button"
@@ -2413,6 +2549,70 @@ function App() {
                         </button>
                       </div>
                     </div>
+                  ) : null}
+
+                  {composeSession.isOpen ? (
+                    <section className="compose-panel" data-testid="compose-panel">
+                      <div className="compose-panel__header">
+                        <strong>메모 조합</strong>
+                        <span>{composeSession.selectedMemoIds.length}개 선택됨</span>
+                      </div>
+
+                      <div className="compose-panel__memo-list" data-testid="compose-memo-list">
+                        {notes.map((note) => {
+                          const noteLabel = deriveNoteHeadline(note.body);
+                          const isChecked = composeSession.selectedMemoIds.includes(note.id);
+
+                          return (
+                            <label key={note.id} className="compose-panel__memo-item">
+                              <input
+                                type="checkbox"
+                                data-testid={`compose-memo-checkbox-${note.id}`}
+                                checked={isChecked}
+                                disabled={composeSession.isGenerating}
+                                onChange={() => toggleComposeMemoSelection(note.id)}
+                              />
+                              <span>
+                                <strong>{noteLabel}</strong>
+                                <small>{note.updatedAt}</small>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+
+                      <label className="compose-panel__prompt-shell">
+                        <span className="visually-hidden">메모 조합 프롬프트</span>
+                        <textarea
+                          ref={composePromptInputRef}
+                          data-testid="compose-prompt-input"
+                          value={composeSession.prompt}
+                          disabled={composeSession.isGenerating}
+                          placeholder="예: 선택한 메모를 바탕으로 회의 공유용 요약 메모를 만들어줘"
+                          onChange={(event) =>
+                            setComposeSession((currentSession) => ({
+                              ...currentSession,
+                              prompt: event.target.value
+                            }))
+                          }
+                        />
+                      </label>
+
+                      <div className="compose-panel__actions">
+                        <button className="paper-button" type="button" onClick={closeComposeSession}>
+                          취소
+                        </button>
+                        <button
+                          className={`paper-button paper-button-primary${composeSession.isGenerating ? " is-loading" : ""}`}
+                          type="button"
+                          data-testid="submit-compose-button"
+                          disabled={composeSession.isGenerating}
+                          onClick={() => void startComposeDraft()}
+                        >
+                          {composeSession.isGenerating ? "조합 중…" : "새 초안 메모 만들기"}
+                        </button>
+                      </div>
+                    </section>
                   ) : null}
 
                   {isAiPromptOpen ? (

@@ -2,12 +2,14 @@ import { app, BrowserWindow, ipcMain, screen, shell } from "electron";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { memoChannels } from "./memo-channels.mjs";
+import { promptTemplateChannels } from "./prompt-template-channels.mjs";
 import { createMemoSearchService } from "./search/memo-search-service.mjs";
 import { createLocalOrganizer } from "./organize/local-organizer.mjs";
 import { createCodexCliOrganizeProvider } from "./organize/codex-cli-organizer.mjs";
 import { createOrganizeOrchestrator } from "./organize/organize-orchestrator.mjs";
 import { createMemoStore } from "./store/memo-store.mjs";
 import { createMemoSqliteStore } from "./store/memo-sqlite-store.mjs";
+import { createPromptTemplateStore } from "./store/prompt-template-store.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rendererUrl = process.env.VITE_DEV_SERVER_URL;
@@ -115,6 +117,42 @@ function normalizeSearchQuery(value) {
   }
 
   return value.trim();
+}
+
+function normalizePromptTemplateInput(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const name = typeof value.name === "string" ? value.name.trim() : "";
+  const prompt = typeof value.prompt === "string" ? value.prompt.trim() : "";
+
+  if (!name || !prompt) {
+    return null;
+  }
+
+  return {
+    name,
+    prompt
+  };
+}
+
+function normalizePromptTemplatePatch(value) {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+
+  const patch = {};
+
+  if (typeof value.name === "string") {
+    patch.name = value.name.trim();
+  }
+
+  if (typeof value.prompt === "string") {
+    patch.prompt = value.prompt.trim();
+  }
+
+  return patch;
 }
 
 function getErrorMessage(error) {
@@ -359,6 +397,40 @@ function registerMemoHandlers(memoStore, memoSearchService, organizer, memoStore
   });
 }
 
+function registerPromptTemplateHandlers(promptTemplateStore) {
+  ipcMain.handle(promptTemplateChannels.list, async () => promptTemplateStore.list());
+
+  ipcMain.handle(promptTemplateChannels.create, async (_event, input) => {
+    const normalizedInput = normalizePromptTemplateInput(input);
+
+    if (!normalizedInput) {
+      throw new Error("잘못된 프롬프트 템플릿입니다.");
+    }
+
+    return promptTemplateStore.create(normalizedInput);
+  });
+
+  ipcMain.handle(promptTemplateChannels.update, async (_event, id, patch) => {
+    const templateId = normalizeMemoId(id);
+
+    if (!templateId) {
+      return null;
+    }
+
+    return promptTemplateStore.update(templateId, normalizePromptTemplatePatch(patch));
+  });
+
+  ipcMain.handle(promptTemplateChannels.delete, async (_event, id) => {
+    const templateId = normalizeMemoId(id);
+
+    if (!templateId) {
+      return false;
+    }
+
+    return promptTemplateStore.delete(templateId);
+  });
+}
+
 function createPrimaryMemoStore(userDataPath) {
   try {
     const memoStore = createMemoSqliteStore({
@@ -528,6 +600,9 @@ function createStickyNoteWindow(noteId = null) {
 app.whenReady().then(() => {
   const primaryMemoStore = createPrimaryMemoStore(app.getPath("userData"));
   const memoStore = primaryMemoStore.store;
+  const promptTemplateStore = createPromptTemplateStore({
+    userDataPath: app.getPath("userData")
+  });
   const memoSearchService = createMemoSearchService({
     listMemos() {
       return memoStore.list();
@@ -536,6 +611,7 @@ app.whenReady().then(() => {
   const organizer = createOrganizerForEnvironment();
 
   registerMemoHandlers(memoStore, memoSearchService, organizer, primaryMemoStore);
+  registerPromptTemplateHandlers(promptTemplateStore);
   ipcMain.handle("window:open-sticky-note", (_event, noteId) => {
     createStickyNoteWindow(typeof noteId === "string" ? noteId : null);
     return true;

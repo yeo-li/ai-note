@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Memo, MemoChangeEvent, MemoCreateInput, MemoId, MemoOrganizeIntent, MemoUpdateInput } from "@ai-note/shared/memo";
+import type { Memo, MemoChangeEvent, MemoCreateInput, MemoId, MemoOrganizeIntent, MemoSearchResult, MemoUpdateInput } from "@ai-note/shared/memo";
 import type { MemoStoreHealth } from "./shared/memo-bridge";
+import type { PromptTemplate } from "./shared/prompt-template-bridge";
 import { buildMemoTitleFromBody, deriveNoteHeadline } from "./note-content";
 
 type DiffSegment = {
@@ -53,6 +54,21 @@ type TransformSession = {
   draft: TransformDraft | null;
   feedback: TransformFeedback | null;
   startedAt: number | null;
+};
+
+type PromptTemplateEditorState = {
+  isOpen: boolean;
+  templateId: string | null;
+  name: string;
+  prompt: string;
+};
+
+type ContextSearchState = {
+  isOpen: boolean;
+  query: string;
+  results: MemoSearchResult[];
+  hasSearched: boolean;
+  isLoading: boolean;
 };
 
 type ComposeSession = {
@@ -271,6 +287,16 @@ function getProgressFeedback(elapsedMs: number) {
     title: "거의 다 완료되었어요",
     message: "마지막 문장과 형식을 정리하고 있어요."
   };
+}
+
+function buildDefaultTemplateName(prompt: string, existingTemplates: PromptTemplate[]) {
+  const trimmedPrompt = prompt.trim();
+
+  if (!trimmedPrompt) {
+    return `새 템플릿 ${existingTemplates.length + 1}`;
+  }
+
+  return trimmedPrompt.length <= 18 ? trimmedPrompt : `${trimmedPrompt.slice(0, 18).trim()}…`;
 }
 
 function nowStamp() {
@@ -739,6 +765,13 @@ function App() {
   const [isFindBarOpen, setIsFindBarOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [findMatchIndex, setFindMatchIndex] = useState(0);
+  const [contextSearch, setContextSearch] = useState<ContextSearchState>({
+    isOpen: false,
+    query: "",
+    results: [],
+    hasSearched: false,
+    isLoading: false
+  });
   const [composeSession, setComposeSession] = useState<ComposeSession>({
     isOpen: false,
     prompt: "",
@@ -748,10 +781,18 @@ function App() {
   const [isPreviewActionCoolingDown, setIsPreviewActionCoolingDown] = useState(false);
   const [organizingNotes, setOrganizingNotes] = useState<Record<MemoId, number>>({});
   const [progressNow, setProgressNow] = useState(() => Date.now());
+  const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([]);
+  const [promptTemplateEditor, setPromptTemplateEditor] = useState<PromptTemplateEditorState>({
+    isOpen: false,
+    templateId: null,
+    name: "",
+    prompt: ""
+  });
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const aiPromptInputRef = useRef<HTMLInputElement | null>(null);
   const composePromptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const findInputRef = useRef<HTMLInputElement | null>(null);
+  const contextSearchInputRef = useRef<HTMLInputElement | null>(null);
   const noteBodyInputRef = useRef<HTMLTextAreaElement | null>(null);
   const previewActionCooldownRef = useRef<number | null>(null);
   const emptyCreateButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -984,6 +1025,26 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!window.promptTemplateAPI) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void window.promptTemplateAPI.list().then((templates) => {
+      if (cancelled) {
+        return;
+      }
+
+      setPromptTemplates(templates);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (notes.length === 0) {
       if (selectedNoteId) {
         setSelectedNoteId("");
@@ -1136,11 +1197,89 @@ function App() {
     });
   }
 
-  function openComposeSession() {
+  function openContextSearchPanel() {
     setDeleteIntentId(null);
     setNoteMenuId(null);
     closeFindBar();
     closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
+
+    setContextSearch((currentSearch) => ({
+      ...currentSearch,
+      isOpen: true
+    }));
+    setStatusMessage("문맥 검색 입력창을 열어두었어요.");
+  }
+
+  function closeContextSearchPanel() {
+    setContextSearch((currentSearch) => ({
+      ...currentSearch,
+      isOpen: false,
+      results: [],
+      hasSearched: false,
+      isLoading: false
+    }));
+    setStatusMessage("문맥 검색 입력창을 닫았어요.");
+  }
+
+  async function runContextSearch() {
+    const trimmedQuery = contextSearch.query.trim();
+
+    if (!trimmedQuery) {
+      setContextSearch((currentSearch) => ({
+        ...currentSearch,
+        results: [],
+        hasSearched: false,
+        isLoading: false
+      }));
+      setStatusMessage("문맥 검색 프롬프트를 입력해 주세요.");
+      return;
+    }
+
+    if (!window.memoAPI) {
+      setStatusMessage("문맥 검색을 실행할 수 있는 memoAPI 브리지를 찾지 못했어요.");
+      return;
+    }
+
+    setContextSearch((currentSearch) => ({
+      ...currentSearch,
+      isLoading: true,
+      hasSearched: true
+    }));
+
+    try {
+      const results = await window.memoAPI.search(trimmedQuery);
+
+      setContextSearch((currentSearch) => ({
+        ...currentSearch,
+        results,
+        isLoading: false,
+        hasSearched: true
+      }));
+
+      setStatusMessage(
+        results.length > 0
+          ? `문맥 검색 결과 ${results.length}개를 찾았어요. 관련 메모를 열어보세요.`
+          : `"${trimmedQuery}"와 관련된 메모를 찾지 못했어요.`
+      );
+    } catch (error) {
+      setContextSearch((currentSearch) => ({
+        ...currentSearch,
+        results: [],
+        isLoading: false,
+        hasSearched: true
+      }));
+      setStatusMessage(toErrorMessage(error));
+    }
+  }
+
+  function openNoteFromContextSearch(noteId: MemoId) {
+    setSelectedNoteId(noteId);
+    setDeleteIntentId(null);
+    setNoteMenuId(null);
+    setStatusMessage("문맥 검색 결과에서 메모를 열었어요.");
+  }
+
+  function openComposeSession() {
     setComposeSession((currentSession) => ({
       ...currentSession,
       isOpen: true,
@@ -1219,6 +1358,109 @@ function App() {
     }
   }
 
+  function closePromptTemplateEditor() {
+    setPromptTemplateEditor({
+      isOpen: false,
+      templateId: null,
+      name: "",
+      prompt: ""
+    });
+  }
+
+  function openPromptTemplateEditor(template?: PromptTemplate) {
+    const nextPrompt = template?.prompt ?? activeAiPrompt;
+
+    setPromptTemplateEditor({
+      isOpen: true,
+      templateId: template?.id ?? null,
+      name: template?.name ?? buildDefaultTemplateName(nextPrompt, promptTemplates),
+      prompt: nextPrompt
+    });
+  }
+
+  function applyPromptTemplate(template: PromptTemplate) {
+    updateActiveTransformSession((session) => ({
+      ...session,
+      prompt: template.prompt
+    }));
+    setStatusMessage(`"${template.name}" 템플릿을 불러왔어요.`);
+  }
+
+  async function persistPromptTemplate() {
+    if (!window.promptTemplateAPI) {
+      setStatusMessage("프롬프트 템플릿 저장소를 찾지 못했어요.");
+      return;
+    }
+
+    const name = promptTemplateEditor.name.trim();
+    const prompt = promptTemplateEditor.prompt.trim();
+
+    if (!name || !prompt) {
+      setStatusMessage("템플릿 이름과 프롬프트를 함께 입력해 주세요.");
+      return;
+    }
+
+    try {
+      if (promptTemplateEditor.templateId) {
+        const updatedTemplate = await window.promptTemplateAPI.update(promptTemplateEditor.templateId, { name, prompt });
+
+        if (!updatedTemplate) {
+          setStatusMessage("수정할 템플릿을 찾지 못했어요.");
+          return;
+        }
+
+        setPromptTemplates((currentTemplates) => {
+          const nextTemplates = currentTemplates.filter((template) => template.id !== updatedTemplate.id);
+          return [updatedTemplate, ...nextTemplates];
+        });
+        updateActiveTransformSession((session) => ({
+          ...session,
+          prompt: updatedTemplate.prompt
+        }));
+        setStatusMessage(`"${updatedTemplate.name}" 템플릿을 수정했어요.`);
+      } else {
+        const createdTemplate = await window.promptTemplateAPI.create({ name, prompt });
+        setPromptTemplates((currentTemplates) => [createdTemplate, ...currentTemplates.filter((template) => template.id !== createdTemplate.id)]);
+        updateActiveTransformSession((session) => ({
+          ...session,
+          prompt: createdTemplate.prompt
+        }));
+        setStatusMessage(`"${createdTemplate.name}" 템플릿을 저장했어요.`);
+      }
+
+      closePromptTemplateEditor();
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "프롬프트 템플릿을 저장하지 못했어요.");
+    }
+  }
+
+  async function removePromptTemplate(templateId: string) {
+    if (!window.promptTemplateAPI) {
+      setStatusMessage("프롬프트 템플릿 저장소를 찾지 못했어요.");
+      return;
+    }
+
+    try {
+      const targetTemplate = promptTemplates.find((template) => template.id === templateId) ?? null;
+      const deleted = await window.promptTemplateAPI.delete(templateId);
+
+      if (!deleted) {
+        setStatusMessage("삭제할 템플릿을 찾지 못했어요.");
+        return;
+      }
+
+      setPromptTemplates((currentTemplates) => currentTemplates.filter((template) => template.id !== templateId));
+
+      if (promptTemplateEditor.templateId === templateId) {
+        closePromptTemplateEditor();
+      }
+
+      setStatusMessage(targetTemplate ? `"${targetTemplate.name}" 템플릿을 삭제했어요.` : "템플릿을 삭제했어요.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "프롬프트 템플릿을 삭제하지 못했어요.");
+    }
+  }
+
   useEffect(() => {
     if (!isAiPromptOpen) {
       return;
@@ -1226,6 +1468,12 @@ function App() {
 
     aiPromptInputRef.current?.focus();
     aiPromptInputRef.current?.select();
+  }, [isAiPromptOpen]);
+
+  useEffect(() => {
+    if (!isAiPromptOpen) {
+      closePromptTemplateEditor();
+    }
   }, [isAiPromptOpen]);
 
   useEffect(() => {
@@ -1247,9 +1495,25 @@ function App() {
   }, [isFindBarOpen]);
 
   useEffect(() => {
+    if (!contextSearch.isOpen) {
+      return;
+    }
+
+    contextSearchInputRef.current?.focus();
+    contextSearchInputRef.current?.select();
+  }, [contextSearch.isOpen]);
+
+  useEffect(() => {
     setIsFindBarOpen(false);
     setFindQuery("");
     setFindMatchIndex(0);
+    setContextSearch((currentSearch) => ({
+      ...currentSearch,
+      isOpen: false,
+      results: [],
+      hasSearched: false,
+      isLoading: false
+    }));
   }, [activeNote?.id, isStickyMode]);
 
   useEffect(() => {
@@ -1307,9 +1571,6 @@ function App() {
     }
 
     const nextTarget =
-      emptyFirstResultButtonRef.current ??
-      emptyClearSearchButtonRef.current ??
-      emptyCreateButtonRef.current ??
       searchInputRef.current;
 
     nextTarget?.focus();
@@ -1510,11 +1771,13 @@ function App() {
     setStatusMessage("메모 안에서 찾기를 열었어요.");
   }
 
-  function closeFindBar() {
+  function closeFindBar({ restoreEditorFocus = true }: { restoreEditorFocus?: boolean } = {}) {
     setIsFindBarOpen(false);
     setFindQuery("");
     setFindMatchIndex(0);
-    noteBodyInputRef.current?.focus();
+    if (restoreEditorFocus) {
+      noteBodyInputRef.current?.focus();
+    }
     setStatusMessage("메모 안에서 찾기를 닫았어요.");
   }
 
@@ -1633,12 +1896,19 @@ function App() {
     setQuery(nextQuery);
     setDeleteIntentId(null);
     setNoteMenuId(null);
-    closeFindBar();
+    closeFindBar({ restoreEditorFocus: false });
     closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
     setComposeSession((currentSession) => ({
       ...currentSession,
       isOpen: false,
       isGenerating: false
+    }));
+    setContextSearch((currentSearch) => ({
+      ...currentSearch,
+      isOpen: false,
+      results: [],
+      hasSearched: false,
+      isLoading: false
     }));
 
     if (!trimmedQuery) {
@@ -1700,6 +1970,7 @@ function App() {
     setNoteMenuId(null);
     closeFindBar();
     closeComposeSession();
+    closeContextSearchPanel();
     openTransformSession(activeNote.id, activeTransformSession?.prompt || activeDraft?.prompt || "");
     setStatusMessage("AI 정리 입력창을 열어두었어요.");
   }
@@ -2150,22 +2421,14 @@ function App() {
                 <span className="visually-hidden">메모 검색</span>
                 <input
                   ref={searchInputRef}
-                  type="search"
+                  type="text"
                   placeholder="메모 검색"
                   data-testid="note-search-input"
+                  autoComplete="off"
+                  spellCheck={false}
                   value={query}
                   onChange={(event) => handleSearch(event.target.value)}
                 />
-                {hasQuery ? (
-                  <button
-                    className="sidebar-search-button"
-                    type="button"
-                    aria-label="검색어 지우기"
-                    onClick={() => handleSearch("")}
-                  >
-                    지우기
-                  </button>
-                ) : null}
               </label>
 
               <nav className="sidebar-nav" aria-label="사이드바 탐색">
@@ -2443,6 +2706,24 @@ function App() {
                             <ToolbarFindIcon />
                           </button>
                             <button
+                              className={`paper-button paper-button-icon${contextSearch.isOpen ? " is-active" : ""}`}
+                              type="button"
+                              data-testid="context-search-toggle-button"
+                              aria-label="문맥 검색 열기"
+                              title="문맥 검색 열기"
+                              disabled={isMutationLocked || isTransformPreviewGenerating}
+                              onClick={() => {
+                                if (contextSearch.isOpen) {
+                                  closeContextSearchPanel();
+                                  return;
+                                }
+
+                                openContextSearchPanel();
+                              }}
+                            >
+                              <SearchIcon />
+                            </button>
+                            <button
                               className="paper-button paper-button-icon"
                               type="button"
                               data-testid="organize-note-button"
@@ -2543,12 +2824,94 @@ function App() {
                           className="paper-button"
                           type="button"
                           data-testid="note-find-close-button"
-                          onClick={closeFindBar}
+                              onClick={() => closeFindBar()}
                         >
                           닫기
                         </button>
                       </div>
                     </div>
+                  ) : null}
+
+                  {contextSearch.isOpen ? (
+                    <section className="context-search-panel" data-testid="context-search-panel">
+                      <form
+                        className="context-search-form"
+                        data-testid="context-search-form"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void runContextSearch();
+                        }}
+                      >
+                        <label className="context-search-input-shell">
+                          <SearchIcon />
+                          <span className="visually-hidden">문맥 검색</span>
+                          <input
+                            ref={contextSearchInputRef}
+                            type="text"
+                            data-testid="context-search-input"
+                            value={contextSearch.query}
+                            placeholder="예: 지난 계약 일정 관련 메모 찾아줘"
+                            disabled={contextSearch.isLoading}
+                            onChange={(event) =>
+                              setContextSearch((currentSearch) => ({
+                                ...currentSearch,
+                                query: event.target.value
+                              }))
+                            }
+                          />
+                        </label>
+                        <div className="context-search-actions">
+                          <button
+                            className={`paper-button paper-button-primary${contextSearch.isLoading ? " is-loading" : ""}`}
+                            type="submit"
+                            data-testid="submit-context-search-button"
+                            disabled={contextSearch.isLoading}
+                          >
+                            {contextSearch.isLoading ? "검색 중…" : "문맥 검색"}
+                          </button>
+                          <button className="paper-button" type="button" onClick={closeContextSearchPanel}>
+                            닫기
+                          </button>
+                        </div>
+                      </form>
+
+                      {contextSearch.results.length > 0 ? (
+                        <div className="context-search-results" data-testid="context-search-results">
+                          {contextSearch.results.map((result) => (
+                            <article key={result.memo.id} className="context-search-result-card">
+                              <div className="context-search-result-card__meta">
+                                <strong>{deriveNoteHeadline(result.memo.body)}</strong>
+                                <span>점수 {result.score}</span>
+                              </div>
+                              <p className="context-search-result-card__preview">{result.preview}</p>
+                              <p className="context-search-result-card__reason">
+                                근거: {result.matchedTerms.length > 0 ? result.matchedTerms.join(", ") : "문맥상 관련 메모"}
+                              </p>
+                              <div className="context-search-result-card__actions">
+                                <button
+                                  className="paper-button"
+                                  type="button"
+                                  data-testid={`open-context-search-result-${result.memo.id}`}
+                                  onClick={() => openNoteFromContextSearch(result.memo.id)}
+                                >
+                                  이 메모 열기
+                                </button>
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      ) : contextSearch.hasSearched && !contextSearch.isLoading ? (
+                        <div className="context-search-empty" data-testid="context-search-empty-state">
+                          <strong>관련 메모를 찾지 못했어요.</strong>
+                          <span>더 구체적인 사람, 상황, 주제를 넣어 다시 검색해 보세요.</span>
+                        </div>
+                      ) : (
+                        <div className="context-search-empty" data-testid="context-search-hint">
+                          <strong>문맥 검색</strong>
+                          <span>좌측 목록 필터와 달리, 자연어 프롬프트로 관련 메모를 모아볼 수 있어요.</span>
+                        </div>
+                      )}
+                    </section>
                   ) : null}
 
                   {composeSession.isOpen ? (
@@ -2617,6 +2980,102 @@ function App() {
 
                   {isAiPromptOpen ? (
                     <div className="ai-prompt-shell">
+                      <div className="ai-template-panel" data-testid="ai-template-panel">
+                        <div className="ai-template-panel__header">
+                          <strong>프롬프트 템플릿</strong>
+                          <button
+                            className="paper-button"
+                            type="button"
+                            data-testid="save-prompt-template-button"
+                            disabled={isTransformPreviewGenerating || !activeAiPrompt.trim()}
+                            onClick={() => openPromptTemplateEditor()}
+                          >
+                            현재 프롬프트 저장
+                          </button>
+                        </div>
+
+                        {promptTemplates.length > 0 ? (
+                          <div className="ai-template-list" data-testid="ai-template-list">
+                            {promptTemplates.map((template) => (
+                              <div key={template.id} className="ai-template-item">
+                                <button
+                                  className="ai-template-chip"
+                                  type="button"
+                                  data-testid={`prompt-template-item-${template.id}`}
+                                  disabled={isTransformPreviewGenerating}
+                                  onClick={() => applyPromptTemplate(template)}
+                                >
+                                  {template.name}
+                                </button>
+                                <div className="ai-template-item__actions">
+                                  <button
+                                    className="paper-button"
+                                    type="button"
+                                    data-testid={`edit-prompt-template-${template.id}`}
+                                    disabled={isTransformPreviewGenerating}
+                                    onClick={() => openPromptTemplateEditor(template)}
+                                  >
+                                    수정
+                                  </button>
+                                  <button
+                                    className="paper-button"
+                                    type="button"
+                                    data-testid={`delete-prompt-template-${template.id}`}
+                                    disabled={isTransformPreviewGenerating}
+                                    onClick={() => void removePromptTemplate(template.id)}
+                                  >
+                                    삭제
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="ai-template-empty">아직 저장한 템플릿이 없어요. 자주 쓰는 프롬프트를 저장해 두세요.</p>
+                        )}
+
+                        {promptTemplateEditor.isOpen ? (
+                          <div className="ai-template-editor" data-testid="ai-template-editor">
+                            <label className="ai-template-editor__field">
+                              <span>템플릿 이름</span>
+                              <input
+                                type="text"
+                                data-testid="prompt-template-name-input"
+                                value={promptTemplateEditor.name}
+                                disabled={isTransformPreviewGenerating}
+                                onChange={(event) =>
+                                  setPromptTemplateEditor((currentEditor) => ({
+                                    ...currentEditor,
+                                    name: event.target.value
+                                  }))
+                                }
+                              />
+                            </label>
+                            <label className="ai-template-editor__field">
+                              <span>템플릿 프롬프트</span>
+                              <textarea
+                                data-testid="prompt-template-prompt-input"
+                                value={promptTemplateEditor.prompt}
+                                disabled={isTransformPreviewGenerating}
+                                onChange={(event) =>
+                                  setPromptTemplateEditor((currentEditor) => ({
+                                    ...currentEditor,
+                                    prompt: event.target.value
+                                  }))
+                                }
+                              />
+                            </label>
+                            <div className="ai-template-editor__actions">
+                              <button className="paper-button" type="button" onClick={closePromptTemplateEditor}>
+                                취소
+                              </button>
+                              <button className="paper-button paper-button-primary" type="button" onClick={() => void persistPromptTemplate()}>
+                                {promptTemplateEditor.templateId ? "수정 저장" : "템플릿 저장"}
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
                       <form
                         id="ai-prompt-form"
                         className="ai-prompt-form"

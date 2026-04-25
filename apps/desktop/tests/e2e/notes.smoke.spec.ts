@@ -58,8 +58,11 @@ test.describe("AI Note desktop smoke", () => {
     await firstNote.click();
     await expect(firstNote).toHaveAttribute("aria-current", "true");
     const selectedBody = await bodyInput.inputValue();
+    await expect(searchInput).toHaveAttribute("type", "text");
 
     await searchInput.fill("does-not-match-anything");
+    await expect(searchInput).toBeFocused();
+    await expect(appWindow.getByRole("button", { name: "검색어 지우기" })).toHaveCount(0);
 
     await expect(noteList.locator('[data-testid^="note-list-item-"]')).toHaveCount(0);
     await expect(appWindow.getByTestId("sidebar-empty-state")).toBeVisible();
@@ -153,6 +156,40 @@ test.describe("AI Note desktop smoke", () => {
     await appWindow.getByTestId("apply-transform-button").click();
 
     await expect(bodyInput).toHaveValue(previewBody);
+  });
+
+  test("saves applies edits and deletes AI prompt templates", async ({ appWindow }) => {
+    await appWindow.getByTestId("sidebar-create-note-button").click();
+    await appWindow.getByTestId("note-body-input").fill("template target\n본문입니다");
+
+    await appWindow.getByTestId("organize-note-button").click();
+    await expect(appWindow.getByTestId("ai-template-panel")).toBeVisible();
+
+    await appWindow.getByTestId("ai-prompt-input").fill("존댓말로 정리해줘");
+    await appWindow.getByTestId("save-prompt-template-button").click();
+    await appWindow.getByTestId("prompt-template-name-input").fill("존댓말 템플릿");
+    await appWindow.getByTestId("prompt-template-prompt-input").fill("존댓말로 정리해줘");
+    await appWindow.getByRole("button", { name: "템플릿 저장" }).click();
+
+    const templateItem = appWindow.getByTestId("ai-template-list").getByRole("button", { name: "존댓말 템플릿" });
+    await expect(templateItem).toBeVisible();
+
+    await appWindow.getByTestId("ai-prompt-input").fill("다른 프롬프트");
+    await templateItem.click();
+    await expect(appWindow.getByTestId("ai-prompt-input")).toHaveValue("존댓말로 정리해줘");
+
+    await appWindow.getByRole("button", { name: "수정" }).click();
+    await appWindow.getByTestId("prompt-template-name-input").fill("수정된 템플릿");
+    await appWindow.getByTestId("prompt-template-prompt-input").fill("핵심만 요약해줘");
+    await appWindow.getByRole("button", { name: "수정 저장" }).click();
+
+    const updatedTemplateItem = appWindow.getByTestId("ai-template-list").getByRole("button", { name: "수정된 템플릿" });
+    await expect(updatedTemplateItem).toBeVisible();
+    await updatedTemplateItem.click();
+    await expect(appWindow.getByTestId("ai-prompt-input")).toHaveValue("핵심만 요약해줘");
+
+    await appWindow.getByRole("button", { name: "삭제" }).click();
+    await expect(updatedTemplateItem).toHaveCount(0);
   });
 
   test("shows only starred memos in the favorites view", async ({ appWindow }) => {

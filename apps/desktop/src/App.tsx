@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Memo, MemoChangeEvent, MemoCreateInput, MemoId, MemoOrganizeIntent, MemoSearchResult, MemoUpdateInput } from "@ai-note/shared/memo";
 import type { MemoStoreHealth } from "./shared/memo-bridge";
+import type { PromptTemplate } from "./shared/prompt-template-bridge";
 import { buildMemoTitleFromBody, deriveNoteHeadline } from "./note-content";
 
 type DiffSegment = {
@@ -53,6 +54,13 @@ type TransformSession = {
   draft: TransformDraft | null;
   feedback: TransformFeedback | null;
   startedAt: number | null;
+};
+
+type PromptTemplateEditorState = {
+  isOpen: boolean;
+  templateId: string | null;
+  name: string;
+  prompt: string;
 };
 
 type ContextSearchState = {
@@ -272,6 +280,16 @@ function getProgressFeedback(elapsedMs: number) {
     title: "거의 다 완료되었어요",
     message: "마지막 문장과 형식을 정리하고 있어요."
   };
+}
+
+function buildDefaultTemplateName(prompt: string, existingTemplates: PromptTemplate[]) {
+  const trimmedPrompt = prompt.trim();
+
+  if (!trimmedPrompt) {
+    return `새 템플릿 ${existingTemplates.length + 1}`;
+  }
+
+  return trimmedPrompt.length <= 18 ? trimmedPrompt : `${trimmedPrompt.slice(0, 18).trim()}…`;
 }
 
 function nowStamp() {
@@ -750,6 +768,13 @@ function App() {
   const [isPreviewActionCoolingDown, setIsPreviewActionCoolingDown] = useState(false);
   const [organizingNotes, setOrganizingNotes] = useState<Record<MemoId, number>>({});
   const [progressNow, setProgressNow] = useState(() => Date.now());
+  const [promptTemplates, setPromptTemplates] = useState<PromptTemplate[]>([]);
+  const [promptTemplateEditor, setPromptTemplateEditor] = useState<PromptTemplateEditorState>({
+    isOpen: false,
+    templateId: null,
+    name: "",
+    prompt: ""
+  });
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const aiPromptInputRef = useRef<HTMLInputElement | null>(null);
   const findInputRef = useRef<HTMLInputElement | null>(null);
@@ -982,6 +1007,26 @@ function App() {
     return () => {
       cancelled = true;
       unsubscribe?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!window.promptTemplateAPI) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void window.promptTemplateAPI.list().then((templates) => {
+      if (cancelled) {
+        return;
+      }
+
+      setPromptTemplates(templates);
+    });
+
+    return () => {
+      cancelled = true;
     };
   }, []);
 
@@ -1219,6 +1264,109 @@ function App() {
     setStatusMessage("문맥 검색 결과에서 메모를 열었어요.");
   }
 
+  function closePromptTemplateEditor() {
+    setPromptTemplateEditor({
+      isOpen: false,
+      templateId: null,
+      name: "",
+      prompt: ""
+    });
+  }
+
+  function openPromptTemplateEditor(template?: PromptTemplate) {
+    const nextPrompt = template?.prompt ?? activeAiPrompt;
+
+    setPromptTemplateEditor({
+      isOpen: true,
+      templateId: template?.id ?? null,
+      name: template?.name ?? buildDefaultTemplateName(nextPrompt, promptTemplates),
+      prompt: nextPrompt
+    });
+  }
+
+  function applyPromptTemplate(template: PromptTemplate) {
+    updateActiveTransformSession((session) => ({
+      ...session,
+      prompt: template.prompt
+    }));
+    setStatusMessage(`"${template.name}" 템플릿을 불러왔어요.`);
+  }
+
+  async function persistPromptTemplate() {
+    if (!window.promptTemplateAPI) {
+      setStatusMessage("프롬프트 템플릿 저장소를 찾지 못했어요.");
+      return;
+    }
+
+    const name = promptTemplateEditor.name.trim();
+    const prompt = promptTemplateEditor.prompt.trim();
+
+    if (!name || !prompt) {
+      setStatusMessage("템플릿 이름과 프롬프트를 함께 입력해 주세요.");
+      return;
+    }
+
+    try {
+      if (promptTemplateEditor.templateId) {
+        const updatedTemplate = await window.promptTemplateAPI.update(promptTemplateEditor.templateId, { name, prompt });
+
+        if (!updatedTemplate) {
+          setStatusMessage("수정할 템플릿을 찾지 못했어요.");
+          return;
+        }
+
+        setPromptTemplates((currentTemplates) => {
+          const nextTemplates = currentTemplates.filter((template) => template.id !== updatedTemplate.id);
+          return [updatedTemplate, ...nextTemplates];
+        });
+        updateActiveTransformSession((session) => ({
+          ...session,
+          prompt: updatedTemplate.prompt
+        }));
+        setStatusMessage(`"${updatedTemplate.name}" 템플릿을 수정했어요.`);
+      } else {
+        const createdTemplate = await window.promptTemplateAPI.create({ name, prompt });
+        setPromptTemplates((currentTemplates) => [createdTemplate, ...currentTemplates.filter((template) => template.id !== createdTemplate.id)]);
+        updateActiveTransformSession((session) => ({
+          ...session,
+          prompt: createdTemplate.prompt
+        }));
+        setStatusMessage(`"${createdTemplate.name}" 템플릿을 저장했어요.`);
+      }
+
+      closePromptTemplateEditor();
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "프롬프트 템플릿을 저장하지 못했어요.");
+    }
+  }
+
+  async function removePromptTemplate(templateId: string) {
+    if (!window.promptTemplateAPI) {
+      setStatusMessage("프롬프트 템플릿 저장소를 찾지 못했어요.");
+      return;
+    }
+
+    try {
+      const targetTemplate = promptTemplates.find((template) => template.id === templateId) ?? null;
+      const deleted = await window.promptTemplateAPI.delete(templateId);
+
+      if (!deleted) {
+        setStatusMessage("삭제할 템플릿을 찾지 못했어요.");
+        return;
+      }
+
+      setPromptTemplates((currentTemplates) => currentTemplates.filter((template) => template.id !== templateId));
+
+      if (promptTemplateEditor.templateId === templateId) {
+        closePromptTemplateEditor();
+      }
+
+      setStatusMessage(targetTemplate ? `"${targetTemplate.name}" 템플릿을 삭제했어요.` : "템플릿을 삭제했어요.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "프롬프트 템플릿을 삭제하지 못했어요.");
+    }
+  }
+
   useEffect(() => {
     if (!isAiPromptOpen) {
       return;
@@ -1226,6 +1374,12 @@ function App() {
 
     aiPromptInputRef.current?.focus();
     aiPromptInputRef.current?.select();
+  }, [isAiPromptOpen]);
+
+  useEffect(() => {
+    if (!isAiPromptOpen) {
+      closePromptTemplateEditor();
+    }
   }, [isAiPromptOpen]);
 
   useEffect(() => {
@@ -1314,9 +1468,6 @@ function App() {
     }
 
     const nextTarget =
-      emptyFirstResultButtonRef.current ??
-      emptyClearSearchButtonRef.current ??
-      emptyCreateButtonRef.current ??
       searchInputRef.current;
 
     nextTarget?.focus();
@@ -1511,11 +1662,13 @@ function App() {
     setStatusMessage("메모 안에서 찾기를 열었어요.");
   }
 
-  function closeFindBar() {
+  function closeFindBar({ restoreEditorFocus = true }: { restoreEditorFocus?: boolean } = {}) {
     setIsFindBarOpen(false);
     setFindQuery("");
     setFindMatchIndex(0);
-    noteBodyInputRef.current?.focus();
+    if (restoreEditorFocus) {
+      noteBodyInputRef.current?.focus();
+    }
     setStatusMessage("메모 안에서 찾기를 닫았어요.");
   }
 
@@ -1634,7 +1787,7 @@ function App() {
     setQuery(nextQuery);
     setDeleteIntentId(null);
     setNoteMenuId(null);
-    closeFindBar();
+    closeFindBar({ restoreEditorFocus: false });
     closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
     setContextSearch((currentSearch) => ({
       ...currentSearch,
@@ -2153,22 +2306,14 @@ function App() {
                 <span className="visually-hidden">메모 검색</span>
                 <input
                   ref={searchInputRef}
-                  type="search"
+                  type="text"
                   placeholder="메모 검색"
                   data-testid="note-search-input"
+                  autoComplete="off"
+                  spellCheck={false}
                   value={query}
                   onChange={(event) => handleSearch(event.target.value)}
                 />
-                {hasQuery ? (
-                  <button
-                    className="sidebar-search-button"
-                    type="button"
-                    aria-label="검색어 지우기"
-                    onClick={() => handleSearch("")}
-                  >
-                    지우기
-                  </button>
-                ) : null}
               </label>
 
               <nav className="sidebar-nav" aria-label="사이드바 탐색">
@@ -2546,7 +2691,7 @@ function App() {
                           className="paper-button"
                           type="button"
                           data-testid="note-find-close-button"
-                          onClick={closeFindBar}
+                              onClick={() => closeFindBar()}
                         >
                           닫기
                         </button>
@@ -2638,6 +2783,102 @@ function App() {
 
                   {isAiPromptOpen ? (
                     <div className="ai-prompt-shell">
+                      <div className="ai-template-panel" data-testid="ai-template-panel">
+                        <div className="ai-template-panel__header">
+                          <strong>프롬프트 템플릿</strong>
+                          <button
+                            className="paper-button"
+                            type="button"
+                            data-testid="save-prompt-template-button"
+                            disabled={isTransformPreviewGenerating || !activeAiPrompt.trim()}
+                            onClick={() => openPromptTemplateEditor()}
+                          >
+                            현재 프롬프트 저장
+                          </button>
+                        </div>
+
+                        {promptTemplates.length > 0 ? (
+                          <div className="ai-template-list" data-testid="ai-template-list">
+                            {promptTemplates.map((template) => (
+                              <div key={template.id} className="ai-template-item">
+                                <button
+                                  className="ai-template-chip"
+                                  type="button"
+                                  data-testid={`prompt-template-item-${template.id}`}
+                                  disabled={isTransformPreviewGenerating}
+                                  onClick={() => applyPromptTemplate(template)}
+                                >
+                                  {template.name}
+                                </button>
+                                <div className="ai-template-item__actions">
+                                  <button
+                                    className="paper-button"
+                                    type="button"
+                                    data-testid={`edit-prompt-template-${template.id}`}
+                                    disabled={isTransformPreviewGenerating}
+                                    onClick={() => openPromptTemplateEditor(template)}
+                                  >
+                                    수정
+                                  </button>
+                                  <button
+                                    className="paper-button"
+                                    type="button"
+                                    data-testid={`delete-prompt-template-${template.id}`}
+                                    disabled={isTransformPreviewGenerating}
+                                    onClick={() => void removePromptTemplate(template.id)}
+                                  >
+                                    삭제
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="ai-template-empty">아직 저장한 템플릿이 없어요. 자주 쓰는 프롬프트를 저장해 두세요.</p>
+                        )}
+
+                        {promptTemplateEditor.isOpen ? (
+                          <div className="ai-template-editor" data-testid="ai-template-editor">
+                            <label className="ai-template-editor__field">
+                              <span>템플릿 이름</span>
+                              <input
+                                type="text"
+                                data-testid="prompt-template-name-input"
+                                value={promptTemplateEditor.name}
+                                disabled={isTransformPreviewGenerating}
+                                onChange={(event) =>
+                                  setPromptTemplateEditor((currentEditor) => ({
+                                    ...currentEditor,
+                                    name: event.target.value
+                                  }))
+                                }
+                              />
+                            </label>
+                            <label className="ai-template-editor__field">
+                              <span>템플릿 프롬프트</span>
+                              <textarea
+                                data-testid="prompt-template-prompt-input"
+                                value={promptTemplateEditor.prompt}
+                                disabled={isTransformPreviewGenerating}
+                                onChange={(event) =>
+                                  setPromptTemplateEditor((currentEditor) => ({
+                                    ...currentEditor,
+                                    prompt: event.target.value
+                                  }))
+                                }
+                              />
+                            </label>
+                            <div className="ai-template-editor__actions">
+                              <button className="paper-button" type="button" onClick={closePromptTemplateEditor}>
+                                취소
+                              </button>
+                              <button className="paper-button paper-button-primary" type="button" onClick={() => void persistPromptTemplate()}>
+                                {promptTemplateEditor.templateId ? "수정 저장" : "템플릿 저장"}
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
                       <form
                         id="ai-prompt-form"
                         className="ai-prompt-form"

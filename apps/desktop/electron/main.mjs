@@ -31,6 +31,7 @@ const memoEventChannels = {
   organizeState: "memo:organize-state-changed"
 };
 const organizingMemoIds = new Set();
+const composingMemoIds = new Set();
 
 if (userDataPathOverride) {
   app.setPath("userData", userDataPathOverride);
@@ -149,6 +150,26 @@ function normalizeOrganizeInput(value) {
     title,
     body,
     prompt
+  };
+}
+
+function normalizeComposeInput(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const memoIds = Array.isArray(value.memoIds) ? value.memoIds.map(normalizeMemoId).filter(Boolean) : [];
+  const prompt = typeof value.prompt === "string" ? value.prompt.trim() : "";
+  const intent = value.intent === "polish" || value.intent === "polite" ? value.intent : null;
+
+  if (memoIds.length === 0 || !prompt || !intent) {
+    return null;
+  }
+
+  return {
+    memoIds,
+    prompt,
+    intent
   };
 }
 
@@ -290,6 +311,50 @@ function registerMemoHandlers(memoStore, memoSearchService, organizer, memoStore
     } finally {
       organizingMemoIds.delete(organizeInput.memoId);
       broadcastOrganizeStateChange({ memoId: organizeInput.memoId, busy: false });
+    }
+  });
+
+  ipcMain.handle("memo:compose", async (_event, input) => {
+    const composeInput = normalizeComposeInput(input);
+
+    if (!composeInput) {
+      throw new Error("잘못된 메모 조합 요청입니다.");
+    }
+
+    composeInput.memoIds.forEach((memoId) => {
+      composingMemoIds.add(memoId);
+      broadcastOrganizeStateChange({ memoId, busy: true });
+    });
+
+    try {
+      const memos = (await Promise.all(composeInput.memoIds.map((memoId) => memoStore.get(memoId)))).filter(Boolean);
+
+      if (memos.length === 0) {
+        throw new Error("조합할 메모를 찾지 못했어요.");
+      }
+
+      const combinedBody = memos
+        .map((memo, index) => `# 메모 ${index + 1}\n${memo.body.trim()}`)
+        .join("\n\n");
+
+      const result = await organizer.organize({
+        memoId: memos[0].id,
+        title: "",
+        body: combinedBody,
+        intent: composeInput.intent,
+        prompt: composeInput.prompt
+      });
+
+      return {
+        result,
+        sourceMemoIds: memos.map((memo) => memo.id),
+        sourceCount: memos.length
+      };
+    } finally {
+      composeInput.memoIds.forEach((memoId) => {
+        composingMemoIds.delete(memoId);
+        broadcastOrganizeStateChange({ memoId, busy: false });
+      });
     }
   });
 }

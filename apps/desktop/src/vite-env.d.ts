@@ -46,6 +46,7 @@ type MemoAPI = {
   search(query: SearchMemosRequest["query"]): Promise<SearchMemosResponse["results"]>;
   organizeState(): Promise<string[]>;
   organize(input: OrganizeMemoRequest["input"]): Promise<OrganizeMemoResponse["result"]>;
+  compose(input: { memoIds: string[]; prompt: string; intent: "polish" | "polite" }): Promise<{ result: OrganizeMemoResponse["result"]; sourceMemoIds: string[]; sourceCount: number }>;
   onDidChange(listener: (event: MemoChangeEvent) => void): () => void;
   onDidOrganizeState(listener: (event: { memoId: string; busy: boolean }) => void): () => void;
 };

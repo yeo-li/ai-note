@@ -1201,9 +1201,6 @@ function App() {
     }
 
     const nextTarget =
-      emptyFirstResultButtonRef.current ??
-      emptyClearSearchButtonRef.current ??
-      emptyCreateButtonRef.current ??
       searchInputRef.current;
 
     nextTarget?.focus();
@@ -1398,11 +1395,13 @@ function App() {
     setStatusMessage("메모 안에서 찾기를 열었어요.");
   }
 
-  function closeFindBar() {
+  function closeFindBar({ restoreEditorFocus = true }: { restoreEditorFocus?: boolean } = {}) {
     setIsFindBarOpen(false);
     setFindQuery("");
     setFindMatchIndex(0);
-    noteBodyInputRef.current?.focus();
+    if (restoreEditorFocus) {
+      noteBodyInputRef.current?.focus();
+    }
     setStatusMessage("메모 안에서 찾기를 닫았어요.");
   }
 
@@ -1521,7 +1520,7 @@ function App() {
     setQuery(nextQuery);
     setDeleteIntentId(null);
     setNoteMenuId(null);
-    closeFindBar();
+    closeFindBar({ restoreEditorFocus: false });
     closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
 
     if (!trimmedQuery) {
@@ -2032,22 +2031,14 @@ function App() {
                 <span className="visually-hidden">메모 검색</span>
                 <input
                   ref={searchInputRef}
-                  type="search"
+                  type="text"
                   placeholder="메모 검색"
                   data-testid="note-search-input"
+                  autoComplete="off"
+                  spellCheck={false}
                   value={query}
                   onChange={(event) => handleSearch(event.target.value)}
                 />
-                {hasQuery ? (
-                  <button
-                    className="sidebar-search-button"
-                    type="button"
-                    aria-label="검색어 지우기"
-                    onClick={() => handleSearch("")}
-                  >
-                    지우기
-                  </button>
-                ) : null}
               </label>
 
               <nav className="sidebar-nav" aria-label="사이드바 탐색">
@@ -2407,7 +2398,7 @@ function App() {
                           className="paper-button"
                           type="button"
                           data-testid="note-find-close-button"
-                          onClick={closeFindBar}
+                              onClick={() => closeFindBar()}
                         >
                           닫기
                         </button>

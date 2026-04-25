@@ -58,8 +58,11 @@ test.describe("AI Note desktop smoke", () => {
     await firstNote.click();
     await expect(firstNote).toHaveAttribute("aria-current", "true");
     const selectedBody = await bodyInput.inputValue();
+    await expect(searchInput).toHaveAttribute("type", "text");
 
     await searchInput.fill("does-not-match-anything");
+    await expect(searchInput).toBeFocused();
+    await expect(appWindow.getByRole("button", { name: "검색어 지우기" })).toHaveCount(0);
 
     await expect(noteList.locator('[data-testid^="note-list-item-"]')).toHaveCount(0);
     await expect(appWindow.getByTestId("sidebar-empty-state")).toBeVisible();

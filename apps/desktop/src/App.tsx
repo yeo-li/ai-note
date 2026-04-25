@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Memo, MemoChangeEvent, MemoCreateInput, MemoId, MemoOrganizeIntent, MemoUpdateInput } from "@ai-note/shared/memo";
+import type { Memo, MemoChangeEvent, MemoCreateInput, MemoId, MemoOrganizeIntent, MemoSearchResult, MemoUpdateInput } from "@ai-note/shared/memo";
 import type { MemoStoreHealth } from "./shared/memo-bridge";
 import type { PromptTemplate } from "./shared/prompt-template-bridge";
 import { buildMemoTitleFromBody, deriveNoteHeadline } from "./note-content";
@@ -61,6 +61,14 @@ type PromptTemplateEditorState = {
   templateId: string | null;
   name: string;
   prompt: string;
+};
+
+type ContextSearchState = {
+  isOpen: boolean;
+  query: string;
+  results: MemoSearchResult[];
+  hasSearched: boolean;
+  isLoading: boolean;
 };
 
 const initialNotes: Note[] = [
@@ -750,6 +758,13 @@ function App() {
   const [isFindBarOpen, setIsFindBarOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [findMatchIndex, setFindMatchIndex] = useState(0);
+  const [contextSearch, setContextSearch] = useState<ContextSearchState>({
+    isOpen: false,
+    query: "",
+    results: [],
+    hasSearched: false,
+    isLoading: false
+  });
   const [isPreviewActionCoolingDown, setIsPreviewActionCoolingDown] = useState(false);
   const [organizingNotes, setOrganizingNotes] = useState<Record<MemoId, number>>({});
   const [progressNow, setProgressNow] = useState(() => Date.now());
@@ -763,6 +778,7 @@ function App() {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const aiPromptInputRef = useRef<HTMLInputElement | null>(null);
   const findInputRef = useRef<HTMLInputElement | null>(null);
+  const contextSearchInputRef = useRef<HTMLInputElement | null>(null);
   const noteBodyInputRef = useRef<HTMLTextAreaElement | null>(null);
   const previewActionCooldownRef = useRef<number | null>(null);
   const emptyCreateButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -1167,6 +1183,87 @@ function App() {
     });
   }
 
+  function openContextSearchPanel() {
+    setDeleteIntentId(null);
+    setNoteMenuId(null);
+    closeFindBar();
+    closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
+    setContextSearch((currentSearch) => ({
+      ...currentSearch,
+      isOpen: true
+    }));
+    setStatusMessage("문맥 검색 입력창을 열어두었어요.");
+  }
+
+  function closeContextSearchPanel() {
+    setContextSearch((currentSearch) => ({
+      ...currentSearch,
+      isOpen: false,
+      results: [],
+      hasSearched: false,
+      isLoading: false
+    }));
+    setStatusMessage("문맥 검색 입력창을 닫았어요.");
+  }
+
+  async function runContextSearch() {
+    const trimmedQuery = contextSearch.query.trim();
+
+    if (!trimmedQuery) {
+      setContextSearch((currentSearch) => ({
+        ...currentSearch,
+        results: [],
+        hasSearched: false,
+        isLoading: false
+      }));
+      setStatusMessage("문맥 검색 프롬프트를 입력해 주세요.");
+      return;
+    }
+
+    if (!window.memoAPI) {
+      setStatusMessage("문맥 검색을 실행할 수 있는 memoAPI 브리지를 찾지 못했어요.");
+      return;
+    }
+
+    setContextSearch((currentSearch) => ({
+      ...currentSearch,
+      isLoading: true,
+      hasSearched: true
+    }));
+
+    try {
+      const results = await window.memoAPI.search(trimmedQuery);
+
+      setContextSearch((currentSearch) => ({
+        ...currentSearch,
+        results,
+        isLoading: false,
+        hasSearched: true
+      }));
+
+      setStatusMessage(
+        results.length > 0
+          ? `문맥 검색 결과 ${results.length}개를 찾았어요. 관련 메모를 열어보세요.`
+          : `"${trimmedQuery}"와 관련된 메모를 찾지 못했어요.`
+      );
+    } catch (error) {
+      setContextSearch((currentSearch) => ({
+        ...currentSearch,
+        results: [],
+        isLoading: false,
+        hasSearched: true
+      }));
+      setStatusMessage(toErrorMessage(error));
+    }
+  }
+
+  function openNoteFromContextSearch(noteId: MemoId) {
+    setSelectedNoteId(noteId);
+    setDeleteIntentId(null);
+    setNoteMenuId(null);
+    setStatusMessage("문맥 검색 결과에서 메모를 열었어요.");
+  }
+
   function closePromptTemplateEditor() {
     setPromptTemplateEditor({
       isOpen: false,
@@ -1295,9 +1392,25 @@ function App() {
   }, [isFindBarOpen]);
 
   useEffect(() => {
+    if (!contextSearch.isOpen) {
+      return;
+    }
+
+    contextSearchInputRef.current?.focus();
+    contextSearchInputRef.current?.select();
+  }, [contextSearch.isOpen]);
+
+  useEffect(() => {
     setIsFindBarOpen(false);
     setFindQuery("");
     setFindMatchIndex(0);
+    setContextSearch((currentSearch) => ({
+      ...currentSearch,
+      isOpen: false,
+      results: [],
+      hasSearched: false,
+      isLoading: false
+    }));
   }, [activeNote?.id, isStickyMode]);
 
   useEffect(() => {
@@ -1676,6 +1789,13 @@ function App() {
     setNoteMenuId(null);
     closeFindBar({ restoreEditorFocus: false });
     closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
+    setContextSearch((currentSearch) => ({
+      ...currentSearch,
+      isOpen: false,
+      results: [],
+      hasSearched: false,
+      isLoading: false
+    }));
 
     if (!trimmedQuery) {
       if (selectedNote) {
@@ -1735,6 +1855,7 @@ function App() {
     setDeleteIntentId(null);
     setNoteMenuId(null);
     closeFindBar();
+    closeContextSearchPanel();
     openTransformSession(activeNote.id, activeTransformSession?.prompt || activeDraft?.prompt || "");
     setStatusMessage("AI 정리 입력창을 열어두었어요.");
   }
@@ -2470,6 +2591,24 @@ function App() {
                             <ToolbarFindIcon />
                           </button>
                             <button
+                              className={`paper-button paper-button-icon${contextSearch.isOpen ? " is-active" : ""}`}
+                              type="button"
+                              data-testid="context-search-toggle-button"
+                              aria-label="문맥 검색 열기"
+                              title="문맥 검색 열기"
+                              disabled={isMutationLocked || isTransformPreviewGenerating}
+                              onClick={() => {
+                                if (contextSearch.isOpen) {
+                                  closeContextSearchPanel();
+                                  return;
+                                }
+
+                                openContextSearchPanel();
+                              }}
+                            >
+                              <SearchIcon />
+                            </button>
+                            <button
                               className="paper-button paper-button-icon"
                               type="button"
                               data-testid="organize-note-button"
@@ -2558,6 +2697,88 @@ function App() {
                         </button>
                       </div>
                     </div>
+                  ) : null}
+
+                  {contextSearch.isOpen ? (
+                    <section className="context-search-panel" data-testid="context-search-panel">
+                      <form
+                        className="context-search-form"
+                        data-testid="context-search-form"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void runContextSearch();
+                        }}
+                      >
+                        <label className="context-search-input-shell">
+                          <SearchIcon />
+                          <span className="visually-hidden">문맥 검색</span>
+                          <input
+                            ref={contextSearchInputRef}
+                            type="text"
+                            data-testid="context-search-input"
+                            value={contextSearch.query}
+                            placeholder="예: 지난 계약 일정 관련 메모 찾아줘"
+                            disabled={contextSearch.isLoading}
+                            onChange={(event) =>
+                              setContextSearch((currentSearch) => ({
+                                ...currentSearch,
+                                query: event.target.value
+                              }))
+                            }
+                          />
+                        </label>
+                        <div className="context-search-actions">
+                          <button
+                            className={`paper-button paper-button-primary${contextSearch.isLoading ? " is-loading" : ""}`}
+                            type="submit"
+                            data-testid="submit-context-search-button"
+                            disabled={contextSearch.isLoading}
+                          >
+                            {contextSearch.isLoading ? "검색 중…" : "문맥 검색"}
+                          </button>
+                          <button className="paper-button" type="button" onClick={closeContextSearchPanel}>
+                            닫기
+                          </button>
+                        </div>
+                      </form>
+
+                      {contextSearch.results.length > 0 ? (
+                        <div className="context-search-results" data-testid="context-search-results">
+                          {contextSearch.results.map((result) => (
+                            <article key={result.memo.id} className="context-search-result-card">
+                              <div className="context-search-result-card__meta">
+                                <strong>{deriveNoteHeadline(result.memo.body)}</strong>
+                                <span>점수 {result.score}</span>
+                              </div>
+                              <p className="context-search-result-card__preview">{result.preview}</p>
+                              <p className="context-search-result-card__reason">
+                                근거: {result.matchedTerms.length > 0 ? result.matchedTerms.join(", ") : "문맥상 관련 메모"}
+                              </p>
+                              <div className="context-search-result-card__actions">
+                                <button
+                                  className="paper-button"
+                                  type="button"
+                                  data-testid={`open-context-search-result-${result.memo.id}`}
+                                  onClick={() => openNoteFromContextSearch(result.memo.id)}
+                                >
+                                  이 메모 열기
+                                </button>
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      ) : contextSearch.hasSearched && !contextSearch.isLoading ? (
+                        <div className="context-search-empty" data-testid="context-search-empty-state">
+                          <strong>관련 메모를 찾지 못했어요.</strong>
+                          <span>더 구체적인 사람, 상황, 주제를 넣어 다시 검색해 보세요.</span>
+                        </div>
+                      ) : (
+                        <div className="context-search-empty" data-testid="context-search-hint">
+                          <strong>문맥 검색</strong>
+                          <span>좌측 목록 필터와 달리, 자연어 프롬프트로 관련 메모를 모아볼 수 있어요.</span>
+                        </div>
+                      )}
+                    </section>
                   ) : null}
 
                   {isAiPromptOpen ? (

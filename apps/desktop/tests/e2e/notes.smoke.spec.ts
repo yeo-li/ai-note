@@ -158,6 +158,35 @@ test.describe("AI Note desktop smoke", () => {
     await expect(bodyInput).toHaveValue(previewBody);
   });
 
+  test("creates a new draft memo from multiple selected memos", async ({ appWindow }) => {
+    const createButton = appWindow.getByTestId("sidebar-create-note-button");
+    const bodyInput = appWindow.getByTestId("note-body-input");
+    const noteList = appWindow.getByTestId("note-list");
+
+    await createButton.click();
+    await bodyInput.fill("compose source one\n첫 번째 조각 메모입니다");
+
+    await createButton.click();
+    await bodyInput.fill("compose source two\n두 번째 조각 메모입니다");
+
+    const countBefore = await noteList.locator('[data-testid^="note-list-item-"]').count();
+
+    await appWindow.getByTestId("compose-note-button").click();
+    await expect(appWindow.getByTestId("compose-panel")).toBeVisible();
+
+    const composeCheckboxes = appWindow.locator('[data-testid^="compose-memo-checkbox-"]');
+    const firstComposeCheckbox = composeCheckboxes.nth(0);
+    const secondComposeCheckbox = composeCheckboxes.nth(1);
+    await firstComposeCheckbox.check();
+    await secondComposeCheckbox.check();
+
+    await appWindow.getByTestId("compose-prompt-input").fill("선택한 메모를 합쳐 새 회의 요약 메모를 만들어줘");
+    await appWindow.getByTestId("submit-compose-button").click();
+
+    await expect(noteList.locator('[data-testid^="note-list-item-"]')).toHaveCount(countBefore + 1);
+    await expect(bodyInput).toHaveValue(/두 번째 조각 메모입니다/);
+  });
+
   test("saves applies edits and deletes AI prompt templates", async ({ appWindow }) => {
     await appWindow.getByTestId("sidebar-create-note-button").click();
     await appWindow.getByTestId("note-body-input").fill("template target\n본문입니다");

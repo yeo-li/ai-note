@@ -10,7 +10,8 @@ const memoChannels = {
   update: "memo:update",
   delete: "memo:delete",
   search: "memo:search",
-  organize: "memo:organize"
+  organize: "memo:organize",
+  compose: "memo:compose"
 };
 const memoEventChannels = {
   changed: "memo:changed",
@@ -54,6 +55,9 @@ const memoAPI = {
   },
   organize(input) {
     return ipcRenderer.invoke(memoChannels.organize, input);
+  },
+  compose(input) {
+    return ipcRenderer.invoke(memoChannels.compose, input);
   },
   onDidChange(listener) {
     if (typeof listener !== "function") {

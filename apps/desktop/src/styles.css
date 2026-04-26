@@ -386,6 +386,59 @@ textarea:focus-visible {
   color: var(--text-faint);
 }
 
+.sidebar-search-chooser,
+.sidebar-ai-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sidebar-search-mode-button,
+.sidebar-ai-action-button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  background: #f3f3f3;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+}
+
+.sidebar-search-mode-button.is-active,
+.sidebar-ai-action-button.is-active {
+  background: #111111;
+  color: #ffffff;
+}
+
+.sidebar-surface {
+  display: grid;
+  gap: 12px;
+  padding: 12px 0 4px;
+}
+
+.sidebar-surface__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sidebar-surface__header strong {
+  font-size: 0.82rem;
+  color: var(--text-soft);
+}
+
+.sidebar-surface__description {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.sidebar-ai-prompt-shell {
+  display: grid;
+  gap: 12px;
+}
+
 .sidebar-search-button {
   flex: 0 0 auto;
   min-height: 22px;

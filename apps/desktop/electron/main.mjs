@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { memoChannels } from "./memo-channels.mjs";
 import { promptTemplateChannels } from "./prompt-template-channels.mjs";
 import { createMemoSearchService } from "./search/memo-search-service.mjs";
+import { createAiMemoProvider } from "./ai-memo-provider.mjs";
 import { createLocalOrganizer } from "./organize/local-organizer.mjs";
 import { createCodexCliOrganizeProvider } from "./organize/codex-cli-organizer.mjs";
 import { createOrganizeOrchestrator } from "./organize/organize-orchestrator.mjs";
@@ -196,16 +197,14 @@ function normalizeComposeInput(value) {
     return null;
   }
 
-  const memoIds = Array.isArray(value.memoIds) ? value.memoIds.map(normalizeMemoId).filter(Boolean) : [];
   const prompt = typeof value.prompt === "string" ? value.prompt.trim() : "";
   const intent = value.intent === "polish" || value.intent === "polite" ? value.intent : null;
 
-  if (memoIds.length === 0 || !prompt || !intent) {
+  if (!prompt || !intent) {
     return null;
   }
 
   return {
-    memoIds,
     prompt,
     intent
   };
@@ -249,7 +248,7 @@ function broadcastOrganizeStateChange(changeEvent) {
   }
 }
 
-function registerMemoHandlers(memoStore, memoSearchService, organizer, memoStoreContext) {
+function registerMemoHandlers(memoStore, memoSearchService, organizer, aiMemoProvider, memoStoreContext) {
   ipcMain.handle(memoChannels.health, async () => {
     const baseHealth = {
       bridgeConnected: true,
@@ -332,6 +331,23 @@ function registerMemoHandlers(memoStore, memoSearchService, organizer, memoStore
     return normalizedQuery ? memoSearchService.search(normalizedQuery) : [];
   });
 
+  ipcMain.handle(memoChannels.aiSearch, async (_event, query) => {
+    const normalizedQuery = normalizeSearchQuery(query);
+
+    if (!normalizedQuery) {
+      return [];
+    }
+
+    const memos = await memoStore.list();
+    const memoIds = await aiMemoProvider.searchMemos({
+      query: normalizedQuery,
+      memos
+    });
+    const memoMap = new Map(memos.map((memo) => [memo.id, memo]));
+
+    return memoIds.map((memoId) => memoMap.get(memoId)).filter(Boolean);
+  });
+
   ipcMain.handle(memoChannels.organizeState, async () => Array.from(organizingMemoIds));
 
   ipcMain.handle(memoChannels.organize, async (_event, input) => {
@@ -359,39 +375,33 @@ function registerMemoHandlers(memoStore, memoSearchService, organizer, memoStore
       throw new Error("잘못된 메모 조합 요청입니다.");
     }
 
-    composeInput.memoIds.forEach((memoId) => {
-      composingMemoIds.add(memoId);
-      broadcastOrganizeStateChange({ memoId, busy: true });
+    const memos = await memoStore.list();
+
+    memos.forEach((memo) => {
+      composingMemoIds.add(memo.id);
+      broadcastOrganizeStateChange({ memoId: memo.id, busy: true });
     });
 
     try {
-      const memos = (await Promise.all(composeInput.memoIds.map((memoId) => memoStore.get(memoId)))).filter(Boolean);
-
       if (memos.length === 0) {
         throw new Error("조합할 메모를 찾지 못했어요.");
       }
 
-      const combinedBody = memos
-        .map((memo, index) => `# 메모 ${index + 1}\n${memo.body.trim()}`)
-        .join("\n\n");
-
-      const result = await organizer.organize({
-        memoId: memos[0].id,
-        title: "",
-        body: combinedBody,
-        intent: composeInput.intent,
-        prompt: composeInput.prompt
+      const result = await aiMemoProvider.composeMemos({
+        prompt: composeInput.prompt,
+        memos
       });
 
       return {
-        result,
-        sourceMemoIds: memos.map((memo) => memo.id),
-        sourceCount: memos.length
+        title: result.title,
+        body: result.body,
+        sourceMemoIds: result.sourceMemoIds,
+        sourceCount: result.sourceMemoIds.length
       };
     } finally {
-      composeInput.memoIds.forEach((memoId) => {
-        composingMemoIds.delete(memoId);
-        broadcastOrganizeStateChange({ memoId, busy: false });
+      memos.forEach((memo) => {
+        composingMemoIds.delete(memo.id);
+        broadcastOrganizeStateChange({ memoId: memo.id, busy: false });
       });
     }
   });
@@ -609,8 +619,29 @@ app.whenReady().then(() => {
     }
   });
   const organizer = createOrganizerForEnvironment();
+  const aiMemoProvider = isPlaywrightE2E
+    ? {
+        async searchMemos({ query, memos }) {
+          const normalizedQuery = query.toLowerCase();
 
-  registerMemoHandlers(memoStore, memoSearchService, organizer, primaryMemoStore);
+          return memos
+            .filter((memo) => `${memo.title} ${memo.body}`.toLowerCase().includes(normalizedQuery.split(/\s+/).find(Boolean) ?? normalizedQuery))
+            .map((memo) => memo.id);
+        },
+        async composeMemos({ prompt, memos }) {
+          const selectedMemos = memos.slice(0, Math.min(memos.length, 3));
+          return {
+            title: prompt.length > 18 ? `${prompt.slice(0, 18).trim()}…` : prompt,
+            body: selectedMemos.map((memo) => memo.body.trim()).join("\n\n"),
+            sourceMemoIds: selectedMemos.map((memo) => memo.id)
+          };
+        }
+      }
+    : createAiMemoProvider({
+        cwd: app.getAppPath()
+      });
+
+  registerMemoHandlers(memoStore, memoSearchService, organizer, aiMemoProvider, primaryMemoStore);
   registerPromptTemplateHandlers(promptTemplateStore);
   ipcMain.handle("window:open-sticky-note", (_event, noteId) => {
     createStickyNoteWindow(typeof noteId === "string" ? noteId : null);

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Memo, MemoChangeEvent, MemoCreateInput, MemoId, MemoOrganizeIntent, MemoSearchResult, MemoUpdateInput } from "@ai-note/shared/memo";
+import type { Memo, MemoChangeEvent, MemoCreateInput, MemoId, MemoOrganizeIntent, MemoUpdateInput } from "@ai-note/shared/memo";
 import type { MemoStoreHealth } from "./shared/memo-bridge";
 import type { PromptTemplate } from "./shared/prompt-template-bridge";
 import { buildMemoTitleFromBody, deriveNoteHeadline } from "./note-content";
@@ -64,19 +64,19 @@ type PromptTemplateEditorState = {
 };
 
 type ContextSearchState = {
-  isOpen: boolean;
   query: string;
-  results: MemoSearchResult[];
+  results: Memo[];
   hasSearched: boolean;
   isLoading: boolean;
 };
 
 type ComposeSession = {
-  isOpen: boolean;
   prompt: string;
-  selectedMemoIds: MemoId[];
   isGenerating: boolean;
 };
+
+type SidebarSearchMode = "keyword" | "ai-context";
+type SidebarSurface = "notes" | "ai-context" | "compose";
 
 const initialNotes: Note[] = [
   {
@@ -765,17 +765,17 @@ function App() {
   const [isFindBarOpen, setIsFindBarOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [findMatchIndex, setFindMatchIndex] = useState(0);
+  const [activeSidebarSurface, setActiveSidebarSurface] = useState<SidebarSurface>("notes");
+  const [sidebarSearchMode, setSidebarSearchMode] = useState<SidebarSearchMode>("keyword");
+  const [isSidebarSearchChooserOpen, setIsSidebarSearchChooserOpen] = useState(false);
   const [contextSearch, setContextSearch] = useState<ContextSearchState>({
-    isOpen: false,
     query: "",
     results: [],
     hasSearched: false,
     isLoading: false
   });
   const [composeSession, setComposeSession] = useState<ComposeSession>({
-    isOpen: false,
     prompt: "",
-    selectedMemoIds: [],
     isGenerating: false
   });
   const [isPreviewActionCoolingDown, setIsPreviewActionCoolingDown] = useState(false);
@@ -799,7 +799,7 @@ function App() {
   const emptyFirstResultButtonRef = useRef<HTMLButtonElement | null>(null);
   const emptyClearSearchButtonRef = useRef<HTMLButtonElement | null>(null);
 
-  const hasQuery = query.trim().length > 0;
+  const hasQuery = sidebarSearchMode === "keyword" && query.trim().length > 0;
   const scopedNotes = useMemo(
     () => notes.filter((note) => (sidebarView === "favorites" ? note.favorite : true)),
     [notes, sidebarView]
@@ -1202,18 +1202,19 @@ function App() {
     setNoteMenuId(null);
     closeFindBar();
     closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
+    setComposeSession({ prompt: "", isGenerating: false });
+    setActiveSidebarSurface("ai-context");
 
     setContextSearch((currentSearch) => ({
-      ...currentSearch,
-      isOpen: true
+      ...currentSearch
     }));
     setStatusMessage("문맥 검색 입력창을 열어두었어요.");
   }
 
   function closeContextSearchPanel() {
+    setActiveSidebarSurface("notes");
     setContextSearch((currentSearch) => ({
       ...currentSearch,
-      isOpen: false,
       results: [],
       hasSearched: false,
       isLoading: false
@@ -1222,7 +1223,8 @@ function App() {
   }
 
   async function runContextSearch() {
-    const trimmedQuery = contextSearch.query.trim();
+    const trimmedContextQuery = contextSearch.query.trim();
+    const trimmedQuery = trimmedContextQuery || query.trim();
 
     if (!trimmedQuery) {
       setContextSearch((currentSearch) => ({
@@ -1247,7 +1249,7 @@ function App() {
     }));
 
     try {
-      const results = await window.memoAPI.search(trimmedQuery);
+      const results = await window.memoAPI.aiSearch(trimmedQuery);
 
       setContextSearch((currentSearch) => ({
         ...currentSearch,
@@ -1280,31 +1282,19 @@ function App() {
   }
 
   function openComposeSession() {
-    setComposeSession((currentSession) => ({
-      ...currentSession,
-      isOpen: true,
-      selectedMemoIds: activeNote ? Array.from(new Set([...currentSession.selectedMemoIds, activeNote.id])) : currentSession.selectedMemoIds
-    }));
+    setDeleteIntentId(null);
+    setNoteMenuId(null);
+    closeFindBar();
+    closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
+    setContextSearch({ query: "", results: [], hasSearched: false, isLoading: false });
+    setActiveSidebarSurface("compose");
     setStatusMessage("여러 메모를 조합할 초안 입력창을 열었어요.");
   }
 
   function closeComposeSession() {
-    setComposeSession({
-      isOpen: false,
-      prompt: "",
-      selectedMemoIds: [],
-      isGenerating: false
-    });
+    setComposeSession({ prompt: "", isGenerating: false });
+    setActiveSidebarSurface("notes");
     setStatusMessage("메모 조합 입력창을 닫았어요.");
-  }
-
-  function toggleComposeMemoSelection(noteId: MemoId) {
-    setComposeSession((currentSession) => ({
-      ...currentSession,
-      selectedMemoIds: currentSession.selectedMemoIds.includes(noteId)
-        ? currentSession.selectedMemoIds.filter((currentId) => currentId !== noteId)
-        : [...currentSession.selectedMemoIds, noteId]
-    }));
   }
 
   async function startComposeDraft() {
@@ -1312,11 +1302,6 @@ function App() {
 
     if (!window.memoAPI) {
       setStatusMessage("메모 조합 API를 찾지 못했어요.");
-      return;
-    }
-
-    if (composeSession.selectedMemoIds.length === 0) {
-      setStatusMessage("조합할 메모를 하나 이상 선택해 주세요.");
       return;
     }
 
@@ -1332,14 +1317,13 @@ function App() {
 
     try {
       const result = await window.memoAPI.compose({
-        memoIds: composeSession.selectedMemoIds,
         prompt: trimmedPrompt,
         intent: deriveOrganizeIntent(trimmedPrompt)
       });
 
       const createdMemo = await window.memoAPI.create({
-        title: buildMemoTitleFromBody(result.result.suggested),
-        body: result.result.suggested
+        title: result.title || buildMemoTitleFromBody(result.body),
+        body: result.body
       });
 
       const nextNote = toNoteFromMemo(createdMemo);
@@ -1477,13 +1461,13 @@ function App() {
   }, [isAiPromptOpen]);
 
   useEffect(() => {
-    if (!composeSession.isOpen) {
+    if (activeSidebarSurface !== "compose") {
       return;
     }
 
     composePromptInputRef.current?.focus();
     composePromptInputRef.current?.select();
-  }, [composeSession.isOpen]);
+  }, [activeSidebarSurface]);
 
   useEffect(() => {
     if (!isFindBarOpen) {
@@ -1495,13 +1479,13 @@ function App() {
   }, [isFindBarOpen]);
 
   useEffect(() => {
-    if (!contextSearch.isOpen) {
+    if (activeSidebarSurface !== "ai-context") {
       return;
     }
 
     contextSearchInputRef.current?.focus();
     contextSearchInputRef.current?.select();
-  }, [contextSearch.isOpen]);
+  }, [activeSidebarSurface]);
 
   useEffect(() => {
     setIsFindBarOpen(false);
@@ -1509,12 +1493,26 @@ function App() {
     setFindMatchIndex(0);
     setContextSearch((currentSearch) => ({
       ...currentSearch,
-      isOpen: false,
       results: [],
       hasSearched: false,
       isLoading: false
     }));
   }, [activeNote?.id, isStickyMode]);
+
+  useEffect(() => {
+    if (!activeNote) {
+      return;
+    }
+
+    const hasActiveOrganizeState = Boolean(
+      (transformSession?.noteId === activeNote.id && (transformSession.isOpen || transformSession.draft || transformSession.feedback)) ||
+      organizingNotes[activeNote.id]
+    );
+
+    if (!hasActiveOrganizeState) {
+      setActiveSidebarSurface((currentSurface) => currentSurface);
+    }
+  }, [activeNote?.id, organizingNotes, transformSession]);
 
   useEffect(() => {
     if (!isAnyTransformGenerating) {
@@ -1660,12 +1658,8 @@ function App() {
     setDeleteIntentId(null);
     setNoteMenuId(null);
     setTransformSession(null);
-    setComposeSession({
-      isOpen: false,
-      prompt: "",
-      selectedMemoIds: [],
-      isGenerating: false
-    });
+    setComposeSession({ prompt: "", isGenerating: false });
+    setActiveSidebarSurface("notes");
   }, [isStickyMode]);
 
   function patchActiveNote(update: Partial<Note>, message?: string) {
@@ -1894,22 +1888,33 @@ function App() {
     const matchingNotes = scopedNotes.filter((note) => matchesQuery(note, nextQuery));
 
     setQuery(nextQuery);
+    setIsSidebarSearchChooserOpen(true);
     setDeleteIntentId(null);
     setNoteMenuId(null);
     closeFindBar({ restoreEditorFocus: false });
     closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
-    setComposeSession((currentSession) => ({
-      ...currentSession,
-      isOpen: false,
-      isGenerating: false
-    }));
+    setComposeSession({ prompt: "", isGenerating: false });
     setContextSearch((currentSearch) => ({
       ...currentSearch,
-      isOpen: false,
       results: [],
       hasSearched: false,
       isLoading: false
     }));
+
+    if (sidebarSearchMode === "ai-context") {
+      setContextSearch((currentSearch) => ({
+        ...currentSearch,
+        query: nextQuery
+      }));
+
+      if (!trimmedQuery) {
+        setStatusMessage("AI 문맥 검색 프롬프트를 비웠어요.");
+      }
+
+      return;
+    }
+
+    setActiveSidebarSurface("notes");
 
     if (!trimmedQuery) {
       if (selectedNote) {
@@ -1977,6 +1982,7 @@ function App() {
 
   function closeAiPromptComposer() {
     closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
+    setActiveSidebarSurface("notes");
     setStatusMessage("AI 정리 입력창을 닫았어요.");
   }
 
@@ -2418,18 +2424,60 @@ function App() {
 
               <label className="sidebar-search">
                 <SearchIcon />
-                <span className="visually-hidden">메모 검색</span>
+                <span className="visually-hidden">
+                  {sidebarSearchMode === "keyword" ? "키워드 검색" : "맥락 검색"}
+                </span>
                 <input
                   ref={searchInputRef}
                   type="text"
-                  placeholder="메모 검색"
+                  placeholder={sidebarSearchMode === "keyword" ? "키워드 검색" : "맥락 검색"}
                   data-testid="note-search-input"
                   autoComplete="off"
                   spellCheck={false}
                   value={query}
+                  onFocus={() => setIsSidebarSearchChooserOpen(true)}
                   onChange={(event) => handleSearch(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && sidebarSearchMode === "ai-context") {
+                      event.preventDefault();
+                      void runContextSearch();
+                    }
+
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setIsSidebarSearchChooserOpen(false);
+                    }
+                  }}
                 />
               </label>
+
+              {(isSidebarSearchChooserOpen || query.trim().length > 0) && !isStickyMode ? (
+                <div className="sidebar-search-chooser" data-testid="sidebar-search-chooser">
+                  <button
+                    className={`sidebar-search-mode-button${sidebarSearchMode === "keyword" ? " is-active" : ""}`}
+                    type="button"
+                    data-testid="sidebar-keyword-search-mode-button"
+                    onClick={() => {
+                      setSidebarSearchMode("keyword");
+                      setContextSearch({ query: "", results: [], hasSearched: false, isLoading: false });
+                      setActiveSidebarSurface("notes");
+                    }}
+                  >
+                    키워드 검색
+                  </button>
+                  <button
+                    className={`sidebar-search-mode-button${sidebarSearchMode === "ai-context" ? " is-active" : ""}`}
+                    type="button"
+                    data-testid="sidebar-ai-context-search-mode-button"
+                    onClick={() => {
+                      setSidebarSearchMode("ai-context");
+                      openContextSearchPanel();
+                    }}
+                  >
+                    AI 맥락 검색
+                  </button>
+                </div>
+              ) : null}
 
               <nav className="sidebar-nav" aria-label="사이드바 탐색">
                 <button
@@ -2451,14 +2499,113 @@ function App() {
                   <span>즐겨찾기</span>
                 </button>
               </nav>
+
+              {!isStickyMode ? (
+                <div className="sidebar-ai-actions" data-testid="sidebar-ai-actions">
+                  <button
+                    className={`sidebar-ai-action-button${activeSidebarSurface === "compose" ? " is-active" : ""}`}
+                    type="button"
+                    data-testid="sidebar-compose-button"
+                    disabled={isMutationLocked || isAnyTransformGenerating}
+                    onClick={() => {
+                      if (activeSidebarSurface === "compose") {
+                        closeComposeSession();
+                        return;
+                      }
+
+                      openComposeSession();
+                    }}
+                  >
+                    AI 메모 조합
+                  </button>
+                </div>
+              ) : null}
             </div>
 
-            <div className="sidebar-section-heading">
+            {activeSidebarSurface === "ai-context" ? (
+              <section className="sidebar-surface sidebar-context-search" data-testid="context-search-panel">
+                <div className="sidebar-surface__header">
+                  <strong>AI 맥락 검색</strong>
+                </div>
+                {contextSearch.results.length > 0 ? (
+                  <ul className="note-list" data-testid="context-search-results">
+                    {contextSearch.results.map((memo) => {
+                      const noteLabel = deriveNoteHeadline(memo.body);
+
+                      return (
+                        <li key={memo.id} className="note-list-item is-context-result">
+                          <button
+                            className="note-list-item-button"
+                            type="button"
+                            data-testid={`open-context-search-result-${memo.id}`}
+                            onClick={() => openNoteFromContextSearch(memo.id)}
+                          >
+                            <span className="note-list-copy">
+                              <strong>{noteLabel}</strong>
+                              <span className="note-list-date">{memo.updatedAt}</span>
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : contextSearch.hasSearched && !contextSearch.isLoading ? (
+                  <section className="note-list sidebar-empty" data-testid="context-search-empty-state">
+                    <strong>관련 메모를 찾지 못했어요</strong>
+                    <p>다른 표현이나 더 구체적인 맥락으로 다시 검색해 보세요.</p>
+                  </section>
+                ) : (
+                  <section className="note-list sidebar-empty" data-testid="context-search-hint">
+                    <strong>AI가 전체 메모를 훑어 관련 메모만 모아드려요</strong>
+                    <p>점수나 근거 설명 없이, 메모 목록만 바로 보여드립니다.</p>
+                  </section>
+                )}
+              </section>
+            ) : null}
+
+            {activeSidebarSurface === "compose" ? (
+              <section className="sidebar-surface sidebar-compose-surface" data-testid="compose-panel">
+                <div className="sidebar-surface__header">
+                  <strong>AI 메모 조합</strong>
+                  <button className="paper-button" type="button" onClick={closeComposeSession}>닫기</button>
+                </div>
+                <p className="sidebar-surface__description">AI가 전체 메모를 탐색한 뒤, 프롬프트에 맞는 내용만 취합해 새 초안 메모를 만듭니다.</p>
+                <label className="compose-panel__prompt-shell">
+                  <span className="visually-hidden">메모 조합 프롬프트</span>
+                  <textarea
+                    ref={composePromptInputRef}
+                    data-testid="compose-prompt-input"
+                    value={composeSession.prompt}
+                    disabled={composeSession.isGenerating}
+                    placeholder="예: 전체 메모를 바탕으로 다음 주 계획 메모를 만들어줘"
+                    onChange={(event) =>
+                      setComposeSession((currentSession) => ({
+                        ...currentSession,
+                        prompt: event.target.value
+                      }))
+                    }
+                  />
+                </label>
+                <div className="compose-panel__actions">
+                  <button
+                    className={`paper-button paper-button-primary${composeSession.isGenerating ? " is-loading" : ""}`}
+                    type="button"
+                    data-testid="submit-compose-button"
+                    disabled={composeSession.isGenerating}
+                    onClick={() => void startComposeDraft()}
+                  >
+                    {composeSession.isGenerating ? "조합 중…" : "새 초안 메모 만들기"}
+                  </button>
+                </div>
+              </section>
+            ) : null}
+
+            {activeSidebarSurface !== "ai-context" ? <div className="sidebar-section-heading">
               <span>{sidebarView === "favorites" ? "즐겨찾기" : "최근"}</span>
               <span>{sidebarCountLabel}</span>
-            </div>
+            </div> : null}
 
-            {!isCollectionEmpty && filteredNotes.length > 0 ? (
+            {activeSidebarSurface !== "ai-context" && !isCollectionEmpty && filteredNotes.length > 0 ? (
               <ul className="note-list" aria-label="메모 목록" data-testid="note-list">
                 {filteredNotes.map((note) => {
                   const isSelected = activeNote?.id === note.id;
@@ -2521,7 +2668,7 @@ function App() {
                   );
                 })}
               </ul>
-            ) : (
+            ) : activeSidebarSurface !== "ai-context" ? (
               <section className="note-list sidebar-empty" data-testid="sidebar-empty-state">
                 <strong>
                   {isCollectionEmpty
@@ -2546,7 +2693,7 @@ function App() {
                   </p>
                 ) : null}
               </section>
-            )}
+            ) : null}
 
             <footer className="sidebar-foot">
               <span className={`${storageBadgeClassName} sidebar-foot-badge`} data-testid="storage-status-badge">
@@ -2694,6 +2841,17 @@ function App() {
                               <NoteFavoriteIcon />
                             </button>
                           ) : null}
+                          <button
+                            className="paper-button paper-button-icon"
+                            type="button"
+                            data-testid="organize-note-button"
+                            aria-label="AI로 정리하기"
+                            title="AI로 정리하기"
+                            disabled={isMutationLocked || isStickyMode || !activeNote || isAnyTransformGenerating}
+                            onClick={openAiPromptComposer}
+                          >
+                            <ToolbarSparklesIcon />
+                          </button>
                             <button
                               className="paper-button paper-button-icon"
                               type="button"
@@ -2704,64 +2862,6 @@ function App() {
                               onClick={openFindBar}
                             >
                             <ToolbarFindIcon />
-                          </button>
-                            <button
-                              className={`paper-button paper-button-icon${contextSearch.isOpen ? " is-active" : ""}`}
-                              type="button"
-                              data-testid="context-search-toggle-button"
-                              aria-label="문맥 검색 열기"
-                              title="문맥 검색 열기"
-                              disabled={isMutationLocked || isTransformPreviewGenerating}
-                              onClick={() => {
-                                if (contextSearch.isOpen) {
-                                  closeContextSearchPanel();
-                                  return;
-                                }
-
-                                openContextSearchPanel();
-                              }}
-                            >
-                              <SearchIcon />
-                            </button>
-                            <button
-                              className="paper-button paper-button-icon"
-                              type="button"
-                              data-testid="organize-note-button"
-                              aria-label="AI로 정리하기"
-                              title="AI로 정리하기"
-                              disabled={isMutationLocked || isStickyMode || !activeNote || isAnyTransformGenerating}
-                              onClick={openAiPromptComposer}
-                            >
-                            <ToolbarSparklesIcon />
-                          </button>
-                          <button
-                            className={`paper-button paper-button-icon${composeSession.isOpen ? " is-active" : ""}`}
-                            type="button"
-                            data-testid="compose-note-button"
-                            aria-label="여러 메모 조합하기"
-                            title="여러 메모 조합하기"
-                            disabled={isMutationLocked || isStickyMode || isAnyTransformGenerating}
-                            onClick={() => {
-                              if (composeSession.isOpen) {
-                                closeComposeSession();
-                                return;
-                              }
-
-                              openComposeSession();
-                            }}
-                          >
-                            <ToolbarSparklesIcon />
-                          </button>
-                          <button
-                            className="paper-button paper-button-icon paper-button-primary header-create-note-button"
-                            type="button"
-                            data-testid="editor-create-note-button"
-                            aria-label="새 메모 만들기"
-                            title="새 메모 만들기"
-                            disabled={isMutationLocked}
-                            onClick={() => void handleCreateNote()}
-                          >
-                            <PlusIcon />
                           </button>
                         </div>
                       </div>
@@ -2832,152 +2932,6 @@ function App() {
                     </div>
                   ) : null}
 
-                  {contextSearch.isOpen ? (
-                    <section className="context-search-panel" data-testid="context-search-panel">
-                      <form
-                        className="context-search-form"
-                        data-testid="context-search-form"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          void runContextSearch();
-                        }}
-                      >
-                        <label className="context-search-input-shell">
-                          <SearchIcon />
-                          <span className="visually-hidden">문맥 검색</span>
-                          <input
-                            ref={contextSearchInputRef}
-                            type="text"
-                            data-testid="context-search-input"
-                            value={contextSearch.query}
-                            placeholder="예: 지난 계약 일정 관련 메모 찾아줘"
-                            disabled={contextSearch.isLoading}
-                            onChange={(event) =>
-                              setContextSearch((currentSearch) => ({
-                                ...currentSearch,
-                                query: event.target.value
-                              }))
-                            }
-                          />
-                        </label>
-                        <div className="context-search-actions">
-                          <button
-                            className={`paper-button paper-button-primary${contextSearch.isLoading ? " is-loading" : ""}`}
-                            type="submit"
-                            data-testid="submit-context-search-button"
-                            disabled={contextSearch.isLoading}
-                          >
-                            {contextSearch.isLoading ? "검색 중…" : "문맥 검색"}
-                          </button>
-                          <button className="paper-button" type="button" onClick={closeContextSearchPanel}>
-                            닫기
-                          </button>
-                        </div>
-                      </form>
-
-                      {contextSearch.results.length > 0 ? (
-                        <div className="context-search-results" data-testid="context-search-results">
-                          {contextSearch.results.map((result) => (
-                            <article key={result.memo.id} className="context-search-result-card">
-                              <div className="context-search-result-card__meta">
-                                <strong>{deriveNoteHeadline(result.memo.body)}</strong>
-                                <span>점수 {result.score}</span>
-                              </div>
-                              <p className="context-search-result-card__preview">{result.preview}</p>
-                              <p className="context-search-result-card__reason">
-                                근거: {result.matchedTerms.length > 0 ? result.matchedTerms.join(", ") : "문맥상 관련 메모"}
-                              </p>
-                              <div className="context-search-result-card__actions">
-                                <button
-                                  className="paper-button"
-                                  type="button"
-                                  data-testid={`open-context-search-result-${result.memo.id}`}
-                                  onClick={() => openNoteFromContextSearch(result.memo.id)}
-                                >
-                                  이 메모 열기
-                                </button>
-                              </div>
-                            </article>
-                          ))}
-                        </div>
-                      ) : contextSearch.hasSearched && !contextSearch.isLoading ? (
-                        <div className="context-search-empty" data-testid="context-search-empty-state">
-                          <strong>관련 메모를 찾지 못했어요.</strong>
-                          <span>더 구체적인 사람, 상황, 주제를 넣어 다시 검색해 보세요.</span>
-                        </div>
-                      ) : (
-                        <div className="context-search-empty" data-testid="context-search-hint">
-                          <strong>문맥 검색</strong>
-                          <span>좌측 목록 필터와 달리, 자연어 프롬프트로 관련 메모를 모아볼 수 있어요.</span>
-                        </div>
-                      )}
-                    </section>
-                  ) : null}
-
-                  {composeSession.isOpen ? (
-                    <section className="compose-panel" data-testid="compose-panel">
-                      <div className="compose-panel__header">
-                        <strong>메모 조합</strong>
-                        <span>{composeSession.selectedMemoIds.length}개 선택됨</span>
-                      </div>
-
-                      <div className="compose-panel__memo-list" data-testid="compose-memo-list">
-                        {notes.map((note) => {
-                          const noteLabel = deriveNoteHeadline(note.body);
-                          const isChecked = composeSession.selectedMemoIds.includes(note.id);
-
-                          return (
-                            <label key={note.id} className="compose-panel__memo-item">
-                              <input
-                                type="checkbox"
-                                data-testid={`compose-memo-checkbox-${note.id}`}
-                                checked={isChecked}
-                                disabled={composeSession.isGenerating}
-                                onChange={() => toggleComposeMemoSelection(note.id)}
-                              />
-                              <span>
-                                <strong>{noteLabel}</strong>
-                                <small>{note.updatedAt}</small>
-                              </span>
-                            </label>
-                          );
-                        })}
-                      </div>
-
-                      <label className="compose-panel__prompt-shell">
-                        <span className="visually-hidden">메모 조합 프롬프트</span>
-                        <textarea
-                          ref={composePromptInputRef}
-                          data-testid="compose-prompt-input"
-                          value={composeSession.prompt}
-                          disabled={composeSession.isGenerating}
-                          placeholder="예: 선택한 메모를 바탕으로 회의 공유용 요약 메모를 만들어줘"
-                          onChange={(event) =>
-                            setComposeSession((currentSession) => ({
-                              ...currentSession,
-                              prompt: event.target.value
-                            }))
-                          }
-                        />
-                      </label>
-
-                      <div className="compose-panel__actions">
-                        <button className="paper-button" type="button" onClick={closeComposeSession}>
-                          취소
-                        </button>
-                        <button
-                          className={`paper-button paper-button-primary${composeSession.isGenerating ? " is-loading" : ""}`}
-                          type="button"
-                          data-testid="submit-compose-button"
-                          disabled={composeSession.isGenerating}
-                          onClick={() => void startComposeDraft()}
-                        >
-                          {composeSession.isGenerating ? "조합 중…" : "새 초안 메모 만들기"}
-                        </button>
-                      </div>
-                    </section>
-                  ) : null}
-
                   {isAiPromptOpen ? (
                     <div className="ai-prompt-shell">
                       <div className="ai-template-panel" data-testid="ai-template-panel">
@@ -3031,7 +2985,7 @@ function App() {
                             ))}
                           </div>
                         ) : (
-                          <p className="ai-template-empty">아직 저장한 템플릿이 없어요. 자주 쓰는 프롬프트를 저장해 두세요.</p>
+                          <p className="ai-template-empty">자주 쓰는 AI 프롬프트를 저장해 두세요.</p>
                         )}
 
                         {promptTemplateEditor.isOpen ? (
@@ -3066,9 +3020,7 @@ function App() {
                               />
                             </label>
                             <div className="ai-template-editor__actions">
-                              <button className="paper-button" type="button" onClick={closePromptTemplateEditor}>
-                                취소
-                              </button>
+                              <button className="paper-button" type="button" onClick={closePromptTemplateEditor}>취소</button>
                               <button className="paper-button paper-button-primary" type="button" onClick={() => void persistPromptTemplate()}>
                                 {promptTemplateEditor.templateId ? "수정 저장" : "템플릿 저장"}
                               </button>
@@ -3103,28 +3055,27 @@ function App() {
                             }
                           />
                         </label>
-                        {activeDraft ? (
+                        <div className="ai-prompt-actions">
                           <button
-                            className={`paper-button${isTransformPreviewGenerating ? " is-loading" : ""}`}
+                            className={`paper-button paper-button-primary${isTransformPreviewGenerating ? " is-loading" : ""}`}
                             type="submit"
                             data-testid="submit-ai-prompt-button"
-                            aria-label={isTransformPreviewGenerating ? "AI 정리 초안을 다시 생성하는 중" : "AI 정리 초안 다시 생성"}
-                            disabled={isMutationLocked || isTransformPreviewGenerating}
+                            disabled={isMutationLocked || isPreviewActionCoolingDown || isTransformPreviewGenerating}
                           >
-                            {isTransformPreviewGenerating ? "생성 중…" : "다시 생성"}
+                            {isTransformPreviewGenerating ? "생성 중…" : activeDraft ? "다시 생성" : "미리보기"}
                           </button>
-                        ) : null}
+                        </div>
                       </form>
                       <div className="ai-prompt-actions">
                         {hasBackup && !activeDraft ? (
-                            <button
-                              className="paper-button transform-restore-button"
-                              type="button"
-                              data-testid="restore-note-button"
-                              disabled={isMutationLocked || isTransformPreviewGenerating}
-                              onClick={restoreOriginal}
-                            >
-                              원문 복원
+                          <button
+                            className="paper-button transform-restore-button"
+                            type="button"
+                            data-testid="restore-note-button"
+                            disabled={isMutationLocked || isTransformPreviewGenerating}
+                            onClick={restoreOriginal}
+                          >
+                            원문 복원
                           </button>
                         ) : null}
                         {activeDraft ? (
@@ -3149,27 +3100,15 @@ function App() {
                             </button>
                           </>
                         ) : (
-                          <>
-                            <button
-                              className={`paper-button paper-button-primary${isTransformPreviewGenerating ? " is-loading" : ""}`}
-                              type="submit"
-                              form="ai-prompt-form"
-                              data-testid="submit-ai-prompt-button"
-                              aria-label={isTransformPreviewGenerating ? "AI 정리 미리보기를 생성하는 중" : "AI 정리 미리보기 생성"}
-                              disabled={isMutationLocked || isPreviewActionCoolingDown || isTransformPreviewGenerating}
-                            >
-                              {isTransformPreviewGenerating ? "생성 중…" : "미리보기"}
-                            </button>
-                            <button
-                              className="paper-button"
-                              type="button"
-                              data-testid="cancel-ai-prompt-button"
-                              disabled={isTransformPreviewGenerating}
-                              onClick={closeAiPromptComposer}
-                            >
-                              취소
-                            </button>
-                          </>
+                          <button
+                            className="paper-button"
+                            type="button"
+                            data-testid="cancel-ai-prompt-button"
+                            disabled={isTransformPreviewGenerating}
+                            onClick={closeAiPromptComposer}
+                          >
+                            취소
+                          </button>
                         )}
                       </div>
                       {activeTransformFeedback ? (

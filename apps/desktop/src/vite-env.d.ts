@@ -20,6 +20,7 @@ import type {
 } from "@ai-note/shared/memo-api";
 import type { MemoStoreHealth } from "./shared/memo-bridge";
 import type { PromptTemplate, PromptTemplateCreateInput, PromptTemplateUpdateInput } from "./shared/prompt-template-bridge";
+import type { Memo } from "@ai-note/shared/memo";
 
 type DesktopAPI = {
   platform: string;
@@ -45,9 +46,10 @@ type MemoAPI = {
   update(id: UpdateMemoRequest["memoId"], patch: UpdateMemoRequest["patch"]): Promise<UpdateMemoResponse["memo"]>;
   delete(id: DeleteMemoRequest["memoId"]): Promise<DeleteMemoResponse["deleted"]>;
   search(query: SearchMemosRequest["query"]): Promise<SearchMemosResponse["results"]>;
+  aiSearch(query: string): Promise<Memo[]>;
   organizeState(): Promise<string[]>;
   organize(input: OrganizeMemoRequest["input"]): Promise<OrganizeMemoResponse["result"]>;
-  compose(input: { memoIds: string[]; prompt: string; intent: "polish" | "polite" }): Promise<{ result: OrganizeMemoResponse["result"]; sourceMemoIds: string[]; sourceCount: number }>;
+  compose(input: { prompt: string; intent: "polish" | "polite" }): Promise<{ title: string; body: string; sourceMemoIds: string[]; sourceCount: number }>;
   onDidChange(listener: (event: MemoChangeEvent) => void): () => void;
   onDidOrganizeState(listener: (event: { memoId: string; busy: boolean }) => void): () => void;
 };

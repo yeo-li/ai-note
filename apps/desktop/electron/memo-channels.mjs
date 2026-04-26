@@ -6,6 +6,7 @@ export const memoChannels = {
   update: "memo:update",
   delete: "memo:delete",
   search: "memo:search",
+  aiSearch: "memo:ai-search",
   organize: "memo:organize",
   organizeState: "memo:organize-state"
 };

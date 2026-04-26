@@ -10,6 +10,7 @@ const memoChannels = {
   update: "memo:update",
   delete: "memo:delete",
   search: "memo:search",
+  aiSearch: "memo:ai-search",
   organize: "memo:organize",
   compose: "memo:compose"
 };
@@ -49,6 +50,9 @@ const memoAPI = {
   },
   search(query) {
     return ipcRenderer.invoke(memoChannels.search, query);
+  },
+  aiSearch(query) {
+    return ipcRenderer.invoke(memoChannels.aiSearch, query);
   },
   organizeState() {
     return ipcRenderer.invoke(memoChannels.organizeState);

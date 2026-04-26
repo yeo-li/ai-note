@@ -67,11 +67,15 @@ function buildSearchSchema() {
 function buildComposeInstruction({ prompt, memos }) {
   return [
     "You are an AI memo composition engine for a desktop note app.",
-    "The user wants ONE brand-new memo created by exploring all memos and combining only the relevant material.",
-    "You MUST search across the entire memo set before writing.",
-    "Do not summarize every memo blindly. Select only the memos relevant to the prompt.",
-    "The output memo must be a fresh draft, not an overwrite of an existing memo.",
+    "You are given ONLY the related memos that may support the user's request.",
+    "You must compose strictly from the provided memos and must not invent any new fact, conclusion, timeline, action, or connective detail that is not supported by them.",
+    "If the provided memos do not contain enough support to satisfy the request, you must refuse instead of writing a memo.",
+    "When you compose successfully, the body must visibly contain these section headings in Korean: 한 줄 결론, 개선 전/후 차이, 검증 방법.",
+    "Under each section, use only source-supported statements drawn from the provided memos.",
     "Return ONLY JSON matching the schema.",
+    "Set decision to compose or refuse_insufficient_support.",
+    "If decision is refuse_insufficient_support, leave title and body empty, leave sourceMemoIds empty, and explain why in message.",
+    "If decision is compose, include only memo ids from the provided memos in sourceMemoIds.",
     "<prompt>",
     prompt,
     "</prompt>",
@@ -91,10 +95,15 @@ function buildComposeSchema() {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["title", "body", "sourceMemoIds"],
+    required: ["decision", "title", "body", "sourceMemoIds", "message"],
     properties: {
+      decision: {
+        type: "string",
+        enum: ["compose", "refuse_insufficient_support"]
+      },
       title: { type: "string" },
       body: { type: "string" },
+      message: { type: "string" },
       sourceMemoIds: {
         type: "array",
         items: {
@@ -202,11 +211,21 @@ export function createAiMemoProvider({ model = defaultModel, timeoutMs = default
         schema: buildComposeSchema()
       });
 
-      if (!parsed?.title || !parsed?.body) {
+      if (parsed?.decision === "refuse_insufficient_support") {
+        return {
+          kind: "refused",
+          message: typeof parsed.message === "string" && parsed.message.trim()
+            ? String(parsed.message)
+            : "관련 메모만으로는 요청을 뒷받침할 수 없어 새 메모를 만들지 않았어요."
+        };
+      }
+
+      if (parsed?.decision !== "compose" || !parsed?.title || !parsed?.body) {
         throw new OrganizeProviderError("CLI_PARSE_FAILED", "AI 메모 조합 응답을 해석하지 못했어요.");
       }
 
       return {
+        kind: "composed",
         title: String(parsed.title),
         body: String(parsed.body),
         sourceMemoIds: Array.isArray(parsed.sourceMemoIds) ? parsed.sourceMemoIds.map(String) : []

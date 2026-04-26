@@ -210,6 +210,16 @@ function normalizeComposeInput(value) {
   };
 }
 
+function createComposeRefusal({ refusalReason, message, relatedMemoIds = [] }) {
+  return {
+    kind: "refused",
+    refusalReason,
+    message,
+    relatedMemoIds,
+    relatedCount: relatedMemoIds.length
+  };
+}
+
 function broadcastMemoChange(event, changeEvent) {
   const sourceWebContentsId = event?.sender?.id;
 
@@ -376,32 +386,74 @@ function registerMemoHandlers(memoStore, memoSearchService, organizer, aiMemoPro
     }
 
     const memos = await memoStore.list();
-
-    memos.forEach((memo) => {
-      composingMemoIds.add(memo.id);
-      broadcastOrganizeStateChange({ memoId: memo.id, busy: true });
-    });
+    const busyMemoIds = [];
 
     try {
       if (memos.length === 0) {
-        throw new Error("조합할 메모를 찾지 못했어요.");
+        return createComposeRefusal({
+          refusalReason: "no_related_memos",
+          message: "작성된 메모가 없어 조합할 수 없어요. 먼저 관련 메모를 남겨 주세요."
+        });
       }
+
+      const relatedMemoIds = await aiMemoProvider.searchMemos({
+        query: composeInput.prompt,
+        memos
+      });
+      const memoMap = new Map(memos.map((memo) => [memo.id, memo]));
+      const relatedMemos = relatedMemoIds.map((memoId) => memoMap.get(memoId)).filter(Boolean);
+      const relatedMemoIdSet = new Set(relatedMemos.map((memo) => memo.id));
+
+      if (relatedMemos.length === 0) {
+        return createComposeRefusal({
+          refusalReason: "no_related_memos",
+          message: "관련 메모를 찾지 못해 새 메모를 만들지 않았어요. 프롬프트를 더 구체적으로 적어 주세요.",
+          relatedMemoIds: []
+        });
+      }
+
+      relatedMemos.forEach((memo) => {
+        composingMemoIds.add(memo.id);
+        busyMemoIds.push(memo.id);
+        broadcastOrganizeStateChange({ memoId: memo.id, busy: true });
+      });
 
       const result = await aiMemoProvider.composeMemos({
         prompt: composeInput.prompt,
-        memos
+        memos: relatedMemos
       });
 
+      if (result.kind === "refused") {
+        return createComposeRefusal({
+          refusalReason: "insufficient_support",
+          message: result.message,
+          relatedMemoIds: relatedMemos.map((memo) => memo.id)
+        });
+      }
+
+      const sourceMemoIds = result.sourceMemoIds.filter((memoId) => relatedMemoIdSet.has(memoId));
+
+      if (sourceMemoIds.length === 0) {
+        return createComposeRefusal({
+          refusalReason: "insufficient_support",
+          message: "관련 메모는 찾았지만 근거가 충분하지 않아 새 메모를 만들지 않았어요.",
+          relatedMemoIds: relatedMemos.map((memo) => memo.id)
+        });
+      }
+
       return {
+        kind: "composed",
         title: result.title,
         body: result.body,
-        sourceMemoIds: result.sourceMemoIds,
-        sourceCount: result.sourceMemoIds.length
+        relatedMemoIds: relatedMemos.map((memo) => memo.id),
+        relatedCount: relatedMemos.length,
+        sourceMemoIds,
+        sourceCount: sourceMemoIds.length
       };
     } finally {
-      memos.forEach((memo) => {
-        composingMemoIds.delete(memo.id);
-        broadcastOrganizeStateChange({ memoId: memo.id, busy: false });
+      busyMemoIds.forEach((memoId) => {
+        composingMemoIds.delete(memoId);
+        broadcastOrganizeStateChange({ memoId, busy: false });
       });
     }
   });
@@ -630,9 +682,39 @@ app.whenReady().then(() => {
         },
         async composeMemos({ prompt, memos }) {
           const selectedMemos = memos.slice(0, Math.min(memos.length, 3));
+
+          if (selectedMemos.length === 0) {
+            return {
+              kind: "refused",
+              message: "관련 메모를 찾지 못해 새 메모를 만들지 않았어요."
+            };
+          }
+
+          if (selectedMemos.length === 1) {
+            return {
+              kind: "refused",
+              message: "관련 메모는 찾았지만 근거가 충분하지 않아 새 메모를 만들지 않았어요."
+            };
+          }
+
+          const [firstMemo, ...restMemos] = selectedMemos;
+
           return {
+            kind: "composed",
             title: prompt.length > 18 ? `${prompt.slice(0, 18).trim()}…` : prompt,
-            body: selectedMemos.map((memo) => memo.body.trim()).join("\n\n"),
+            body: [
+              "한 줄 결론",
+              `- ${firstMemo.body.trim().split(/\n+/)[0] ?? firstMemo.title}`,
+              "",
+              "개선 전/후 차이",
+              `- 전: ${firstMemo.body.trim()}`,
+              ...restMemos.map((memo, index) => `- 후 ${index + 1}: ${memo.body.trim()}`),
+              "",
+              "검증 방법",
+              `- 아래에 정리된 관련 메모 ${selectedMemos.length}개의 표현과 일치하는지 확인합니다.`,
+              "",
+              ...selectedMemos.map((memo) => memo.body.trim())
+            ].join("\n"),
             sourceMemoIds: selectedMemos.map((memo) => memo.id)
           };
         }

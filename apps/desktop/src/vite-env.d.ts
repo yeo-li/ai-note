@@ -49,7 +49,24 @@ type MemoAPI = {
   aiSearch(query: string): Promise<Memo[]>;
   organizeState(): Promise<string[]>;
   organize(input: OrganizeMemoRequest["input"]): Promise<OrganizeMemoResponse["result"]>;
-  compose(input: { prompt: string; intent: "polish" | "polite" }): Promise<{ title: string; body: string; sourceMemoIds: string[]; sourceCount: number }>;
+  compose(input: { prompt: string; intent: "polish" | "polite" }): Promise<
+    | {
+        kind: "composed";
+        title: string;
+        body: string;
+        relatedMemoIds: string[];
+        relatedCount: number;
+        sourceMemoIds: string[];
+        sourceCount: number;
+      }
+    | {
+        kind: "refused";
+        refusalReason: "no_related_memos" | "insufficient_support";
+        message: string;
+        relatedMemoIds: string[];
+        relatedCount: number;
+      }
+  >;
   onDidChange(listener: (event: MemoChangeEvent) => void): () => void;
   onDidOrganizeState(listener: (event: { memoId: string; busy: boolean }) => void): () => void;
 };

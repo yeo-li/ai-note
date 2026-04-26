@@ -1202,6 +1202,7 @@ function App() {
     ? `저장소 ${storageKindLabel}`
     : "저장소 확인 중";
   const storageStatusSummary = getStorageStatusSummary(storageHealth);
+  const shouldShowStorageNotice = storageHealth?.storeKind === "json";
   const storageBadgeClassName = [
     "storage-status-badge",
     storageHealth ? `is-${storageHealth.storeKind}` : "is-loading",
@@ -2869,7 +2870,7 @@ function App() {
                       ? "메모 오른쪽 위 별 버튼을 누르면 즐겨찾기 목록에 모아볼 수 있어요."
                       : "다른 검색어를 입력하거나 검색을 해제해 주세요."}
                 </p>
-                {storageStatusSummary ? (
+                {shouldShowStorageNotice && storageStatusSummary ? (
                   <p
                     className={`sidebar-empty-status${storageHealth?.ready ? "" : " is-warning"}`}
                     data-testid="sidebar-storage-summary"
@@ -2880,12 +2881,14 @@ function App() {
               </section>
             ) : null}
 
-            <footer className="sidebar-foot">
-              <span className={`${storageBadgeClassName} sidebar-foot-badge`} data-testid="storage-status-badge">
-                {storageBadgeLabel}
-              </span>
-              {storageStatusSummary ? <p>{storageStatusSummary}</p> : <p>모든 메모는 로컬 저장소에 바로 반영돼요.</p>}
-            </footer>
+            {shouldShowStorageNotice ? (
+              <footer className="sidebar-foot" data-testid="storage-notice">
+                <span className={`${storageBadgeClassName} sidebar-foot-badge`} data-testid="storage-status-badge">
+                  {storageBadgeLabel}
+                </span>
+                {storageStatusSummary ? <p>{storageStatusSummary}</p> : <p>모든 메모는 로컬 저장소에 바로 반영돼요.</p>}
+              </footer>
+            ) : null}
 
           </aside>
 

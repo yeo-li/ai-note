@@ -70,13 +70,26 @@ type ContextSearchState = {
   isLoading: boolean;
 };
 
+type ComposePhase = "idle" | "generating" | "animating" | "refused" | "error";
+
 type ComposeSession = {
   prompt: string;
-  isGenerating: boolean;
+  phase: ComposePhase;
+  submittedPrompt: string;
+  resultTitle: string;
+  fullBody: string;
+  visibleBody: string;
+  createdNoteId: MemoId | null;
+  relatedCount: number;
+  sourceCount: number;
+  refusalReason: "no_related_memos" | "insufficient_support" | null;
+  errorMessage: string | null;
 };
 
 type SidebarSearchMode = "keyword" | "ai-context";
 type SidebarSurface = "notes" | "ai-context" | "compose";
+
+const minContextSearchLoadingMs = 320;
 
 const initialNotes: Note[] = [
   {
@@ -319,6 +332,53 @@ function createNote(): Note {
     mode: "default",
     ...nowStamp()
   };
+}
+
+function createInitialComposeSession(): ComposeSession {
+  return {
+    prompt: "",
+    phase: "idle",
+    submittedPrompt: "",
+    resultTitle: "",
+    fullBody: "",
+    visibleBody: "",
+    createdNoteId: null,
+    relatedCount: 0,
+    sourceCount: 0,
+    refusalReason: null,
+    errorMessage: null
+  };
+}
+
+function getComposeRevealStep(text: string, startIndex: number) {
+  if (startIndex >= text.length) {
+    return { nextIndex: text.length, delayMs: 0 };
+  }
+
+  const currentChar = text[startIndex];
+
+  if (currentChar === "\n") {
+    return { nextIndex: startIndex + 1, delayMs: 120 };
+  }
+
+  let nextIndex = startIndex;
+  let visibleCharCount = 0;
+
+  while (nextIndex < text.length && visibleCharCount < 4) {
+    const nextChar = text[nextIndex];
+    nextIndex += 1;
+    visibleCharCount += 1;
+
+    if (nextChar === "\n") {
+      return { nextIndex, delayMs: 120 };
+    }
+
+    if (/[.!?]/.test(nextChar)) {
+      return { nextIndex, delayMs: 96 };
+    }
+  }
+
+  return { nextIndex, delayMs: 28 };
 }
 
 function formatDateLabelFromIso(iso: string) {
@@ -774,10 +834,7 @@ function App() {
     hasSearched: false,
     isLoading: false
   });
-  const [composeSession, setComposeSession] = useState<ComposeSession>({
-    prompt: "",
-    isGenerating: false
-  });
+  const [composeSession, setComposeSession] = useState<ComposeSession>(createInitialComposeSession);
   const [isPreviewActionCoolingDown, setIsPreviewActionCoolingDown] = useState(false);
   const [organizingNotes, setOrganizingNotes] = useState<Record<MemoId, number>>({});
   const [progressNow, setProgressNow] = useState(() => Date.now());
@@ -794,12 +851,18 @@ function App() {
   const findInputRef = useRef<HTMLInputElement | null>(null);
   const contextSearchInputRef = useRef<HTMLInputElement | null>(null);
   const noteBodyInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const composeAnimationTimerRef = useRef<number | null>(null);
+  const composeRunSequenceRef = useRef(0);
   const previewActionCooldownRef = useRef<number | null>(null);
   const emptyCreateButtonRef = useRef<HTMLButtonElement | null>(null);
   const emptyFirstResultButtonRef = useRef<HTMLButtonElement | null>(null);
   const emptyClearSearchButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const hasQuery = sidebarSearchMode === "keyword" && query.trim().length > 0;
+  const isComposeScreenOpen = !isStickyMode && activeSidebarSurface === "compose";
+  const isComposeGenerating = composeSession.phase === "generating";
+  const isComposeAnimating = composeSession.phase === "animating";
+  const isComposeBusy = isComposeGenerating || isComposeAnimating;
   const scopedNotes = useMemo(
     () => notes.filter((note) => (sidebarView === "favorites" ? note.favorite : true)),
     [notes, sidebarView]
@@ -1202,7 +1265,7 @@ function App() {
     setNoteMenuId(null);
     closeFindBar();
     closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
-    setComposeSession({ prompt: "", isGenerating: false });
+    setComposeSession(createInitialComposeSession());
     setActiveSidebarSurface("ai-context");
 
     setContextSearch((currentSearch) => ({
@@ -1248,8 +1311,18 @@ function App() {
       hasSearched: true
     }));
 
+    const loadingStartedAt = Date.now();
+
     try {
       const results = await window.memoAPI.aiSearch(trimmedQuery);
+
+      const remainingLoadingMs = minContextSearchLoadingMs - (Date.now() - loadingStartedAt);
+
+      if (remainingLoadingMs > 0) {
+        await new Promise((resolve) => {
+          window.setTimeout(resolve, remainingLoadingMs);
+        });
+      }
 
       setContextSearch((currentSearch) => ({
         ...currentSearch,
@@ -1282,19 +1355,79 @@ function App() {
   }
 
   function openComposeSession() {
+    composeRunSequenceRef.current += 1;
+    if (composeAnimationTimerRef.current !== null) {
+      window.clearTimeout(composeAnimationTimerRef.current);
+      composeAnimationTimerRef.current = null;
+    }
     setDeleteIntentId(null);
     setNoteMenuId(null);
     closeFindBar();
     closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
     setContextSearch({ query: "", results: [], hasSearched: false, isLoading: false });
+    setComposeSession(createInitialComposeSession());
     setActiveSidebarSurface("compose");
-    setStatusMessage("여러 메모를 조합할 초안 입력창을 열었어요.");
+    setStatusMessage("AI 메모 조합 화면을 열었어요.");
   }
 
   function closeComposeSession() {
-    setComposeSession({ prompt: "", isGenerating: false });
+    composeRunSequenceRef.current += 1;
+
+    if (composeAnimationTimerRef.current !== null) {
+      window.clearTimeout(composeAnimationTimerRef.current);
+      composeAnimationTimerRef.current = null;
+    }
+
+    const hasCreatedMemo = Boolean(composeSession.createdNoteId);
+
+    setComposeSession(createInitialComposeSession());
     setActiveSidebarSurface("notes");
-    setStatusMessage("메모 조합 입력창을 닫았어요.");
+    setStatusMessage(hasCreatedMemo ? "재구성한 메모를 바로 열었어요." : "AI 메모 조합 화면을 닫았어요.");
+  }
+
+  function revealComposeDraft(noteId: MemoId, fullBody: string, sourceCount: number, runSequence: number, nextIndex = 0) {
+    if (composeRunSequenceRef.current !== runSequence) {
+      return;
+    }
+
+    if (nextIndex >= fullBody.length) {
+      composeAnimationTimerRef.current = null;
+      setComposeSession(createInitialComposeSession());
+      setActiveSidebarSurface("notes");
+      setStatusMessage(`${sourceCount}개의 관련 메모를 바탕으로 재구성한 메모를 열었어요.`);
+      setSelectedNoteId(noteId);
+      return;
+    }
+
+    const { nextIndex: revealedIndex, delayMs } = getComposeRevealStep(fullBody, nextIndex);
+
+    setComposeSession((currentSession) => {
+      if (currentSession.createdNoteId !== noteId) {
+        return currentSession;
+      }
+
+      return {
+        ...currentSession,
+        visibleBody: fullBody.slice(0, revealedIndex)
+      };
+    });
+
+    composeAnimationTimerRef.current = window.setTimeout(() => {
+      revealComposeDraft(noteId, fullBody, sourceCount, runSequence, revealedIndex);
+    }, delayMs);
+  }
+
+  function syncComposePromptHeight() {
+    const promptField = composePromptInputRef.current;
+
+    if (!promptField) {
+      return;
+    }
+
+    promptField.style.height = "0px";
+    const nextHeight = Math.min(Math.max(promptField.scrollHeight, 72), 220);
+    promptField.style.height = `${nextHeight}px`;
+    promptField.style.overflowY = promptField.scrollHeight > 220 ? "auto" : "hidden";
   }
 
   async function startComposeDraft() {
@@ -1306,13 +1439,30 @@ function App() {
     }
 
     if (!trimmedPrompt) {
-      setStatusMessage("새 메모 초안을 만들 프롬프트를 입력해 주세요.");
+      setStatusMessage("관련 메모 안에서 다시 정리할 프롬프트를 입력해 주세요.");
       return;
+    }
+
+    const runSequence = composeRunSequenceRef.current + 1;
+    composeRunSequenceRef.current = runSequence;
+
+    if (composeAnimationTimerRef.current !== null) {
+      window.clearTimeout(composeAnimationTimerRef.current);
+      composeAnimationTimerRef.current = null;
     }
 
     setComposeSession((currentSession) => ({
       ...currentSession,
-      isGenerating: true
+      phase: "generating",
+      submittedPrompt: trimmedPrompt,
+      errorMessage: null,
+      refusalReason: null,
+      visibleBody: "",
+      fullBody: "",
+      resultTitle: "",
+      createdNoteId: null,
+      relatedCount: 0,
+      sourceCount: 0
     }));
 
     try {
@@ -1321,23 +1471,64 @@ function App() {
         intent: deriveOrganizeIntent(trimmedPrompt)
       });
 
+      if (composeRunSequenceRef.current !== runSequence) {
+        return;
+      }
+
+      if (result.kind === "refused") {
+        setComposeSession((currentSession) => ({
+          ...currentSession,
+          phase: "refused",
+          submittedPrompt: trimmedPrompt,
+          resultTitle: "",
+          fullBody: "",
+          visibleBody: "",
+          createdNoteId: null,
+          relatedCount: result.relatedCount,
+          sourceCount: 0,
+          refusalReason: result.refusalReason,
+          errorMessage: result.message
+        }));
+        setStatusMessage(result.message);
+        return;
+      }
+
+      const resultTitle = result.title || buildMemoTitleFromBody(result.body);
+
       const createdMemo = await window.memoAPI.create({
-        title: result.title || buildMemoTitleFromBody(result.body),
+        title: resultTitle,
         body: result.body
       });
+
+      if (composeRunSequenceRef.current !== runSequence) {
+        return;
+      }
 
       const nextNote = toNoteFromMemo(createdMemo);
 
       setNotes((currentNotes) => [nextNote, ...currentNotes.filter((note) => note.id !== nextNote.id)]);
       setSelectedNoteId(nextNote.id);
-      closeComposeSession();
-      openTransformSession(nextNote.id, trimmedPrompt);
-      setStatusMessage(`${result.sourceCount}개의 메모를 바탕으로 새 초안 메모를 만들었어요.`);
+      setComposeSession((currentSession) => ({
+        ...currentSession,
+        phase: "animating",
+          submittedPrompt: trimmedPrompt,
+          resultTitle,
+          fullBody: result.body,
+          visibleBody: "",
+          createdNoteId: nextNote.id,
+          relatedCount: result.relatedCount,
+          sourceCount: result.sourceCount,
+          refusalReason: null,
+          errorMessage: null
+        }));
+      setStatusMessage(`${result.sourceCount}개의 관련 메모를 바탕으로 재구성 메모를 쓰고 있어요.`);
+      revealComposeDraft(nextNote.id, result.body, result.sourceCount, runSequence);
     } catch (error) {
       setStatusMessage(toErrorMessage(error));
       setComposeSession((currentSession) => ({
         ...currentSession,
-        isGenerating: false
+        phase: "error",
+        errorMessage: toErrorMessage(error)
       }));
     }
   }
@@ -1461,13 +1652,22 @@ function App() {
   }, [isAiPromptOpen]);
 
   useEffect(() => {
-    if (activeSidebarSurface !== "compose") {
+    if (activeSidebarSurface !== "compose" || isComposeAnimating) {
       return;
     }
 
     composePromptInputRef.current?.focus();
     composePromptInputRef.current?.select();
-  }, [activeSidebarSurface]);
+    syncComposePromptHeight();
+  }, [activeSidebarSurface, isComposeAnimating]);
+
+  useEffect(() => {
+    if (activeSidebarSurface !== "compose" || isComposeAnimating) {
+      return;
+    }
+
+    syncComposePromptHeight();
+  }, [activeSidebarSurface, composeSession.prompt, isComposeAnimating]);
 
   useEffect(() => {
     if (!isFindBarOpen) {
@@ -1576,6 +1776,10 @@ function App() {
 
   useEffect(() => {
     return () => {
+      if (composeAnimationTimerRef.current !== null) {
+        window.clearTimeout(composeAnimationTimerRef.current);
+      }
+
       if (previewActionCooldownRef.current !== null) {
         window.clearTimeout(previewActionCooldownRef.current);
       }
@@ -1658,7 +1862,7 @@ function App() {
     setDeleteIntentId(null);
     setNoteMenuId(null);
     setTransformSession(null);
-    setComposeSession({ prompt: "", isGenerating: false });
+    setComposeSession(createInitialComposeSession());
     setActiveSidebarSurface("notes");
   }, [isStickyMode]);
 
@@ -1893,7 +2097,7 @@ function App() {
     setNoteMenuId(null);
     closeFindBar({ restoreEditorFocus: false });
     closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
-    setComposeSession({ prompt: "", isGenerating: false });
+    setComposeSession(createInitialComposeSession());
     setContextSearch((currentSearch) => ({
       ...currentSearch,
       results: [],
@@ -1902,6 +2106,7 @@ function App() {
     }));
 
     if (sidebarSearchMode === "ai-context") {
+      setActiveSidebarSurface("ai-context");
       setContextSearch((currentSearch) => ({
         ...currentSearch,
         query: nextQuery
@@ -2414,7 +2619,7 @@ function App() {
                     data-testid="sidebar-create-note-button"
                     aria-label="새 메모 만들기"
                     title="새 메모 만들기"
-                    disabled={isMutationLocked}
+                    disabled={isMutationLocked || isComposeScreenOpen}
                     onClick={() => void handleCreateNote()}
                   >
                     <PlusIcon />
@@ -2435,6 +2640,7 @@ function App() {
                   autoComplete="off"
                   spellCheck={false}
                   value={query}
+                  disabled={isComposeScreenOpen}
                   onFocus={() => setIsSidebarSearchChooserOpen(true)}
                   onChange={(event) => handleSearch(event.target.value)}
                   onKeyDown={(event) => {
@@ -2457,6 +2663,7 @@ function App() {
                     className={`sidebar-search-mode-button${sidebarSearchMode === "keyword" ? " is-active" : ""}`}
                     type="button"
                     data-testid="sidebar-keyword-search-mode-button"
+                    disabled={isComposeScreenOpen}
                     onClick={() => {
                       setSidebarSearchMode("keyword");
                       setContextSearch({ query: "", results: [], hasSearched: false, isLoading: false });
@@ -2469,6 +2676,7 @@ function App() {
                     className={`sidebar-search-mode-button${sidebarSearchMode === "ai-context" ? " is-active" : ""}`}
                     type="button"
                     data-testid="sidebar-ai-context-search-mode-button"
+                    disabled={isComposeScreenOpen}
                     onClick={() => {
                       setSidebarSearchMode("ai-context");
                       openContextSearchPanel();
@@ -2484,6 +2692,7 @@ function App() {
                   className={`sidebar-nav-item${sidebarView === "all" ? " is-active" : ""}`}
                   type="button"
                   data-testid="sidebar-all-view-button"
+                  disabled={isComposeScreenOpen}
                   onClick={() => switchSidebarView("all")}
                 >
                   <SidebarListIcon />
@@ -2493,6 +2702,7 @@ function App() {
                   className={`sidebar-nav-item${sidebarView === "favorites" ? " is-active" : ""}`}
                   type="button"
                   data-testid="sidebar-favorites-view-button"
+                  disabled={isComposeScreenOpen}
                   onClick={() => switchSidebarView("favorites")}
                 >
                   <SidebarFavoriteIcon />
@@ -2549,6 +2759,12 @@ function App() {
                       );
                     })}
                   </ul>
+                ) : contextSearch.isLoading ? (
+                  <section className="note-list sidebar-empty context-search-loading" data-testid="context-search-loading-state">
+                    <span className="context-search-loading__badge">검색 중...</span>
+                    <strong>AI가 전체 메모를 빠르게 훑고 있어요</strong>
+                    <p>관련 있는 메모만 골라서 바로 보여드릴게요.</p>
+                  </section>
                 ) : contextSearch.hasSearched && !contextSearch.isLoading ? (
                   <section className="note-list sidebar-empty" data-testid="context-search-empty-state">
                     <strong>관련 메모를 찾지 못했어요</strong>
@@ -2560,43 +2776,6 @@ function App() {
                     <p>점수나 근거 설명 없이, 메모 목록만 바로 보여드립니다.</p>
                   </section>
                 )}
-              </section>
-            ) : null}
-
-            {activeSidebarSurface === "compose" ? (
-              <section className="sidebar-surface sidebar-compose-surface" data-testid="compose-panel">
-                <div className="sidebar-surface__header">
-                  <strong>AI 메모 조합</strong>
-                  <button className="paper-button" type="button" onClick={closeComposeSession}>닫기</button>
-                </div>
-                <p className="sidebar-surface__description">AI가 전체 메모를 탐색한 뒤, 프롬프트에 맞는 내용만 취합해 새 초안 메모를 만듭니다.</p>
-                <label className="compose-panel__prompt-shell">
-                  <span className="visually-hidden">메모 조합 프롬프트</span>
-                  <textarea
-                    ref={composePromptInputRef}
-                    data-testid="compose-prompt-input"
-                    value={composeSession.prompt}
-                    disabled={composeSession.isGenerating}
-                    placeholder="예: 전체 메모를 바탕으로 다음 주 계획 메모를 만들어줘"
-                    onChange={(event) =>
-                      setComposeSession((currentSession) => ({
-                        ...currentSession,
-                        prompt: event.target.value
-                      }))
-                    }
-                  />
-                </label>
-                <div className="compose-panel__actions">
-                  <button
-                    className={`paper-button paper-button-primary${composeSession.isGenerating ? " is-loading" : ""}`}
-                    type="button"
-                    data-testid="submit-compose-button"
-                    disabled={composeSession.isGenerating}
-                    onClick={() => void startComposeDraft()}
-                  >
-                    {composeSession.isGenerating ? "조합 중…" : "새 초안 메모 만들기"}
-                  </button>
-                </div>
               </section>
             ) : null}
 
@@ -2613,6 +2792,10 @@ function App() {
                   const isNoteMenuOpen = noteMenuId === note.id;
                   const noteMenuIdValue = `note-actions-menu-${note.id}`;
                   const handleSelectNote = () => {
+                    if (isComposeScreenOpen) {
+                      return;
+                    }
+
                     setSelectedNoteId(note.id);
                     setDeleteIntentId(null);
                     setNoteMenuId(null);
@@ -2629,6 +2812,7 @@ function App() {
                         className="note-list-item-button"
                         data-testid={`note-list-item-${note.id}`}
                         type="button"
+                        disabled={isComposeScreenOpen}
                         aria-current={isSelected ? "true" : undefined}
                         aria-label={`${noteLabel} 메모`}
                         onClick={handleSelectNote}
@@ -2643,6 +2827,7 @@ function App() {
                           className="note-list-menu-button"
                           type="button"
                           data-testid={isSelected ? "selected-note-menu-button" : undefined}
+                          disabled={isComposeScreenOpen}
                           aria-label={`${noteLabel} 메모 메뉴`}
                           aria-expanded={isNoteMenuOpen}
                           aria-controls={isNoteMenuOpen ? noteMenuIdValue : undefined}
@@ -2776,6 +2961,112 @@ function App() {
                 </article>
 
               </div>
+            ) : isComposeScreenOpen ? (
+              <section className="compose-workspace" data-testid="compose-screen">
+                <div className="compose-workspace__canvas">
+                  <div className="compose-workspace__intro">
+                    <span className="compose-workspace__eyebrow">AI 메모 조합</span>
+                    <strong>관련 메모 안의 내용만 다시 읽기 쉽게 재구성해요.</strong>
+                    <p>
+                      먼저 관련 메모를 찾고, 그 안에서만 내용을 엮어요. 근거가 부족하면 새 메모를 만들지 않아요.
+                    </p>
+                    <div className="compose-workspace__meta" data-testid="compose-screen-meta">
+                      <span className="compose-workspace__chip">관련 메모 기준</span>
+                      <span className="compose-workspace__chip">작성된 메모 {notes.length}개</span>
+                      <span className="compose-workspace__chip">Enter로 재구성</span>
+                    </div>
+                  </div>
+
+                  {isComposeAnimating ? (
+                    <article className="compose-workspace__result" data-testid="compose-result-panel">
+                      <div className="compose-workspace__result-head">
+                        <span className="compose-workspace__result-label">근거 기반 재구성 중</span>
+                        <strong>{composeSession.resultTitle || "관련 메모 재구성본"}</strong>
+                        <p>{composeSession.sourceCount}개의 관련 메모에서 확인된 내용만 타이핑하듯 채워 넣고 있어요.</p>
+                      </div>
+                      <pre className="compose-workspace__result-body" data-testid="compose-result-body">
+                        {composeSession.visibleBody}
+                        <span className="compose-workspace__caret" aria-hidden="true" />
+                      </pre>
+                    </article>
+                  ) : isComposeGenerating ? (
+                    <article className="compose-workspace__placeholder" data-testid="compose-generating-state">
+                      <strong>관련 메모를 찾고 조합 가능 여부를 확인하고 있어요</strong>
+                      <p>근거가 충분할 때만 새 메모를 만들고, 근거가 부족하면 여기서 바로 멈춰요.</p>
+                    </article>
+                  ) : composeSession.phase === "refused" ? (
+                    <article className="compose-workspace__placeholder is-error" data-testid="compose-refusal-state">
+                      <strong>{composeSession.refusalReason === "no_related_memos" ? "관련 메모를 찾지 못했어요" : "근거가 부족해 새 메모를 만들지 않았어요"}</strong>
+                      <p>{composeSession.errorMessage ?? "프롬프트를 더 구체적으로 적거나 관련 메모를 더 남겨 주세요."}</p>
+                      <div className="compose-workspace__meta">
+                        <span className="compose-workspace__chip">관련 메모 {composeSession.relatedCount}개</span>
+                        <span className="compose-workspace__chip">새 메모 미생성</span>
+                      </div>
+                    </article>
+                  ) : composeSession.phase === "error" ? (
+                    <article className="compose-workspace__placeholder is-error" data-testid="compose-error-state">
+                      <strong>메모 조합을 끝내지 못했어요</strong>
+                      <p>{composeSession.errorMessage ?? "프롬프트를 다듬어 다시 시도해 주세요."}</p>
+                    </article>
+                  ) : (
+                    <article className="compose-workspace__placeholder" data-testid="compose-idle-state">
+                      <strong>기존 메모 안에서만 다시 정리할 내용을 적어 주세요</strong>
+                      <p>한 줄 결론, 개선 전후 차이, 검증 방법이 보이도록 어떤 맥락을 다시 엮을지 적어주면 좋아요.</p>
+                    </article>
+                  )}
+                </div>
+
+                <form
+                  className="compose-workspace__prompt-bar"
+                  data-testid="compose-prompt-bar"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void startComposeDraft();
+                  }}
+                >
+                  <label className="compose-workspace__prompt-box">
+                    <span className="visually-hidden">AI 메모 조합 프롬프트</span>
+                    <textarea
+                      ref={composePromptInputRef}
+                      data-testid="compose-prompt-input"
+                      value={isComposeBusy ? composeSession.submittedPrompt : composeSession.prompt}
+                      disabled={isComposeBusy}
+                      placeholder="예: 계약 관련 메모만 바탕으로 한 줄 결론과 검증 방법이 보이게 다시 정리해줘"
+                      onChange={(event) =>
+                        setComposeSession((currentSession) => ({
+                          ...currentSession,
+                          prompt: event.target.value,
+                          errorMessage: null,
+                          refusalReason: null,
+                          phase:
+                            currentSession.phase === "error" || currentSession.phase === "refused"
+                              ? "idle"
+                              : currentSession.phase
+                        }))
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          void startComposeDraft();
+                        }
+                      }}
+                    />
+                  </label>
+                  <div className="compose-workspace__prompt-actions">
+                    <button className="paper-button" type="button" onClick={closeComposeSession}>
+                      {isComposeAnimating ? "바로 보기" : "닫기"}
+                    </button>
+                    <button
+                      className={`paper-button paper-button-primary${isComposeGenerating ? " is-loading" : ""}`}
+                      type="submit"
+                      data-testid="submit-compose-button"
+                      disabled={isComposeBusy}
+                    >
+                      {isComposeGenerating ? "조합 중…" : "Enter로 메모 재구성"}
+                    </button>
+                  </div>
+                </form>
+              </section>
             ) : (
               <div className="paper">
                 <header className="paper-head">

@@ -80,6 +80,7 @@ test.describe("AI Note desktop smoke", () => {
     const bodyInput = appWindow.getByTestId("note-body-input");
     const noteList = appWindow.getByTestId("note-list");
     const searchInput = appWindow.getByTestId("note-search-input");
+    const contextSearchPanel = appWindow.getByTestId("context-search-panel");
 
     await createButton.click();
     await bodyInput.fill("구매팀 계약 일정\n다음 주 계약 타임라인 확인 필요");
@@ -91,7 +92,6 @@ test.describe("AI Note desktop smoke", () => {
 
     await searchInput.click();
     await appWindow.getByTestId("sidebar-ai-context-search-mode-button").click();
-    const contextSearchPanel = appWindow.getByTestId("context-search-panel");
 
     await expect(searchInput).toHaveAttribute("placeholder", "맥락 검색");
     await expect(contextSearchPanel).toBeVisible();
@@ -103,6 +103,7 @@ test.describe("AI Note desktop smoke", () => {
     await searchInput.fill("구매팀 계약 일정 찾아줘");
     await searchInput.press("Enter");
 
+    await expect(appWindow.getByTestId("context-search-loading-state")).toBeVisible();
     await expect(appWindow.getByTestId("context-search-results")).toBeVisible();
     await expect(appWindow.getByTestId("context-search-results").locator('[data-testid^="open-context-search-result-"]')).toHaveCount(1);
 
@@ -110,7 +111,7 @@ test.describe("AI Note desktop smoke", () => {
     await appWindow.getByTestId("sidebar-keyword-search-mode-button").click();
     await expect(searchInput).toHaveAttribute("placeholder", "키워드 검색");
     await expect(noteList).toContainText("주간 회의 메모");
-    await expect(appWindow.getByTestId("context-search-panel")).toBeHidden();
+    await expect(contextSearchPanel).toBeHidden();
 
     await searchInput.click();
     await appWindow.getByTestId("sidebar-ai-context-search-mode-button").click();
@@ -121,6 +122,16 @@ test.describe("AI Note desktop smoke", () => {
     await openResultButton.click();
 
     await expect(bodyInput).toHaveValue(/구매팀 계약 일정/);
+
+    await appWindow.getByTestId("organize-note-button").click();
+    await expect(appWindow.getByTestId("ai-prompt-form")).toBeVisible();
+    await expect(contextSearchPanel).toBeHidden();
+
+    await searchInput.fill("구매팀 계약 일정 다시 찾아줘");
+    await expect(contextSearchPanel).toBeVisible();
+    await searchInput.press("Enter");
+    await expect(appWindow.getByTestId("context-search-loading-state")).toBeVisible();
+    await expect(appWindow.getByTestId("context-search-results")).toBeVisible();
   });
 
   test("restores the original body after a later edit", async ({ appWindow }) => {
@@ -171,27 +182,72 @@ test.describe("AI Note desktop smoke", () => {
     await expect(bodyInput).toHaveValue(previewBody);
   });
 
-  test("creates a new draft memo from multiple selected memos", async ({ appWindow }) => {
+  test("creates a new draft memo only from related memos in the dedicated compose screen", async ({ appWindow }) => {
+    const createButton = appWindow.getByTestId("sidebar-create-note-button");
+    const bodyInput = appWindow.getByTestId("note-body-input");
+    const noteList = appWindow.getByTestId("note-list");
+    const searchInput = appWindow.getByTestId("note-search-input");
+
+    await createButton.click();
+    await bodyInput.fill("계약 정리 전\n첫 번째 계약 메모입니다");
+
+    await createButton.click();
+    await bodyInput.fill("계약 정리 후\n두 번째 계약 메모입니다");
+
+    await createButton.click();
+    await bodyInput.fill("점심 메모\n점심 메뉴 메모입니다");
+
+    const countBefore = await noteList.locator('[data-testid^="note-list-item-"]').count();
+
+    await appWindow.getByTestId("sidebar-compose-button").click();
+    await expect(appWindow.getByTestId("compose-screen")).toBeVisible();
+    await expect(appWindow.getByTestId("compose-screen-meta")).toContainText("관련 메모 기준");
+    await expect(appWindow.getByTestId("compose-screen-meta")).toContainText("Enter로 재구성");
+    await expect(appWindow.getByTestId("note-body-input")).toHaveCount(0);
+    await expect(searchInput).toBeDisabled();
+
+    const composePromptInput = appWindow.getByTestId("compose-prompt-input");
+    await composePromptInput.fill("계약 메모를 다시 정리해줘");
+    await composePromptInput.press("Shift+Enter");
+    await composePromptInput.type("한 줄 결론과 검증 방법이 보이게 재구성해줘");
+    await expect(composePromptInput).toHaveValue("계약 메모를 다시 정리해줘\n한 줄 결론과 검증 방법이 보이게 재구성해줘");
+    await composePromptInput.press("Enter");
+
+    await expect(noteList.locator('[data-testid^="note-list-item-"]')).toHaveCount(countBefore + 1);
+    await expect(appWindow.getByTestId("compose-result-panel")).toBeVisible();
+
+    const composeResultBody = appWindow.getByTestId("compose-result-body");
+    await expect(composeResultBody).not.toHaveText("");
+    const revealedLengthBefore = await composeResultBody.evaluate((node) => node.textContent?.length ?? 0);
+    await appWindow.waitForTimeout(240);
+    const revealedLengthAfter = await composeResultBody.evaluate((node) => node.textContent?.length ?? 0);
+    expect(revealedLengthAfter).toBeGreaterThan(revealedLengthBefore);
+
+    await expect(appWindow.getByTestId("compose-screen")).toBeHidden({ timeout: 8000 });
+    await expect(appWindow.getByTestId("note-body-input")).toHaveValue(/한 줄 결론/);
+    await expect(appWindow.getByTestId("note-body-input")).toHaveValue(/두 번째 계약 메모입니다/);
+    await expect(appWindow.getByTestId("note-body-input")).not.toHaveValue(/점심 메뉴 메모입니다/);
+  });
+
+  test("does not create a new memo when related memos are missing for compose", async ({ appWindow }) => {
     const createButton = appWindow.getByTestId("sidebar-create-note-button");
     const bodyInput = appWindow.getByTestId("note-body-input");
     const noteList = appWindow.getByTestId("note-list");
 
     await createButton.click();
-    await bodyInput.fill("compose source one\n첫 번째 조각 메모입니다");
-
-    await createButton.click();
-    await bodyInput.fill("compose source two\n두 번째 조각 메모입니다");
+    await bodyInput.fill("점심 메모\n점심 메뉴 메모입니다");
 
     const countBefore = await noteList.locator('[data-testid^="note-list-item-"]').count();
 
     await appWindow.getByTestId("sidebar-compose-button").click();
-    await expect(appWindow.getByTestId("compose-panel")).toBeVisible();
+    const composePromptInput = appWindow.getByTestId("compose-prompt-input");
+    await composePromptInput.fill("계약 메모를 다시 정리해줘");
+    await composePromptInput.press("Enter");
 
-    await appWindow.getByTestId("compose-prompt-input").fill("선택한 메모를 합쳐 새 회의 요약 메모를 만들어줘");
-    await appWindow.getByTestId("submit-compose-button").click();
-
-    await expect(noteList.locator('[data-testid^="note-list-item-"]')).toHaveCount(countBefore + 1);
-    await expect(bodyInput).toHaveValue(/두 번째 조각 메모입니다/);
+    await expect(appWindow.getByTestId("compose-refusal-state")).toBeVisible();
+    await expect(appWindow.getByTestId("compose-refusal-state")).toContainText("관련 메모를 찾지 못했어요");
+    await expect(noteList.locator('[data-testid^="note-list-item-"]')).toHaveCount(countBefore);
+    await expect(appWindow.getByTestId("note-body-input")).toHaveCount(0);
   });
 
   test("saves applies edits and deletes AI prompt templates", async ({ appWindow }) => {

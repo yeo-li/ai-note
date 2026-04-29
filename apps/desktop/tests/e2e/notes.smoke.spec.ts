@@ -6,6 +6,9 @@ test.describe("AI Note desktop smoke", () => {
     const createButton = appWindow.getByTestId("sidebar-create-note-button");
     const bodyInput = appWindow.getByTestId("note-body-input");
 
+    await expect(appWindow.getByTestId("app-brand-mark")).toBeVisible();
+    await expect(appWindow.locator('head link[rel="icon"][href$="favicon.svg"]')).toHaveCount(1);
+
     const initialCount = await noteList.locator('[data-testid^="note-list-item-"]').count();
 
     await createButton.click();

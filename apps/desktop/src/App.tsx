@@ -3,6 +3,7 @@ import type { Memo, MemoChangeEvent, MemoCreateInput, MemoId, MemoOrganizeIntent
 import type { MemoStoreHealth } from "./shared/memo-bridge";
 import type { PromptTemplate } from "./shared/prompt-template-bridge";
 import { buildMemoTitleFromBody, deriveNoteHeadline } from "./note-content";
+import brandMarkUrl from "./assets/brand-mark.svg";
 
 type DiffSegment = {
   text: string;
@@ -2543,6 +2544,13 @@ function App() {
             <div className="sidebar-head">
               <div className="sidebar-brand">
                 <div className="sidebar-brand-copy">
+                  <img
+                    className="sidebar-brand-mark"
+                    src={brandMarkUrl}
+                    alt=""
+                    aria-hidden="true"
+                    data-testid="app-brand-mark"
+                  />
                   <span className="sidebar-brand-text">
                     <strong>AI Note</strong>
                   </span>

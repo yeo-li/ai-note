@@ -243,14 +243,21 @@ textarea:focus-visible {
 .sidebar-brand-copy {
   display: inline-flex;
   align-items: center;
-  gap: 0;
+  gap: 12px;
   flex: 1 1 auto;
   min-width: 0;
   min-height: 32px;
 }
 
+.sidebar-brand-mark {
+  width: 32px;
+  height: 32px;
+  display: block;
+  flex: 0 0 auto;
+}
+
 .sidebar-brand-text {
-  display: flex;
+  display: grid;
   align-items: center;
   min-width: 0;
   min-height: 32px;

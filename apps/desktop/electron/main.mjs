@@ -15,6 +15,7 @@ import { createPromptTemplateStore } from "./store/prompt-template-store.mjs";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rendererUrl = process.env.VITE_DEV_SERVER_URL;
 const rendererPath = join(__dirname, "../dist/index.html");
+const windowIconPath = join(__dirname, "assets/window-icon.png");
 const defaultMinimumSize = {
   width: 640,
   height: 720
@@ -581,6 +582,7 @@ function createWindow() {
     height: bounds.height,
     minWidth: minimumSize.width,
     minHeight: minimumSize.height,
+    icon: windowIconPath,
     backgroundColor: "#ffffff",
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),
@@ -635,6 +637,7 @@ function createStickyNoteWindow(noteId = null) {
     height,
     minWidth: Math.min(stickyWindowMinimumSize.width, workArea.width),
     minHeight: Math.min(stickyWindowMinimumSize.height, workArea.height),
+    icon: windowIconPath,
     backgroundColor: "#f4f4f7",
     frame: false,
     autoHideMenuBar: true,

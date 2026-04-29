@@ -397,6 +397,7 @@ textarea:focus-visible {
 .sidebar-ai-action-button {
   min-height: 34px;
   padding: 0 12px;
+  border-radius: 999px;
   border: 0;
   background: #f3f3f3;
   color: var(--text-soft);

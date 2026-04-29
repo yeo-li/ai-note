@@ -27,12 +27,6 @@ type NoteBackup = {
   mode: TransformMode;
 };
 
-type DeletedNoteState = {
-  note: Note;
-  index: number;
-  backup: NoteBackup | null;
-};
-
 type TransformDraft = {
   noteId: MemoId;
   prompt: string;
@@ -820,7 +814,6 @@ function App() {
   const [backups, setBackups] = useState<Record<MemoId, NoteBackup>>({});
   const [deleteIntentId, setDeleteIntentId] = useState<MemoId | null>(null);
   const [noteMenuId, setNoteMenuId] = useState<MemoId | null>(null);
-  const [recentlyDeleted, setRecentlyDeleted] = useState<DeletedNoteState | null>(null);
   const [transformSession, setTransformSession] = useState<TransformSession | null>(null);
   const [isFindBarOpen, setIsFindBarOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
@@ -1008,7 +1001,6 @@ function App() {
         setNotes((currentNotes) => removeSyncedNote(currentNotes, memoId));
         setDeleteIntentId((currentDeleteIntentId) => (currentDeleteIntentId === memoId ? null : currentDeleteIntentId));
         setNoteMenuId((currentNoteMenuId) => (currentNoteMenuId === memoId ? null : currentNoteMenuId));
-        setRecentlyDeleted((currentDeletedState) => (currentDeletedState?.note.id === memoId ? null : currentDeletedState));
         setTransformSession((currentSession) => (currentSession?.noteId === memoId ? null : currentSession));
         setOrganizingNotes((currentNotes) => {
           if (!currentNotes[memoId]) {
@@ -2044,7 +2036,6 @@ function App() {
     setQuery("");
     setDeleteIntentId(null);
     setNoteMenuId(null);
-    setRecentlyDeleted(null);
     setStatusMessage("새 메모를 만들고 바로 편집할 수 있게 열어두었어요.");
   }
 
@@ -2425,7 +2416,6 @@ function App() {
     }
 
     const deletedNoteId = deleteTargetNote.id;
-    const deletedBackup = backups[deleteTargetNote.id] ?? null;
     const currentVisibleNotes = hasQuery ? filteredNotes : sidebarView === "favorites" ? scopedNotes : notes;
     const deletedIndex = notes.findIndex((note) => note.id === deleteTargetNote.id);
     const deletedVisibleIndex = currentVisibleNotes.findIndex((note) => note.id === deleteTargetNote.id);
@@ -2453,71 +2443,18 @@ function App() {
     setDeleteIntentId(null);
     setNoteMenuId(null);
     closeActiveTransformSession({ clearDraft: true, clearPrompt: true, clearFeedback: true });
-    setRecentlyDeleted({
-      note: deleteTargetNote,
-      index: deletedIndex,
-      backup: deletedBackup
-    });
     setBackups((currentBackups) => {
       const nextBackups = { ...currentBackups };
       delete nextBackups[deleteTargetNote.id];
       return nextBackups;
     });
-      setStatusMessage("메모를 삭제했어요. 바로 되돌릴 수 있어요.");
+      setStatusMessage("메모를 삭제했어요.");
 
     if (window.memoAPI) {
       void window.memoAPI.delete(deletedNoteId).catch(() => {
       setStatusMessage("메모 삭제를 저장소에 반영하지 못했어요.");
       });
     }
-  }
-
-  async function undoDelete() {
-    if (isMutationLocked) {
-      setStatusMessage("저장소 연결이 복구될 때까지 되돌리기를 실행할 수 없어요.");
-      return;
-    }
-
-    if (!recentlyDeleted) {
-      return;
-    }
-
-    const deletedSnapshot = recentlyDeleted;
-    let restoredNote = deletedSnapshot.note;
-
-    if (window.memoAPI) {
-      try {
-        const recreatedMemo = await window.memoAPI.create({
-          title: buildMemoTitleFromBody(deletedSnapshot.note.body),
-          body: deletedSnapshot.note.body
-        });
-
-        restoredNote = toNoteFromMemo(recreatedMemo, deletedSnapshot.note.mode);
-      } catch {
-      setStatusMessage("삭제 복원을 저장소에 반영하지 못했어요.");
-      }
-    }
-
-    setNotes((currentNotes) => {
-      const nextNotes = [...currentNotes];
-      const restoreIndex = Math.min(deletedSnapshot.index, nextNotes.length);
-      nextNotes.splice(restoreIndex, 0, restoredNote);
-      return nextNotes;
-    });
-    setBackups((currentBackups) => {
-      if (!deletedSnapshot.backup) {
-        return currentBackups;
-      }
-
-      return {
-        ...currentBackups,
-        [restoredNote.id]: deletedSnapshot.backup
-      };
-    });
-    setSelectedNoteId(restoredNote.id);
-    setNoteMenuId(null);
-    setRecentlyDeleted(null);
-    setStatusMessage("삭제한 메모를 되돌렸다.");
   }
 
   async function openStickyNoteWindow() {
@@ -2588,10 +2525,8 @@ function App() {
       ? "AI 생성 중"
     : activeDraft
       ? "미리보기 전용"
-      : recentlyDeleted
-        ? "되돌리기 가능"
-        : "로컬 저장 완료";
-  const showPaperStatus = isMutationLocked || isTransformPreviewGenerating || Boolean(activeDraft) || Boolean(recentlyDeleted);
+      : "로컬 저장 완료";
+  const showPaperStatus = isMutationLocked || isTransformPreviewGenerating || Boolean(activeDraft);
   const sidebarCountLabel = hasQuery
     ? `결과 ${filteredNotes.length}개`
     : sidebarView === "favorites"
@@ -3110,18 +3045,6 @@ function App() {
                           >
                             <ToolbarStickyIcon />
                           </button>
-                          {recentlyDeleted ? (
-                            <button
-                              className="status-button paper-button-icon"
-                              type="button"
-                              aria-label="되돌리기"
-                              title="되돌리기"
-                              disabled={isMutationLocked}
-                              onClick={() => void undoDelete()}
-                            >
-                              <ToolbarUndoIcon />
-                            </button>
-                          ) : null}
                           {activeNote ? (
                             <button
                               className={`paper-button paper-button-icon editor-favorite-button${activeNote.favorite ? " is-favorite" : ""}`}
@@ -3526,7 +3449,7 @@ function App() {
                       </strong>
                       <p>
                         {isCollectionEmpty
-                          ? "새 메모를 만들거나 방금 삭제한 메모를 되돌리면 다시 시작할 수 있어요."
+                          ? "새 메모를 만들면 바로 시작할 수 있어요."
                           : sidebarView === "favorites" && !hasQuery && !activeNote
                             ? "메모 오른쪽 위 별 버튼을 누르면 즐겨찾기만 따로 모아볼 수 있어요."
                             : "왼쪽 목록에서 메모를 선택하거나 새 메모를 만들어 주세요."}
@@ -3555,17 +3478,6 @@ function App() {
                         >
                           새 메모
                         </button>
-                        {recentlyDeleted ? (
-                          <button
-                            className="paper-button"
-                            type="button"
-                            data-testid="empty-undo-delete-button"
-                            disabled={isMutationLocked}
-                            onClick={() => void undoDelete()}
-                          >
-                            되돌리기
-                          </button>
-                        ) : null}
                       </div>
                     </section>
                   )}

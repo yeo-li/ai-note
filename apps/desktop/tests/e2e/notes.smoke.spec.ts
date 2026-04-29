@@ -437,7 +437,7 @@ test.describe("AI Note desktop smoke", () => {
     await expect(bodyInput).toHaveValue(/qa filter set 2/);
   });
 
-  test("opens transform preview and supports delete undo flow", async ({ appWindow }) => {
+  test("opens transform preview and keeps note deletion final", async ({ appWindow }) => {
     const createButton = appWindow.getByTestId("sidebar-create-note-button");
     const noteList = appWindow.getByTestId("note-list");
     const bodyInput = appWindow.getByTestId("note-body-input");
@@ -477,10 +477,7 @@ test.describe("AI Note desktop smoke", () => {
     await appWindow.getByTestId("confirm-delete-button").click();
 
     await expect(noteList.locator('[data-testid^="note-list-item-"]')).toHaveCount(countBeforeDelete - 1);
-
-    await appWindow.getByRole("button", { name: "되돌리기" }).first().click();
-
-    await expect(noteList.locator('[data-testid^="note-list-item-"]')).toHaveCount(countBeforeDelete);
+    await expect(appWindow.getByRole("button", { name: "되돌리기" })).toHaveCount(0);
   });
 
   test("keeps the compare view scrollable for long AI previews", async ({ electronApp, appWindow }) => {
@@ -525,7 +522,7 @@ test.describe("AI Note desktop smoke", () => {
     }
   });
 
-  test("restores AI original backup after delete undo", async ({ appWindow }) => {
+  test("restores AI original backup after applying a transform", async ({ appWindow }) => {
     const createButton = appWindow.getByTestId("sidebar-create-note-button");
     const bodyInput = appWindow.getByTestId("note-body-input");
     const restoreButton = appWindow.getByTestId("restore-note-button");
@@ -543,12 +540,6 @@ test.describe("AI Note desktop smoke", () => {
     await expect(appWindow.getByTestId("ai-prompt-form")).toBeVisible();
     await expect(restoreButton).toBeEnabled();
     await expect(bodyInput).toHaveValue("Please undo keeps restore path.\n삭제 전 원문 - 복원 확인 부탁드립니다.");
-
-    await appWindow.getByTestId("selected-note-menu-button").click();
-    await appWindow.getByTestId("selected-note-delete-button").click();
-    await expect(appWindow.getByTestId("delete-confirm-modal")).toBeVisible();
-    await appWindow.getByTestId("confirm-delete-button").click();
-    await appWindow.getByRole("button", { name: "되돌리기" }).first().click();
 
     await expect(bodyInput).toHaveValue("Please undo keeps restore path.\n삭제 전 원문 - 복원 확인 부탁드립니다.");
     await appWindow.getByTestId("organize-note-button").click();

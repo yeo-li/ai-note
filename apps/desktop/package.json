@@ -29,15 +29,21 @@
     "appId": "com.yeoli.ainote",
     "productName": "AI Note",
     "electronVersion": "31.7.7",
+    "directories": {
+      "buildResources": "build"
+    },
+    "icon": "build/icon.png",
     "files": [
       "dist/**/*",
       "electron/**/*",
       "package.json"
     ],
     "mac": {
-      "category": "public.app-category.productivity"
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns"
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis"
       ]

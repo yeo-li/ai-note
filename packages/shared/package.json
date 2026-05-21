@@ -1,0 +1,23 @@
+{
+  "name": "@ai-note/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared memo domain types and API contracts for desktop and server.",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./memo": {
+      "types": "./memo.d.ts",
+      "default": "./memo.js"
+    },
+    "./memo-api": {
+      "types": "./memo-api.d.ts",
+      "default": "./memo-api.js"
+    },
+    "./package.json": "./package.json"
+  }
+}

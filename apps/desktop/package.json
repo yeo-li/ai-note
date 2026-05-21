@@ -1,0 +1,75 @@
+{
+  "name": "@ai-note/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "author": "yeoli",
+  "description": "Desktop workspace for the AI Note app.",
+  "main": "electron/main.mjs",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
+    "dev:renderer": "vite",
+    "dev:electron": "wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
+    "start": "electron .",
+    "test": "node --test electron/**/*.test.mjs",
+    "build": "npm run build:renderer && electron-builder",
+    "build:renderer": "tsc --noEmit && vite build",
+    "test:e2e": "npm run build:renderer && playwright test",
+    "test:e2e:smoke": "npm run build:renderer && playwright test tests/e2e/notes.smoke.spec.ts",
+    "test:e2e:visual": "npm run build:renderer && playwright test tests/e2e/notes.visual.spec.ts",
+    "test:e2e:headed": "npm run build:renderer && playwright test --headed",
+    "test:e2e:update": "npm run build:renderer && playwright test tests/e2e/notes.visual.spec.ts --update-snapshots",
+    "test:e2e:report": "playwright show-report",
+    "allure:generate": "allure generate allure-results --clean -o allure-report",
+    "allure:open": "allure open allure-report",
+    "allure:serve": "allure serve allure-results",
+    "dist:mac": "npm run build:renderer && electron-builder --mac",
+    "dist:win": "npm run build:renderer && electron-builder --win"
+  },
+  "build": {
+    "appId": "com.yeoli.ainote",
+    "productName": "AI Note",
+    "electronVersion": "31.7.7",
+    "directories": {
+      "buildResources": "build"
+    },
+    "icon": "build/icon.png",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns"
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis"
+      ]
+    }
+  },
+  "dependencies": {
+    "@ai-note/shared": "0.1.0",
+    "better-sqlite3": "^12.9.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "allure-commandline": "^2.38.1",
+    "allure-playwright": "^3.7.1",
+    "concurrently": "^9.0.1",
+    "cross-env": "^7.0.3",
+    "electron": "31.7.7",
+    "electron-builder": "^24.13.3",
+    "playwright": "^1.59.1",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.2",
+    "wait-on": "^8.0.1"
+  }
+}

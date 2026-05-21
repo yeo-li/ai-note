@@ -2,8 +2,15 @@ node_modules
 dist
 dist-electron
 release
+.env
+.env.local
+.env.*.local
+!.env.example
 *.log
 .DS_Store
+.idea/
+apps/desktop/.tmp-icon-render/
+apps/desktop/build/icon.iconset/
 allure-report
 allure-results
 playwright-report

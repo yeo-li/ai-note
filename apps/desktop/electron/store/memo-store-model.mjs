@@ -9,6 +9,15 @@ function normalizeTimestamp(value) {
   return typeof value === "string" && value.length > 0 ? value : new Date().toISOString();
 }
 
+function toTimestampMs(value) {
+  if (typeof value !== "string" || value.length === 0) {
+    return null;
+  }
+
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
 function normalizeTitle(value) {
   if (typeof value !== "string") {
     return "";
@@ -53,6 +62,16 @@ export function cloneMemo(memo) {
 
 export function sortMemosByUpdatedAt(memos) {
   return [...memos].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+}
+
+export function createTimestampAfter(values = []) {
+  const timestampValues = Array.isArray(values) ? values : [values];
+  const latestTimestamp = timestampValues.reduce((latest, value) => {
+    const timestamp = toTimestampMs(value);
+    return timestamp === null ? latest : Math.max(latest, timestamp);
+  }, Date.now());
+
+  return new Date(latestTimestamp + 1).toISOString();
 }
 
 export function parseStorePayload(parsed) {

@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import {
   LEGACY_NOTE_STORE_FILENAME,
   MEMO_STORE_FILENAME,
   MEMO_STORE_VERSION,
   cloneMemo,
+  createTimestampAfter,
   normalizeMemo,
   parseStorePayload,
   sortMemosByUpdatedAt
@@ -15,18 +16,42 @@ async function ensureParentDirectory(filePath) {
   await mkdir(dirname(filePath), { recursive: true });
 }
 
-async function readStore(filePath, legacyFilePath) {
+function isJsonParseError(error) {
+  return error instanceof SyntaxError;
+}
+
+function createCorruptBackupPath(filePath) {
+  const timestamp = new Date().toISOString().replace(/[:.]/gu, "-");
+  return join(dirname(filePath), `${basename(filePath)}.corrupt-${timestamp}`);
+}
+
+async function moveCorruptStoreFile(filePath) {
+  await rename(filePath, createCorruptBackupPath(filePath));
+}
+
+async function readStoreFile(filePath) {
   try {
     const fileContents = await readFile(filePath, "utf8");
     return parseStorePayload(JSON.parse(fileContents));
   } catch (error) {
-    if (error.code === "ENOENT") {
+    if (isJsonParseError(error)) {
+      await moveCorruptStoreFile(filePath);
+    }
+
+    throw error;
+  }
+}
+
+async function readStore(filePath, legacyFilePath) {
+  try {
+    return await readStoreFile(filePath);
+  } catch (error) {
+    if (error.code === "ENOENT" || isJsonParseError(error)) {
       if (legacyFilePath) {
         try {
-          const legacyContents = await readFile(legacyFilePath, "utf8");
-          return parseStorePayload(JSON.parse(legacyContents));
+          return await readStoreFile(legacyFilePath);
         } catch (legacyError) {
-          if (legacyError.code !== "ENOENT") {
+          if (legacyError.code !== "ENOENT" && !isJsonParseError(legacyError)) {
             throw legacyError;
           }
         }
@@ -126,7 +151,7 @@ export function createMemoStore({ userDataPath }) {
           title: updates.title ?? currentMemo.title,
           body: updates.body ?? currentMemo.body,
           favorite: typeof updates.favorite === "boolean" ? updates.favorite : currentMemo.favorite,
-          updatedAt: shouldRefreshTimestamp ? new Date().toISOString() : currentMemo.updatedAt
+          updatedAt: shouldRefreshTimestamp ? createTimestampAfter(store.memos.map((memo) => memo.updatedAt)) : currentMemo.updatedAt
         });
 
         store.memos = [nextMemo, ...store.memos.filter((memo) => memo.id !== memoId)];

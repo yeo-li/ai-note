@@ -7,6 +7,7 @@ import {
   MEMO_SQLITE_FILENAME,
   MEMO_STORE_FILENAME,
   cloneMemo,
+  createTimestampAfter,
   normalizeMemo,
   parseStorePayload,
   sortMemosByUpdatedAt
@@ -198,6 +199,12 @@ function createStatements(db) {
         DELETE FROM memos
         WHERE id = @id
       `
+    ),
+    getLatestUpdatedAt: db.prepare(
+      `
+        SELECT MAX(updated_at) AS updated_at
+        FROM memos
+      `
     )
   };
 }
@@ -280,13 +287,14 @@ export function createMemoSqliteStore({ userDataPath, dbPath } = {}) {
         }
 
         const shouldRefreshTimestamp = typeof updates.title === "string" || typeof updates.body === "string";
+        const latestUpdatedAt = statements.getLatestUpdatedAt.get()?.updated_at;
 
         const nextMemo = normalizeMemo({
           ...currentMemo,
           title: updates.title ?? currentMemo.title,
           body: updates.body ?? currentMemo.body,
           favorite: typeof updates.favorite === "boolean" ? updates.favorite : currentMemo.favorite,
-          updatedAt: shouldRefreshTimestamp ? new Date().toISOString() : currentMemo.updatedAt
+          updatedAt: shouldRefreshTimestamp ? createTimestampAfter([currentMemo.updatedAt, latestUpdatedAt]) : currentMemo.updatedAt
         });
 
         statements.update.run({

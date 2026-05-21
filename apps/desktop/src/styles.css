@@ -2,34 +2,34 @@
   --page-gutter: clamp(10px, 1.4vw, 24px);
   --mac-titlebar-safe-left: 84px;
   --mac-titlebar-safe-top: 28px;
-  --page-bg: #ffffff;
+  --page-bg: #f5f6f8;
   --surface: rgba(255, 255, 255, 0.98);
-  --surface-alt: #f5f5f5;
-  --surface-tint: rgba(248, 248, 248, 0.9);
+  --surface-alt: #f3f5f7;
+  --surface-tint: rgba(248, 249, 251, 0.92);
   --surface-tint-strong: rgba(255, 255, 255, 1);
   --surface-dark: #111111;
-  --text-main: #111111;
-  --text-soft: #666666;
-  --text-muted: #353535;
-  --text-faint: rgba(17, 17, 17, 0.42);
-  --brand: #111111;
-  --brand-hover: #000000;
+  --text-main: #161719;
+  --text-soft: #6b7280;
+  --text-muted: #343840;
+  --text-faint: rgba(22, 23, 25, 0.44);
+  --brand: #0a84ff;
+  --brand-hover: #006edb;
   --brand-dark: #ffffff;
-  --brand-deep: #000000;
-  --brand-soft: #f0f0f0;
-  --brand-border: rgba(17, 17, 17, 0.08);
-  --accent: #efefef;
-  --danger: #151515;
-  --success: #202020;
-  --warning: #444444;
-  --border: rgba(17, 17, 17, 0.08);
-  --focus-ring: rgba(17, 17, 17, 0.28);
-  --focus-shadow: 0 0 0 3px rgba(17, 17, 17, 0.1);
-  --shadow-1: none;
-  --shadow-2: none;
+  --brand-deep: #0057b8;
+  --brand-soft: #e8f2ff;
+  --brand-border: rgba(10, 132, 255, 0.18);
+  --accent: #eaf7ef;
+  --danger: #c2410c;
+  --success: #147a3d;
+  --warning: #9a5b00;
+  --border: rgba(22, 23, 25, 0.09);
+  --focus-ring: rgba(10, 132, 255, 0.38);
+  --focus-shadow: 0 0 0 4px rgba(10, 132, 255, 0.13);
+  --shadow-1: 0 10px 30px rgba(31, 41, 55, 0.08);
+  --shadow-2: 0 18px 50px rgba(31, 41, 55, 0.12);
   --editor-shell-padding: clamp(26px, 3vw, 52px);
   --editor-inline-padding: 2px;
-  --sidebar-fixed-width: 272px;
+  --sidebar-fixed-width: 304px;
   --sticky-note-paper: #ffffff;
   --sticky-note-paper-bottom: #f7f7f7;
   --sticky-card-surface: rgba(255, 255, 255, 1);
@@ -203,15 +203,15 @@ textarea:focus-visible {
   min-width: var(--sidebar-fixed-width);
   max-width: var(--sidebar-fixed-width);
   min-height: 0;
-  border-right: 1px solid rgba(17, 17, 17, 0.08);
-  background: #fafafa;
+  border-right: 1px solid rgba(22, 23, 25, 0.08);
+  background: #f8f9fb;
 }
 
 .sidebar-head {
-  padding: 20px 18px 14px;
+  padding: 20px 18px 16px;
   display: grid;
-  gap: 14px;
-  background: #fafafa;
+  gap: 12px;
+  background: #f8f9fb;
   border-bottom: 0;
 }
 
@@ -303,16 +303,17 @@ textarea:focus-visible {
   padding: 0 10px;
   border-radius: 999px;
   border: 0;
-  background: #f2f2f2;
+  background: #ffffff;
   color: var(--text-main);
   white-space: nowrap;
   font-size: 0.76rem;
   font-weight: 600;
-  box-shadow: none;
+  box-shadow: 0 1px 0 rgba(22, 23, 25, 0.05);
 }
 
 .sidebar-brand-actions .link-button:hover {
-  background: #ebebeb;
+  background: var(--brand-soft);
+  color: var(--brand-deep);
   transform: none;
   box-shadow: none;
 }
@@ -345,20 +346,20 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 38px;
-  padding: 0 0 0 2px;
-  border-radius: 0;
-  background: transparent;
-  border: 0;
-  border-bottom: 0;
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid rgba(22, 23, 25, 0.08);
+  border-bottom: 1px solid rgba(22, 23, 25, 0.08);
   box-shadow: none;
 }
 
 .sidebar-search:focus-within,
 .paper-search:focus-within {
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
+  border-color: var(--brand-border);
+  background: #ffffff;
+  box-shadow: var(--focus-shadow);
 }
 
 .sidebar-search svg,
@@ -393,28 +394,51 @@ textarea:focus-visible {
   color: var(--text-faint);
 }
 
-.sidebar-search-chooser,
+.sidebar-command-center,
 .sidebar-ai-actions {
-  display: flex;
+  display: grid;
   gap: 8px;
-  flex-wrap: wrap;
+}
+
+.sidebar-command-center__label {
+  color: var(--text-faint);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.sidebar-search-chooser {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .sidebar-search-mode-button,
 .sidebar-ai-action-button {
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 0;
-  background: #f3f3f3;
-  color: var(--text-soft);
+  min-height: 38px;
+  padding: 0 13px;
+  border-radius: 14px;
+  border: 1px solid rgba(22, 23, 25, 0.07);
+  background: #ffffff;
+  color: var(--text-muted);
   font-size: 0.82rem;
+  font-weight: 650;
 }
 
 .sidebar-search-mode-button.is-active,
 .sidebar-ai-action-button.is-active {
-  background: #111111;
-  color: #ffffff;
+  border-color: var(--brand-border);
+  background: var(--brand-soft);
+  color: var(--brand-deep);
+}
+
+.sidebar-ai-action-button {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(241, 247, 255, 0.96) 100%);
 }
 
 .sidebar-surface {
@@ -431,8 +455,8 @@ textarea:focus-visible {
 }
 
 .sidebar-surface__header strong {
-  font-size: 0.82rem;
-  color: var(--text-soft);
+  font-size: 0.9rem;
+  color: var(--text-main);
 }
 
 .sidebar-surface__title-block {
@@ -515,12 +539,12 @@ textarea:focus-visible {
 }
 
 .sidebar-nav-item {
-  min-height: 32px;
+  min-height: 36px;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0;
-  border-radius: 0;
+  padding: 0 10px;
+  border-radius: 12px;
   border: 0;
   background: transparent;
   color: var(--text-muted);
@@ -552,15 +576,15 @@ textarea:focus-visible {
 }
 
 .sidebar-nav-item:hover {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.72);
   color: var(--text-main);
 }
 
 .sidebar-nav-item.is-active {
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-  color: var(--text-main);
+  border-color: rgba(10, 132, 255, 0.1);
+  background: #ffffff;
+  box-shadow: 0 1px 0 rgba(22, 23, 25, 0.05);
+  color: var(--brand-deep);
 }
 
 .sidebar-section-heading {
@@ -653,8 +677,8 @@ textarea:focus-visible {
   min-height: 36px;
   padding: 0 15px;
   border-radius: 999px;
-  border: 0;
-  background: #f2f2f2;
+  border: 1px solid rgba(22, 23, 25, 0.06);
+  background: #ffffff;
   color: var(--text-muted);
   font-size: 0.84rem;
   font-weight: 600;
@@ -665,7 +689,7 @@ textarea:focus-visible {
 .status-button:hover {
   transform: none;
   box-shadow: none;
-  background: #ebebeb;
+  background: #f3f6fa;
 }
 
 .paper-button.is-loading,
@@ -698,7 +722,7 @@ textarea:focus-visible {
   border-color: transparent;
   background: var(--brand);
   color: var(--brand-dark);
-  box-shadow: none;
+  box-shadow: 0 8px 18px rgba(10, 132, 255, 0.18);
 }
 
 .link-button-primary:hover,
@@ -760,7 +784,7 @@ textarea:focus-visible {
   scrollbar-gutter: stable;
   list-style: none;
   margin: 0;
-  padding: 0 18px 20px;
+  padding: 0 14px 20px;
   display: grid;
   align-content: start;
   grid-auto-rows: max-content;
@@ -774,10 +798,10 @@ textarea:focus-visible {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   gap: 8px;
-  padding: 10px 0;
-  border-radius: 0;
+  padding: 10px 10px;
+  border-radius: 14px;
   border: 0;
-  border-bottom: 1px solid rgba(17, 17, 17, 0.06);
+  border-bottom: 1px solid transparent;
   background: transparent;
   text-align: left;
   cursor: pointer;
@@ -789,22 +813,22 @@ textarea:focus-visible {
 }
 
 .note-list-item:hover {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.72);
   transform: none;
   box-shadow: none;
 }
 
 .note-list-item.is-selected {
-  border-color: rgba(17, 17, 17, 0.14);
-  background: transparent;
-  box-shadow: none;
+  border-color: rgba(10, 132, 255, 0.12);
+  background: #ffffff;
+  box-shadow: inset 3px 0 0 var(--brand), 0 1px 0 rgba(22, 23, 25, 0.05);
 }
 
 .note-list-item:focus-within {
   position: relative;
   z-index: 1;
-  background: transparent;
-  box-shadow: inset 0 -1px 0 rgba(17, 17, 17, 0.16);
+  background: #ffffff;
+  box-shadow: inset 0 0 0 2px rgba(10, 132, 255, 0.18);
 }
 
 .note-list-item-button {
@@ -956,7 +980,7 @@ textarea:focus-visible {
   font-size: 0.9rem;
   font-weight: 600;
   line-height: 1.35;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.02em;
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
@@ -1240,16 +1264,17 @@ textarea:focus-visible {
   min-height: 0;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
-  background: #ffffff;
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
 }
 
 .compose-workspace__canvas {
   min-height: 0;
-  padding: clamp(28px, 4vw, 56px) clamp(24px, 5vw, 72px) 24px;
+  padding: clamp(28px, 4vw, 52px) clamp(24px, 5vw, 72px) 24px;
   display: grid;
-  align-content: center;
+  align-content: start;
   justify-items: center;
-  gap: 20px;
+  gap: 18px;
 }
 
 .app-shell.is-macos .compose-workspace__canvas {
@@ -1259,14 +1284,14 @@ textarea:focus-visible {
 .compose-workspace__intro,
 .compose-workspace__placeholder,
 .compose-workspace__result {
-  width: min(100%, 760px);
+  width: min(100%, 880px);
 }
 
 .compose-workspace__intro {
   display: grid;
   gap: 12px;
-  justify-items: center;
-  text-align: center;
+  justify-items: start;
+  text-align: left;
 }
 
 .compose-workspace__eyebrow {
@@ -1286,10 +1311,10 @@ textarea:focus-visible {
 .compose-workspace__placeholder strong,
 .compose-workspace__result-head strong {
   display: block;
-  font-size: clamp(1.5rem, 2.8vw, 2.2rem);
+  font-size: clamp(1.35rem, 2.2vw, 1.95rem);
   font-weight: 600;
   line-height: 1.08;
-  letter-spacing: -0.05em;
+  letter-spacing: -0.04em;
 }
 
 .compose-workspace__intro p,
@@ -1304,8 +1329,33 @@ textarea:focus-visible {
 .compose-workspace__meta {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 8px;
+}
+
+.compose-workspace__suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.compose-workspace__suggestion {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(22, 23, 25, 0.08);
+  background: #ffffff;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.compose-workspace__suggestion:hover {
+  border-color: var(--brand-border);
+  background: var(--brand-soft);
+  color: var(--brand-deep);
 }
 
 .compose-workspace__chip {
@@ -1326,13 +1376,13 @@ textarea:focus-visible {
   gap: 14px;
   padding: clamp(20px, 2.8vw, 28px);
   border: 1px solid rgba(17, 17, 17, 0.08);
-  border-radius: 24px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(247, 247, 247, 0.96) 100%);
-  box-shadow: 0 18px 40px rgba(17, 17, 17, 0.05);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow-1);
 }
 
 .compose-workspace__placeholder {
-  text-align: center;
+  text-align: left;
 }
 
 .compose-workspace__placeholder.is-error {
@@ -1386,9 +1436,10 @@ textarea:focus-visible {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 14px;
   align-items: end;
-  padding: 16px clamp(18px, 3vw, 28px) clamp(18px, 3vw, 24px);
+  padding: 14px clamp(18px, 3vw, 28px) clamp(16px, 3vw, 22px);
   border-top: 1px solid rgba(17, 17, 17, 0.06);
-  background: rgba(255, 255, 255, 0.96);
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(18px);
 }
 
 .compose-workspace__prompt-box {
@@ -1400,9 +1451,9 @@ textarea:focus-visible {
   min-height: 72px;
   max-height: 220px;
   padding: 16px 18px;
-  border: 1px solid rgba(17, 17, 17, 0.08);
-  border-radius: 22px;
-  background: #f6f6f6;
+  border: 1px solid rgba(22, 23, 25, 0.09);
+  border-radius: 18px;
+  background: #ffffff;
   color: var(--text-main);
   font: inherit;
   line-height: 1.65;
@@ -1411,9 +1462,9 @@ textarea:focus-visible {
 }
 
 .compose-workspace__prompt-box textarea:focus-visible {
-  border-color: rgba(17, 17, 17, 0.18);
+  border-color: var(--brand-border);
   background: #ffffff;
-  box-shadow: 0 0 0 4px rgba(17, 17, 17, 0.05);
+  box-shadow: var(--focus-shadow);
 }
 
 .compose-workspace__prompt-actions {
@@ -1916,8 +1967,10 @@ textarea:focus-visible {
   grid-column: 1 / -1;
   display: grid;
   gap: 10px;
-  padding: 8px 0 10px;
-  border-bottom: 1px solid rgba(17, 17, 17, 0.06);
+  padding: 12px 14px;
+  border: 1px solid rgba(22, 23, 25, 0.07);
+  border-radius: 16px;
+  background: #f8fafc;
 }
 
 .ai-template-panel__header {
@@ -1941,14 +1994,15 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
 
 .ai-template-chip {
   min-width: 0;
   padding: 6px 10px;
-  border: 1px solid rgba(17, 17, 17, 0.08);
-  background: #fafafa;
+  border: 1px solid rgba(22, 23, 25, 0.08);
+  border-radius: 12px;
+  background: #ffffff;
   color: var(--text-main);
   font-size: 0.82rem;
   text-align: left;
@@ -1974,8 +2028,9 @@ textarea:focus-visible {
   display: grid;
   gap: 10px;
   padding: 10px 12px 12px;
-  border: 1px solid rgba(17, 17, 17, 0.06);
-  background: #fafafa;
+  border: 1px solid rgba(22, 23, 25, 0.07);
+  border-radius: 14px;
+  background: #ffffff;
 }
 
 .ai-template-editor__field {
@@ -1988,8 +2043,9 @@ textarea:focus-visible {
 .ai-template-editor__field input,
 .ai-template-editor__field textarea {
   width: 100%;
-  border: 0;
-  background: #ffffff;
+  border: 1px solid rgba(22, 23, 25, 0.08);
+  border-radius: 12px;
+  background: #f8fafc;
   padding: 10px 12px;
   color: var(--text-main);
   font: inherit;
@@ -2030,19 +2086,19 @@ textarea:focus-visible {
   align-items: center;
   width: 100%;
   min-width: 0;
-  min-height: 40px;
+  min-height: 42px;
   padding: 0 16px;
-  border-radius: 0;
-  border: 0;
-  border-bottom: 0;
-  background: transparent;
+  border-radius: 14px;
+  border: 1px solid rgba(22, 23, 25, 0.08);
+  border-bottom: 1px solid rgba(22, 23, 25, 0.08);
+  background: #ffffff;
   box-shadow: none;
 }
 
 .ai-prompt-input:focus-within {
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
+  border-color: var(--brand-border);
+  background: #ffffff;
+  box-shadow: var(--focus-shadow);
 }
 
 .ai-prompt-input input {
@@ -2062,10 +2118,10 @@ textarea:focus-visible {
   display: grid;
   gap: 4px;
   padding: 12px 14px;
-  border-radius: 0;
-  border: 0;
-  border-left: 2px solid rgba(17, 17, 17, 0.9);
-  background: #f5f5f5;
+  border-radius: 14px;
+  border: 1px solid rgba(194, 65, 12, 0.18);
+  border-left: 3px solid var(--danger);
+  background: #fff7ed;
   color: #111111;
   font-size: 0.82rem;
 }
@@ -2078,10 +2134,10 @@ textarea:focus-visible {
   display: grid;
   gap: 4px;
   padding: 10px 14px;
-  border-radius: 0;
-  border: 0;
-  border-left: 2px solid rgba(17, 17, 17, 0.9);
-  background: #f5f5f5;
+  border-radius: 14px;
+  border: 1px solid rgba(22, 23, 25, 0.07);
+  border-left: 3px solid var(--brand);
+  background: #f8fafc;
   color: #111111;
   font-size: 0.8rem;
 }

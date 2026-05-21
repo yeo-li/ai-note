@@ -827,7 +827,6 @@ function App() {
   const [findMatchIndex, setFindMatchIndex] = useState(0);
   const [activeSidebarSurface, setActiveSidebarSurface] = useState<SidebarSurface>("notes");
   const [sidebarSearchMode, setSidebarSearchMode] = useState<SidebarSearchMode>("keyword");
-  const [isSidebarSearchChooserOpen, setIsSidebarSearchChooserOpen] = useState(false);
   const [contextSearch, setContextSearch] = useState<ContextSearchState>({
     query: "",
     results: [],
@@ -2096,7 +2095,6 @@ function App() {
     const matchingNotes = scopedNotes.filter((note) => matchesQuery(note, nextQuery));
 
     setQuery(nextQuery);
-    setIsSidebarSearchChooserOpen(true);
     setDeleteIntentId(null);
     setNoteMenuId(null);
     closeFindBar({ restoreEditorFocus: false });
@@ -2596,7 +2594,6 @@ function App() {
                   spellCheck={false}
                   value={query}
                   disabled={isComposeScreenOpen}
-                  onFocus={() => setIsSidebarSearchChooserOpen(true)}
                   onChange={(event) => handleSearch(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && sidebarSearchMode === "ai-context") {
@@ -2606,39 +2603,42 @@ function App() {
 
                     if (event.key === "Escape") {
                       event.preventDefault();
-                      setIsSidebarSearchChooserOpen(false);
+                      searchInputRef.current?.blur();
                     }
                   }}
                 />
               </label>
 
-              {(isSidebarSearchChooserOpen || query.trim().length > 0) && !isStickyMode ? (
-                <div className="sidebar-search-chooser" data-testid="sidebar-search-chooser">
-                  <button
-                    className={`sidebar-search-mode-button${sidebarSearchMode === "keyword" ? " is-active" : ""}`}
-                    type="button"
-                    data-testid="sidebar-keyword-search-mode-button"
-                    disabled={isComposeScreenOpen}
-                    onClick={() => {
-                      setSidebarSearchMode("keyword");
-                      setContextSearch({ query: "", results: [], hasSearched: false, isLoading: false });
-                      setActiveSidebarSurface("notes");
-                    }}
-                  >
-                    키워드 검색
-                  </button>
-                  <button
-                    className={`sidebar-search-mode-button${sidebarSearchMode === "ai-context" ? " is-active" : ""}`}
-                    type="button"
-                    data-testid="sidebar-ai-context-search-mode-button"
-                    disabled={isComposeScreenOpen}
-                    onClick={() => {
-                      setSidebarSearchMode("ai-context");
-                      openContextSearchPanel();
-                    }}
-                  >
-                    AI 맥락 검색
-                  </button>
+              {!isStickyMode ? (
+                <div className="sidebar-command-center" data-testid="sidebar-search-chooser">
+                  <div className="sidebar-command-center__label">찾기</div>
+                  <div className="sidebar-search-chooser">
+                    <button
+                      className={`sidebar-search-mode-button${sidebarSearchMode === "keyword" ? " is-active" : ""}`}
+                      type="button"
+                      data-testid="sidebar-keyword-search-mode-button"
+                      disabled={isComposeScreenOpen}
+                      onClick={() => {
+                        setSidebarSearchMode("keyword");
+                        setContextSearch({ query: "", results: [], hasSearched: false, isLoading: false });
+                        setActiveSidebarSurface("notes");
+                      }}
+                    >
+                      키워드
+                    </button>
+                    <button
+                      className={`sidebar-search-mode-button${sidebarSearchMode === "ai-context" ? " is-active" : ""}`}
+                      type="button"
+                      data-testid="sidebar-ai-context-search-mode-button"
+                      disabled={isComposeScreenOpen}
+                      onClick={() => {
+                        setSidebarSearchMode("ai-context");
+                        openContextSearchPanel();
+                      }}
+                    >
+                      AI 검색
+                    </button>
+                  </div>
                 </div>
               ) : null}
 
@@ -2667,6 +2667,7 @@ function App() {
 
               {!isStickyMode ? (
                 <div className="sidebar-ai-actions" data-testid="sidebar-ai-actions">
+                  <div className="sidebar-command-center__label">AI 작업</div>
                   <button
                     className={`sidebar-ai-action-button${activeSidebarSurface === "compose" ? " is-active" : ""}`}
                     type="button"
@@ -2681,7 +2682,7 @@ function App() {
                       openComposeSession();
                     }}
                   >
-                    AI 메모 조합
+                    메모 조합 캔버스
                   </button>
                 </div>
               ) : null}
@@ -2691,8 +2692,8 @@ function App() {
               <section className="sidebar-surface sidebar-context-search" data-testid="context-search-panel">
                 <div className="sidebar-surface__header">
                   <div className="sidebar-surface__title-block">
-                    <strong>AI 맥락 검색</strong>
-                    <span>Enter 또는 실행 버튼으로 관련 메모를 찾습니다.</span>
+                    <strong>AI 검색</strong>
+                    <span>질문처럼 적으면 관련 메모와 이유를 함께 보여줍니다.</span>
                   </div>
                   <div className="sidebar-surface__actions">
                     <button
@@ -2943,14 +2944,42 @@ function App() {
                 <div className="compose-workspace__canvas">
                   <div className="compose-workspace__intro">
                     <span className="compose-workspace__eyebrow">AI 메모 조합</span>
-                    <strong>관련 메모 안의 내용만 다시 읽기 쉽게 재구성해요.</strong>
+                    <strong>흩어진 메모를 바로 쓸 수 있는 초안으로 묶습니다.</strong>
                     <p>
-                      먼저 관련 메모를 찾고, 그 안에서만 내용을 엮어요. 근거가 부족하면 새 메모를 만들지 않아요.
+                      기존 메모를 기준으로 정리하고, 요청이 명확하면 오늘 할 일이나 다음 행동도 함께 제안합니다.
                     </p>
                     <div className="compose-workspace__meta" data-testid="compose-screen-meta">
                       <span className="compose-workspace__chip">관련 메모 기준</span>
                       <span className="compose-workspace__chip">작성된 메모 {notes.length}개</span>
                       <span className="compose-workspace__chip">Enter로 재구성</span>
+                    </div>
+                    <div className="compose-workspace__suggestions" aria-label="추천 프롬프트">
+                      {[
+                        "오늘 해야 할 일을 체크리스트로 정리해줘",
+                        "회의 메모에서 결정사항과 다음 행동을 뽑아줘",
+                        "흩어진 아이디어를 하나의 기획 메모로 묶어줘"
+                      ].map((suggestion) => (
+                        <button
+                          key={suggestion}
+                          className="compose-workspace__suggestion"
+                          type="button"
+                          disabled={isComposeBusy}
+                          onClick={() =>
+                            setComposeSession((currentSession) => ({
+                              ...currentSession,
+                              prompt: suggestion,
+                              phase:
+                                currentSession.phase === "error" || currentSession.phase === "refused"
+                                  ? "idle"
+                                  : currentSession.phase,
+                              errorMessage: null,
+                              refusalReason: null
+                            }))
+                          }
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
                     </div>
                   </div>
 

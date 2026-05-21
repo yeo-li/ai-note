@@ -71,6 +71,56 @@ type ContextSearchResult = {
   reason: string;
 };
 
+type AiChatIntent = "search" | "summary" | "compose";
+type AiChatStatus = "idle" | "thinking";
+
+type AiChatMessage =
+  | {
+      id: string;
+      role: "user";
+      kind: "text";
+      text: string;
+      createdAt: number;
+    }
+  | {
+      id: string;
+      role: "assistant";
+      kind: "welcome" | "text" | "error";
+      title: string;
+      text: string;
+      createdAt: number;
+    }
+  | {
+      id: string;
+      role: "assistant";
+      kind: "search-results";
+      title: string;
+      query: string;
+      results: ContextSearchResult[];
+      createdAt: number;
+    }
+  | {
+      id: string;
+      role: "assistant";
+      kind: "summary";
+      title: string;
+      query: string;
+      summary: string;
+      results: ContextSearchResult[];
+      createdAt: number;
+    }
+  | {
+      id: string;
+      role: "assistant";
+      kind: "created-note";
+      title: string;
+      body: string;
+      noteId: MemoId;
+      sourceCount: number;
+      relatedCount: number;
+      createdAt: number;
+    };
+
 type ComposePhase = "idle" | "generating" | "animating" | "refused" | "error";
 
 type ComposeSession = {
@@ -91,6 +141,12 @@ type SidebarSearchMode = "keyword" | "ai-context";
 type SidebarSurface = "notes" | "ai-context" | "compose";
 
 const minContextSearchLoadingMs = 320;
+
+const aiChatSuggestions = [
+  "계약 일정과 관련된 메모 찾아줘",
+  "오늘 할 일을 핵심만 요약해줘",
+  "회의 메모를 바탕으로 새 초안 메모 만들어줘"
+];
 
 const initialNotes: Note[] = [
   {
@@ -349,6 +405,77 @@ function createInitialComposeSession(): ComposeSession {
     refusalReason: null,
     errorMessage: null
   };
+}
+
+function createAiChatMessageId() {
+  return `ai-chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createInitialAiChatMessages(): AiChatMessage[] {
+  return [
+    {
+      id: "ai-chat-welcome",
+      role: "assistant",
+      kind: "welcome",
+      title: "무엇을 도와드릴까요?",
+      text: "찾기, 요약, 새 메모 생성까지 한 문장으로 요청해 주세요. 제가 의도를 판단해서 알맞은 형태로 보여드릴게요.",
+      createdAt: Date.now()
+    }
+  ];
+}
+
+function inferAiChatIntent(prompt: string): AiChatIntent {
+  const normalizedPrompt = prompt.trim().toLowerCase();
+  const wantsCompose = /(새\s*메모|새로운\s*메모|초안|작성|생성|만들|compose|draft|create)/.test(normalizedPrompt);
+  const wantsSummary = /(요약|정리|핵심|브리핑|알려|summar|summary|brief)/.test(normalizedPrompt);
+  const wantsSearch = /(찾|검색|관련|목록|리스트|보여|어떤|어디|find|search|list)/.test(normalizedPrompt);
+
+  if (wantsCompose) {
+    return "compose";
+  }
+
+  if (wantsSummary) {
+    return "summary";
+  }
+
+  if (wantsSearch) {
+    return "search";
+  }
+
+  return "search";
+}
+
+function extractMemoSnippet(body: string, fallback: string, headline?: string) {
+  const lines = body
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const firstUsefulLine = lines.find((line) => line.length > 0 && line !== headline) ?? lines[0] ?? fallback;
+
+  if (firstUsefulLine.length <= 120) {
+    return firstUsefulLine;
+  }
+
+  return `${firstUsefulLine.slice(0, 120).trim()}...`;
+}
+
+function buildAiChatSummary(query: string, results: ContextSearchResult[]) {
+  const topResults = results.slice(0, 4);
+  const summaryLines = topResults.map((result, index) => {
+    const title = deriveNoteHeadline(result.memo.body);
+    const snippet = extractMemoSnippet(result.memo.body, result.preview || result.reason, title);
+
+    return `${index + 1}. ${title}: ${snippet}`;
+  });
+
+  return [
+    `"${query}"와 관련된 메모 ${results.length}개를 확인했어요.`,
+    "",
+    "핵심 요약",
+    ...summaryLines,
+    "",
+    "필요하면 이 내용을 바탕으로 새 초안 메모를 만들어 달라고 이어서 요청할 수 있어요."
+  ].join("\n");
 }
 
 function getComposeRevealStep(text: string, startIndex: number) {
@@ -834,6 +961,10 @@ function App() {
     isLoading: false
   });
   const [composeSession, setComposeSession] = useState<ComposeSession>(createInitialComposeSession);
+  const [isAiChatOpen, setIsAiChatOpen] = useState(false);
+  const [aiChatInput, setAiChatInput] = useState("");
+  const [aiChatMessages, setAiChatMessages] = useState<AiChatMessage[]>(createInitialAiChatMessages);
+  const [aiChatStatus, setAiChatStatus] = useState<AiChatStatus>("idle");
   const [isPreviewActionCoolingDown, setIsPreviewActionCoolingDown] = useState(false);
   const [organizingNotes, setOrganizingNotes] = useState<Record<MemoId, number>>({});
   const [progressNow, setProgressNow] = useState(() => Date.now());
@@ -847,6 +978,8 @@ function App() {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const aiPromptInputRef = useRef<HTMLInputElement | null>(null);
   const composePromptInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const aiChatInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const aiChatThreadRef = useRef<HTMLDivElement | null>(null);
   const findInputRef = useRef<HTMLInputElement | null>(null);
   const noteBodyInputRef = useRef<HTMLTextAreaElement | null>(null);
   const composeAnimationTimerRef = useRef<number | null>(null);
@@ -861,6 +994,7 @@ function App() {
   const isComposeGenerating = composeSession.phase === "generating";
   const isComposeAnimating = composeSession.phase === "animating";
   const isComposeBusy = isComposeGenerating || isComposeAnimating;
+  const isAiChatThinking = aiChatStatus === "thinking";
   const scopedNotes = useMemo(
     () => notes.filter((note) => (sidebarView === "favorites" ? note.favorite : true)),
     [notes, sidebarView]
@@ -1353,6 +1487,219 @@ function App() {
     setStatusMessage("문맥 검색 결과에서 메모를 열었어요.");
   }
 
+  function openAiChatPanel() {
+    if (isStickyMode) {
+      setStatusMessage("AI 채팅은 일반 메모 창에서 사용할 수 있어요.");
+      return;
+    }
+
+    setIsAiChatOpen(true);
+    setActiveSidebarSurface("notes");
+    setSidebarSearchMode("keyword");
+    setContextSearch({ query: "", results: [], hasSearched: false, isLoading: false });
+    setComposeSession(createInitialComposeSession());
+    setDeleteIntentId(null);
+    setNoteMenuId(null);
+    closeFindBar({ restoreEditorFocus: false });
+    setStatusMessage("AI 채팅 패널을 열었어요.");
+  }
+
+  function toggleAiChatPanel() {
+    if (isAiChatOpen) {
+      setIsAiChatOpen(false);
+      setStatusMessage("AI 채팅 패널을 닫았어요.");
+      return;
+    }
+
+    openAiChatPanel();
+  }
+
+  function appendAiChatMessage(message: AiChatMessage) {
+    setAiChatMessages((currentMessages) => [...currentMessages, message]);
+  }
+
+  async function fetchAiChatSearchResults(prompt: string) {
+    if (!window.memoAPI) {
+      throw new Error("AI 검색을 실행할 수 있는 memoAPI 브리지를 찾지 못했어요.");
+    }
+
+    const results = await window.memoAPI.aiSearch(prompt);
+
+    setContextSearch({
+      query: prompt,
+      results,
+      hasSearched: true,
+      isLoading: false
+    });
+
+    return results;
+  }
+
+  async function answerAiChatWithSearch(prompt: string) {
+    const results = await fetchAiChatSearchResults(prompt);
+
+    if (results.length === 0) {
+      appendAiChatMessage({
+        id: createAiChatMessageId(),
+        role: "assistant",
+        kind: "text",
+        title: "관련 메모를 찾지 못했어요",
+        text: "다른 표현이나 더 구체적인 키워드로 다시 요청해 주세요.",
+        createdAt: Date.now()
+      });
+      setStatusMessage(`"${prompt}"와 관련된 메모를 찾지 못했어요.`);
+      return;
+    }
+
+    appendAiChatMessage({
+      id: createAiChatMessageId(),
+      role: "assistant",
+      kind: "search-results",
+      title: `관련 메모 ${results.length}개`,
+      query: prompt,
+      results,
+      createdAt: Date.now()
+    });
+    setStatusMessage(`AI 채팅에서 관련 메모 ${results.length}개를 찾았어요.`);
+  }
+
+  async function answerAiChatWithSummary(prompt: string) {
+    const results = await fetchAiChatSearchResults(prompt);
+
+    if (results.length === 0) {
+      appendAiChatMessage({
+        id: createAiChatMessageId(),
+        role: "assistant",
+        kind: "text",
+        title: "요약할 메모를 찾지 못했어요",
+        text: "요약할 주제를 조금 더 구체적으로 적어 주세요.",
+        createdAt: Date.now()
+      });
+      setStatusMessage(`"${prompt}"를 요약할 관련 메모를 찾지 못했어요.`);
+      return;
+    }
+
+    appendAiChatMessage({
+      id: createAiChatMessageId(),
+      role: "assistant",
+      kind: "summary",
+      title: "관련 메모 요약",
+      query: prompt,
+      summary: buildAiChatSummary(prompt, results),
+      results,
+      createdAt: Date.now()
+    });
+    setStatusMessage(`AI 채팅에서 관련 메모 ${results.length}개를 요약했어요.`);
+  }
+
+  async function answerAiChatWithComposedMemo(prompt: string) {
+    if (isMutationLocked) {
+      throw new Error("저장소 연결이 복구될 때까지 새 메모를 만들 수 없어요.");
+    }
+
+    if (!window.memoAPI) {
+      throw new Error("메모 조합 API를 찾지 못했어요.");
+    }
+
+    const result = await window.memoAPI.compose({
+      prompt,
+      intent: deriveOrganizeIntent(prompt)
+    });
+
+    if (result.kind === "refused") {
+      appendAiChatMessage({
+        id: createAiChatMessageId(),
+        role: "assistant",
+        kind: "error",
+        title: result.refusalReason === "no_related_memos" ? "관련 메모를 찾지 못했어요" : "근거가 부족해요",
+        text: `${result.message} 관련 메모 ${result.relatedCount}개를 확인했지만 새 메모는 만들지 않았어요.`,
+        createdAt: Date.now()
+      });
+      setStatusMessage(result.message);
+      return;
+    }
+
+    const resultTitle = result.title || buildMemoTitleFromBody(result.body);
+    const createdMemo = await window.memoAPI.create({
+      title: resultTitle,
+      body: result.body
+    });
+    const nextNote = toNoteFromMemo(createdMemo);
+
+    setNotes((currentNotes) => [nextNote, ...currentNotes.filter((note) => note.id !== nextNote.id)]);
+    setSelectedNoteId(nextNote.id);
+    setQuery("");
+    setSidebarSearchMode("keyword");
+    setActiveSidebarSurface("notes");
+    appendAiChatMessage({
+      id: createAiChatMessageId(),
+      role: "assistant",
+      kind: "created-note",
+      title: resultTitle,
+      body: result.body,
+      noteId: nextNote.id,
+      sourceCount: result.sourceCount,
+      relatedCount: result.relatedCount,
+      createdAt: Date.now()
+    });
+    setStatusMessage(`${result.sourceCount}개의 관련 메모를 바탕으로 새 메모를 만들었어요.`);
+  }
+
+  async function submitAiChatPrompt(promptOverride?: string) {
+    if (isAiChatThinking) {
+      return;
+    }
+
+    const trimmedPrompt = (promptOverride ?? aiChatInput).trim();
+
+    if (!trimmedPrompt) {
+      setStatusMessage("AI 채팅에 요청할 내용을 입력해 주세요.");
+      return;
+    }
+
+    setIsAiChatOpen(true);
+    setAiChatInput("");
+    appendAiChatMessage({
+      id: createAiChatMessageId(),
+      role: "user",
+      kind: "text",
+      text: trimmedPrompt,
+      createdAt: Date.now()
+    });
+    setAiChatStatus("thinking");
+
+    try {
+      const intent = inferAiChatIntent(trimmedPrompt);
+
+      if (intent === "compose") {
+        await answerAiChatWithComposedMemo(trimmedPrompt);
+      } else if (intent === "summary") {
+        await answerAiChatWithSummary(trimmedPrompt);
+      } else {
+        await answerAiChatWithSearch(trimmedPrompt);
+      }
+    } catch (error) {
+      appendAiChatMessage({
+        id: createAiChatMessageId(),
+        role: "assistant",
+        kind: "error",
+        title: "요청을 처리하지 못했어요",
+        text: toErrorMessage(error),
+        createdAt: Date.now()
+      });
+      setStatusMessage(toErrorMessage(error));
+    } finally {
+      setAiChatStatus("idle");
+    }
+  }
+
+  function openNoteFromAiChat(noteId: MemoId) {
+    setSelectedNoteId(noteId);
+    setDeleteIntentId(null);
+    setNoteMenuId(null);
+    setStatusMessage("AI 채팅 결과에서 메모를 열었어요.");
+  }
+
   function openComposeSession() {
     composeRunSequenceRef.current += 1;
     if (composeAnimationTimerRef.current !== null) {
@@ -1669,6 +2016,28 @@ function App() {
   }, [activeSidebarSurface, composeSession.prompt, isComposeAnimating]);
 
   useEffect(() => {
+    if (!isAiChatOpen) {
+      return;
+    }
+
+    aiChatInputRef.current?.focus();
+  }, [isAiChatOpen]);
+
+  useEffect(() => {
+    if (!isAiChatOpen) {
+      return;
+    }
+
+    const thread = aiChatThreadRef.current;
+
+    if (!thread) {
+      return;
+    }
+
+    thread.scrollTop = thread.scrollHeight;
+  }, [aiChatMessages, aiChatStatus, isAiChatOpen]);
+
+  useEffect(() => {
     if (!isFindBarOpen) {
       return;
     }
@@ -1868,6 +2237,7 @@ function App() {
     setTransformSession(null);
     setComposeSession(createInitialComposeSession());
     setActiveSidebarSurface("notes");
+    setIsAiChatOpen(false);
   }, [isStickyMode]);
 
   function patchActiveNote(update: Partial<Note>, message?: string) {
@@ -2525,6 +2895,7 @@ function App() {
   const appBodyClassName = [
     "app-body",
     isSidebarOpen && !isStickyMode ? "" : "is-sidebar-hidden",
+    isAiChatOpen && !isStickyMode ? "is-ai-chat-open" : "",
     isStickyMode ? "is-sticky-mode" : ""
   ]
     .filter(Boolean)
@@ -2582,25 +2953,17 @@ function App() {
 
               <label className="sidebar-search">
                 <SearchIcon />
-                <span className="visually-hidden">
-                  {sidebarSearchMode === "keyword" ? "키워드 검색" : "맥락 검색"}
-                </span>
+                <span className="visually-hidden">키워드 검색</span>
                 <input
                   ref={searchInputRef}
                   type="text"
-                  placeholder={sidebarSearchMode === "keyword" ? "키워드 검색" : "맥락 검색"}
+                  placeholder="키워드 검색"
                   data-testid="note-search-input"
                   autoComplete="off"
                   spellCheck={false}
                   value={query}
-                  disabled={isComposeScreenOpen}
                   onChange={(event) => handleSearch(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter" && sidebarSearchMode === "ai-context") {
-                      event.preventDefault();
-                      void runContextSearch();
-                    }
-
                     if (event.key === "Escape") {
                       event.preventDefault();
                       searchInputRef.current?.blur();
@@ -2610,35 +2973,19 @@ function App() {
               </label>
 
               {!isStickyMode ? (
-                <div className="sidebar-command-center" data-testid="sidebar-search-chooser">
-                  <div className="sidebar-command-center__label">찾기</div>
-                  <div className="sidebar-search-chooser">
-                    <button
-                      className={`sidebar-search-mode-button${sidebarSearchMode === "keyword" ? " is-active" : ""}`}
-                      type="button"
-                      data-testid="sidebar-keyword-search-mode-button"
-                      disabled={isComposeScreenOpen}
-                      onClick={() => {
-                        setSidebarSearchMode("keyword");
-                        setContextSearch({ query: "", results: [], hasSearched: false, isLoading: false });
-                        setActiveSidebarSurface("notes");
-                      }}
-                    >
-                      키워드
-                    </button>
-                    <button
-                      className={`sidebar-search-mode-button${sidebarSearchMode === "ai-context" ? " is-active" : ""}`}
-                      type="button"
-                      data-testid="sidebar-ai-context-search-mode-button"
-                      disabled={isComposeScreenOpen}
-                      onClick={() => {
-                        setSidebarSearchMode("ai-context");
-                        openContextSearchPanel();
-                      }}
-                    >
-                      AI 검색
-                    </button>
-                  </div>
+                <div className="sidebar-ai-actions" data-testid="sidebar-ai-actions">
+                  <div className="sidebar-command-center__label">AI</div>
+                  <button
+                    className={`sidebar-ai-chat-button${isAiChatOpen ? " is-active" : ""}`}
+                    type="button"
+                    data-testid="sidebar-ai-chat-button"
+                    aria-pressed={isAiChatOpen}
+                    disabled={isMutationLocked && !isAiChatOpen}
+                    onClick={toggleAiChatPanel}
+                  >
+                    <ToolbarSparklesIcon />
+                    <span>AI 채팅</span>
+                  </button>
                 </div>
               ) : null}
 
@@ -2665,27 +3012,6 @@ function App() {
                 </button>
               </nav>
 
-              {!isStickyMode ? (
-                <div className="sidebar-ai-actions" data-testid="sidebar-ai-actions">
-                  <div className="sidebar-command-center__label">AI 작업</div>
-                  <button
-                    className={`sidebar-ai-action-button${activeSidebarSurface === "compose" ? " is-active" : ""}`}
-                    type="button"
-                    data-testid="sidebar-compose-button"
-                    disabled={isMutationLocked || isAnyTransformGenerating}
-                    onClick={() => {
-                      if (activeSidebarSurface === "compose") {
-                        closeComposeSession();
-                        return;
-                      }
-
-                      openComposeSession();
-                    }}
-                  >
-                    메모 조합 캔버스
-                  </button>
-                </div>
-              ) : null}
             </div>
 
             {activeSidebarSurface === "ai-context" ? (
@@ -3553,6 +3879,173 @@ function App() {
               </div>
             )}
           </section>
+
+          {!isStickyMode && isAiChatOpen ? (
+            <aside className="ai-chat-panel" data-testid="ai-chat-panel" aria-label="AI 채팅">
+              <header className="ai-chat-header">
+                <div>
+                  <span className="ai-chat-kicker">AI Chat</span>
+                  <strong>메모와 대화하기</strong>
+                </div>
+                <button
+                  className="paper-button paper-button-icon"
+                  type="button"
+                  data-testid="close-ai-chat-button"
+                  aria-label="AI 채팅 닫기"
+                  onClick={() => {
+                    setIsAiChatOpen(false);
+                    setStatusMessage("AI 채팅 패널을 닫았어요.");
+                  }}
+                >
+                  <StickyCloseIcon />
+                </button>
+              </header>
+
+              <div className="ai-chat-thread" data-testid="ai-chat-thread" ref={aiChatThreadRef}>
+                {aiChatMessages.map((message) => (
+                  <article
+                    key={message.id}
+                    className={`ai-chat-message ai-chat-message--${message.role} ai-chat-message--${message.kind}`}
+                    data-testid={`ai-chat-message-${message.kind}`}
+                  >
+                    {message.role === "user" ? (
+                      <p>{message.text}</p>
+                    ) : message.kind === "search-results" ? (
+                      <>
+                        <div className="ai-chat-message-head">
+                          <span>관련 메모</span>
+                          <strong>{message.title}</strong>
+                        </div>
+                        <div className="ai-chat-result-list" data-testid="ai-chat-search-results">
+                          {message.results.map((result) => {
+                            const noteLabel = deriveNoteHeadline(result.memo.body);
+
+                            return (
+                              <button
+                                key={result.memo.id}
+                                className={`ai-chat-result-card${activeNote?.id === result.memo.id ? " is-selected" : ""}`}
+                                type="button"
+                                data-testid={`ai-chat-result-open-${result.memo.id}`}
+                                onClick={() => openNoteFromAiChat(result.memo.id)}
+                              >
+                                <span className="ai-chat-result-card__title">{noteLabel}</span>
+                                <span className="ai-chat-result-card__preview">{result.preview || result.reason}</span>
+                                <span className="ai-chat-result-card__reason">{result.reason}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </>
+                    ) : message.kind === "summary" ? (
+                      <>
+                        <div className="ai-chat-message-head">
+                          <span>요약</span>
+                          <strong>{message.title}</strong>
+                        </div>
+                        <pre className="ai-chat-summary" data-testid="ai-chat-summary-card">{message.summary}</pre>
+                        <div className="ai-chat-source-row">
+                          {message.results.slice(0, 3).map((result) => (
+                            <button
+                              key={result.memo.id}
+                              className="ai-chat-source-chip"
+                              type="button"
+                              data-testid={`ai-chat-summary-open-${result.memo.id}`}
+                              onClick={() => openNoteFromAiChat(result.memo.id)}
+                            >
+                              {deriveNoteHeadline(result.memo.body)}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    ) : message.kind === "created-note" ? (
+                      <>
+                        <div className="ai-chat-message-head">
+                          <span>새 메모</span>
+                          <strong>{message.title}</strong>
+                        </div>
+                        <p data-testid="ai-chat-created-note">
+                          관련 메모 {message.relatedCount}개 중 {message.sourceCount}개를 근거로 새 메모를 만들었어요.
+                        </p>
+                        <pre className="ai-chat-created-preview">{message.body}</pre>
+                        <button
+                          className="paper-button paper-button-primary"
+                          type="button"
+                          data-testid="ai-chat-open-created-note-button"
+                          onClick={() => openNoteFromAiChat(message.noteId)}
+                        >
+                          새 메모 열기
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="ai-chat-message-head">
+                          <span>{message.kind === "error" ? "상태" : "안내"}</span>
+                          <strong>{message.title}</strong>
+                        </div>
+                        <p>{message.text}</p>
+                      </>
+                    )}
+                  </article>
+                ))}
+
+                {isAiChatThinking ? (
+                  <div className="ai-chat-thinking" data-testid="ai-chat-thinking-state">
+                    <span />
+                    <strong>요청을 이해하고 있어요</strong>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="ai-chat-suggestions" aria-label="추천 요청">
+                {aiChatSuggestions.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    className="ai-chat-suggestion"
+                    type="button"
+                    disabled={isAiChatThinking}
+                    onClick={() => void submitAiChatPrompt(suggestion)}
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+
+              <form
+                className="ai-chat-composer"
+                data-testid="ai-chat-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void submitAiChatPrompt();
+                }}
+              >
+                <label>
+                  <span className="visually-hidden">AI 채팅 입력</span>
+                  <textarea
+                    ref={aiChatInputRef}
+                    data-testid="ai-chat-input"
+                    value={aiChatInput}
+                    disabled={isAiChatThinking}
+                    placeholder="예: 계약 일정 관련 메모 찾아줘"
+                    onChange={(event) => setAiChatInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        void submitAiChatPrompt();
+                      }
+                    }}
+                  />
+                </label>
+                <button
+                  className={`paper-button paper-button-primary${isAiChatThinking ? " is-loading" : ""}`}
+                  type="submit"
+                  data-testid="submit-ai-chat-button"
+                  disabled={isAiChatThinking || aiChatInput.trim().length === 0}
+                >
+                  보내기
+                </button>
+              </form>
+            </aside>
+          ) : null}
         </section>
         {isDeleteModalOpen && deleteTargetNote ? (
           <div className="delete-modal-backdrop" data-testid="delete-confirm-modal" onClick={cancelDeleteNote}>

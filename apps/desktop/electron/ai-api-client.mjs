@@ -110,7 +110,7 @@ function createResponseError(status) {
     return new OrganizeProviderError("API_RATE_LIMITED", "AI API 사용량 제한에 도달했어요. 잠시 뒤 다시 시도해 주세요.");
   }
 
-  if ([500, 502, 503, 504].includes(status)) {
+  if (status >= 500 && status <= 599) {
     return new OrganizeProviderError("API_TEMPORARILY_UNAVAILABLE", "AI API가 일시적으로 응답하지 않아요. 잠시 뒤 다시 시도해 주세요.");
   }
 

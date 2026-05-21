@@ -6,7 +6,7 @@ import { promptTemplateChannels } from "./prompt-template-channels.mjs";
 import { createMemoSearchService } from "./search/memo-search-service.mjs";
 import { createAiMemoProvider } from "./ai-memo-provider.mjs";
 import { createLocalOrganizer } from "./organize/local-organizer.mjs";
-import { createCodexCliOrganizeProvider } from "./organize/codex-cli-organizer.mjs";
+import { createGeminiApiOrganizeProvider } from "./organize/gemini-api-organizer.mjs";
 import { createOrganizeOrchestrator } from "./organize/organize-orchestrator.mjs";
 import { createMemoStore } from "./store/memo-store.mjs";
 import { createMemoSqliteStore } from "./store/memo-sqlite-store.mjs";
@@ -221,6 +221,45 @@ function createComposeRefusal({ refusalReason, message, relatedMemoIds = [] }) {
   };
 }
 
+function getSearchTerms(query) {
+  return query
+    .toLocaleLowerCase()
+    .split(/\s+/u)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 2);
+}
+
+function buildContextSearchPreview(memo, query) {
+  const body = typeof memo.body === "string" ? memo.body.trim() : "";
+  const title = typeof memo.title === "string" ? memo.title.trim() : "";
+  const source = body || title;
+
+  if (!source) {
+    return "";
+  }
+
+  const normalizedSource = source.toLocaleLowerCase();
+  const matchedTerm = getSearchTerms(query).find((term) => normalizedSource.includes(term));
+  const matchIndex = matchedTerm ? normalizedSource.indexOf(matchedTerm) : -1;
+  const startIndex = matchIndex >= 0 ? Math.max(0, matchIndex - 32) : 0;
+  const endIndex = Math.min(source.length, startIndex + 96);
+  const prefix = startIndex > 0 ? "..." : "";
+  const suffix = endIndex < source.length ? "..." : "";
+
+  return `${prefix}${source.slice(startIndex, endIndex)}${suffix}`;
+}
+
+function buildContextSearchReason(memo, query) {
+  const searchableText = `${memo.title ?? ""} ${memo.body ?? ""}`.toLocaleLowerCase();
+  const matchedTerms = getSearchTerms(query).filter((term) => searchableText.includes(term)).slice(0, 3);
+
+  if (matchedTerms.length > 0) {
+    return `요청어 "${matchedTerms.join(", ")}"와 연결된 내용이 있습니다.`;
+  }
+
+  return "AI가 요청 맥락과 관련된 메모로 선택했습니다.";
+}
+
 function broadcastMemoChange(event, changeEvent) {
   const sourceWebContentsId = event?.sender?.id;
 
@@ -356,7 +395,14 @@ function registerMemoHandlers(memoStore, memoSearchService, organizer, aiMemoPro
     });
     const memoMap = new Map(memos.map((memo) => [memo.id, memo]));
 
-    return memoIds.map((memoId) => memoMap.get(memoId)).filter(Boolean);
+    return memoIds
+      .map((memoId) => memoMap.get(memoId))
+      .filter(Boolean)
+      .map((memo) => ({
+        memo,
+        preview: buildContextSearchPreview(memo, normalizedQuery),
+        reason: buildContextSearchReason(memo, normalizedQuery)
+      }));
   });
 
   ipcMain.handle(memoChannels.organizeState, async () => Array.from(organizingMemoIds));
@@ -532,9 +578,9 @@ function createOrganizerForEnvironment() {
     return localOrganizer;
   }
 
-  if (organizeProvider === "codex" || !organizeProvider) {
+  if (organizeProvider === "api" || !organizeProvider) {
     return createOrganizeOrchestrator({
-      provider: createCodexCliOrganizeProvider(),
+      provider: createGeminiApiOrganizeProvider(),
       fallbackProvider: localOrganizer
     });
   }
@@ -706,15 +752,16 @@ app.whenReady().then(() => {
             kind: "composed",
             title: prompt.length > 18 ? `${prompt.slice(0, 18).trim()}…` : prompt,
             body: [
-              "한 줄 결론",
+              "정리한 메모",
+              "",
               `- ${firstMemo.body.trim().split(/\n+/)[0] ?? firstMemo.title}`,
               "",
-              "개선 전/후 차이",
-              `- 전: ${firstMemo.body.trim()}`,
-              ...restMemos.map((memo, index) => `- 후 ${index + 1}: ${memo.body.trim()}`),
+              "관련 내용",
+              `- ${firstMemo.body.trim()}`,
+              ...restMemos.map((memo) => `- ${memo.body.trim()}`),
               "",
-              "검증 방법",
-              `- 아래에 정리된 관련 메모 ${selectedMemos.length}개의 표현과 일치하는지 확인합니다.`,
+              "다음 행동",
+              `- 관련 메모 ${selectedMemos.length}개를 기준으로 필요한 항목을 확인합니다.`,
               "",
               ...selectedMemos.map((memo) => memo.body.trim())
             ].join("\n"),
@@ -722,9 +769,7 @@ app.whenReady().then(() => {
           };
         }
       }
-    : createAiMemoProvider({
-        cwd: app.getAppPath()
-      });
+    : createAiMemoProvider();
 
   registerMemoHandlers(memoStore, memoSearchService, organizer, aiMemoProvider, primaryMemoStore);
   registerPromptTemplateHandlers(promptTemplateStore);

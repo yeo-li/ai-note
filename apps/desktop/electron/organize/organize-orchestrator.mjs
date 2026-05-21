@@ -17,7 +17,7 @@ export function createOrganizeOrchestrator({ provider, fallbackProvider = null }
           throw error;
         }
 
-        if (!["CLI_NOT_FOUND", "CLI_NOT_AUTHENTICATED", "CLI_TIMEOUT", "CLI_FAILED", "CLI_PARSE_FAILED"].includes(error.code)) {
+        if (!["API_KEY_MISSING", "API_AUTHENTICATION_FAILED", "API_TIMEOUT", "API_FAILED", "API_PARSE_FAILED"].includes(error.code)) {
           throw error;
         }
 

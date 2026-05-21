@@ -19,6 +19,20 @@ npm run dev
 
 루트 명령은 현재 `apps/desktop` 워크스페이스로 위임됩니다. 따라서 최소 검증 명령인 `npm run build:renderer`도 계속 루트에서 그대로 실행할 수 있습니다.
 
+AI 기능은 Electron main process에서 Gemini API를 직접 호출합니다. 실행 환경에 `API_KEY`를 설정하면 기본 API provider가 메모 정리, 문맥 검색, 메모 조합에 사용됩니다.
+
+```bash
+API_KEY=your_api_key npm run dev
+```
+
+기본 모델은 `gemini-2.5-flash`이며, 필요하면 `AI_NOTE_AI_MODEL`로 바꿀 수 있습니다.
+
+```bash
+API_KEY=your_api_key AI_NOTE_AI_MODEL=gemini-2.5-pro npm run dev
+```
+
+네트워크 호출 없이 로컬 정리 provider만 확인하려면 `AI_NOTE_ORGANIZE_PROVIDER=local`을 함께 설정할 수 있습니다.
+
 ## 한국어 미리보기
 
 이 브랜치는 한국어 UI 미리보기 버전입니다.

@@ -446,6 +446,19 @@ textarea:focus-visible {
   line-height: 1.45;
 }
 
+.sidebar-surface__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.sidebar-surface__actions .paper-button {
+  min-height: 32px;
+  padding: 0 11px;
+  font-size: 0.76rem;
+}
+
 .sidebar-surface__description {
   margin: 0;
   color: var(--text-soft);
@@ -962,6 +975,14 @@ textarea:focus-visible {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.context-search-result-reason {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-faint);
+  font-size: 0.74rem;
+  line-height: 1.4;
 }
 
 .note-list-date {

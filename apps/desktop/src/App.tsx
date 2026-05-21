@@ -32,7 +32,7 @@ type TransformDraft = {
   noteId: MemoId;
   prompt: string;
   previewBody: string;
-  provider: "codex" | "local" | null;
+  provider: "api" | "local" | null;
   fallbackErrorMessage: string | null;
 };
 
@@ -60,9 +60,15 @@ type PromptTemplateEditorState = {
 
 type ContextSearchState = {
   query: string;
-  results: Memo[];
+  results: ContextSearchResult[];
   hasSearched: boolean;
   isLoading: boolean;
+};
+
+type ContextSearchResult = {
+  memo: Memo;
+  preview: string;
+  reason: string;
 };
 
 type ComposePhase = "idle" | "generating" | "animating" | "refused" | "error";
@@ -125,7 +131,7 @@ const initialNotes: Note[] = [
     dateLabel: "2026. 3. 31.",
     mode: "default",
     body:
-      "문장을 많이 쓰는 것보다 결과가 잘 보이게 정리하는 것이 더 중요하다.\n\n한 줄 요약, 내가 맡은 범위, 개선 전후 차이, 검증 방법이 보이게 쓰면 전달력이 좋아진다."
+      "문장을 많이 쓰는 것보다 결과가 잘 보이게 정리하는 것이 더 중요하다.\n\n상황에 맞게 할 일 목록, 회의 요약, 아이디어 묶음처럼 가장 읽기 쉬운 형태를 고르는 편이 전달력이 좋다."
   },
   {
     id: "note-6",
@@ -843,7 +849,6 @@ function App() {
   const aiPromptInputRef = useRef<HTMLInputElement | null>(null);
   const composePromptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const findInputRef = useRef<HTMLInputElement | null>(null);
-  const contextSearchInputRef = useRef<HTMLInputElement | null>(null);
   const noteBodyInputRef = useRef<HTMLTextAreaElement | null>(null);
   const composeAnimationTimerRef = useRef<number | null>(null);
   const composeRunSequenceRef = useRef(0);
@@ -1269,6 +1274,7 @@ function App() {
   }
 
   function closeContextSearchPanel() {
+    setSidebarSearchMode("keyword");
     setActiveSidebarSurface("notes");
     setContextSearch((currentSearch) => ({
       ...currentSearch,
@@ -1281,7 +1287,7 @@ function App() {
 
   async function runContextSearch() {
     const trimmedContextQuery = contextSearch.query.trim();
-    const trimmedQuery = trimmedContextQuery || query.trim();
+    const trimmedQuery = trimmedContextQuery;
 
     if (!trimmedQuery) {
       setContextSearch((currentSearch) => ({
@@ -1290,7 +1296,7 @@ function App() {
         hasSearched: false,
         isLoading: false
       }));
-      setStatusMessage("문맥 검색 프롬프트를 입력해 주세요.");
+      setStatusMessage("AI 맥락 검색어를 입력한 뒤 실행해 주세요.");
       return;
     }
 
@@ -1327,7 +1333,7 @@ function App() {
 
       setStatusMessage(
         results.length > 0
-          ? `문맥 검색 결과 ${results.length}개를 찾았어요. 관련 메모를 열어보세요.`
+          ? `AI 맥락 검색 결과 ${results.length}개를 찾았어요. 이유를 확인하고 메모를 열어보세요.`
           : `"${trimmedQuery}"와 관련된 메모를 찾지 못했어요.`
       );
     } catch (error) {
@@ -1677,21 +1683,26 @@ function App() {
       return;
     }
 
-    contextSearchInputRef.current?.focus();
-    contextSearchInputRef.current?.select();
+    searchInputRef.current?.focus();
+    searchInputRef.current?.select();
   }, [activeSidebarSurface]);
 
   useEffect(() => {
     setIsFindBarOpen(false);
     setFindQuery("");
     setFindMatchIndex(0);
+
+    if (!isStickyMode && activeSidebarSurface === "ai-context") {
+      return;
+    }
+
     setContextSearch((currentSearch) => ({
       ...currentSearch,
       results: [],
       hasSearched: false,
       isLoading: false
     }));
-  }, [activeNote?.id, isStickyMode]);
+  }, [activeNote?.id, activeSidebarSurface, isStickyMode]);
 
   useEffect(() => {
     if (!activeNote) {
@@ -2679,15 +2690,33 @@ function App() {
             {activeSidebarSurface === "ai-context" ? (
               <section className="sidebar-surface sidebar-context-search" data-testid="context-search-panel">
                 <div className="sidebar-surface__header">
-                  <strong>AI 맥락 검색</strong>
+                  <div className="sidebar-surface__title-block">
+                    <strong>AI 맥락 검색</strong>
+                    <span>Enter 또는 실행 버튼으로 관련 메모를 찾습니다.</span>
+                  </div>
+                  <div className="sidebar-surface__actions">
+                    <button
+                      className={`paper-button paper-button-primary${contextSearch.isLoading ? " is-loading" : ""}`}
+                      type="button"
+                      data-testid="submit-context-search-button"
+                      disabled={contextSearch.isLoading || contextSearch.query.trim().length === 0}
+                      onClick={() => void runContextSearch()}
+                    >
+                      실행
+                    </button>
+                    <button className="paper-button" type="button" onClick={closeContextSearchPanel}>
+                      닫기
+                    </button>
+                  </div>
                 </div>
                 {contextSearch.results.length > 0 ? (
                   <ul className="note-list" data-testid="context-search-results">
-                    {contextSearch.results.map((memo) => {
+                    {contextSearch.results.map((result) => {
+                      const { memo } = result;
                       const noteLabel = deriveNoteHeadline(memo.body);
 
                       return (
-                        <li key={memo.id} className="note-list-item is-context-result">
+                        <li key={memo.id} className={`note-list-item is-context-result${activeNote?.id === memo.id ? " is-selected" : ""}`}>
                           <button
                             className="note-list-item-button"
                             type="button"
@@ -2697,6 +2726,8 @@ function App() {
                             <span className="note-list-copy">
                               <strong>{noteLabel}</strong>
                               <span className="note-list-date">{memo.updatedAt}</span>
+                              <span className="note-list-preview">{result.preview || result.reason}</span>
+                              <span className="context-search-result-reason">{result.reason}</span>
                             </span>
                           </button>
                         </li>
@@ -2706,8 +2737,8 @@ function App() {
                 ) : contextSearch.isLoading ? (
                   <section className="note-list sidebar-empty context-search-loading" data-testid="context-search-loading-state">
                     <span className="context-search-loading__badge">검색 중...</span>
-                    <strong>AI가 전체 메모를 빠르게 훑고 있어요</strong>
-                    <p>관련 있는 메모만 골라서 바로 보여드릴게요.</p>
+                    <strong>관련 메모를 찾고 있어요</strong>
+                    <p>찾은 뒤에는 선택 이유와 미리보기를 함께 보여드립니다.</p>
                   </section>
                 ) : contextSearch.hasSearched && !contextSearch.isLoading ? (
                   <section className="note-list sidebar-empty" data-testid="context-search-empty-state">
@@ -2716,8 +2747,8 @@ function App() {
                   </section>
                 ) : (
                   <section className="note-list sidebar-empty" data-testid="context-search-hint">
-                    <strong>AI가 전체 메모를 훑어 관련 메모만 모아드려요</strong>
-                    <p>점수나 근거 설명 없이, 메모 목록만 바로 보여드립니다.</p>
+                    <strong>자연어로 관련 메모를 찾습니다</strong>
+                    <p>결과에는 메모 미리보기와 선택 이유를 함께 표시합니다.</p>
                   </section>
                 )}
               </section>
@@ -2957,7 +2988,7 @@ function App() {
                   ) : (
                     <article className="compose-workspace__placeholder" data-testid="compose-idle-state">
                       <strong>기존 메모 안에서만 다시 정리할 내용을 적어 주세요</strong>
-                      <p>한 줄 결론, 개선 전후 차이, 검증 방법이 보이도록 어떤 맥락을 다시 엮을지 적어주면 좋아요.</p>
+                      <p>할 일 목록, 회의 정리, 아이디어 묶기처럼 원하는 모양을 자유롭게 적어 주세요.</p>
                     </article>
                   )}
                 </div>
@@ -2977,7 +3008,7 @@ function App() {
                       data-testid="compose-prompt-input"
                       value={isComposeBusy ? composeSession.submittedPrompt : composeSession.prompt}
                       disabled={isComposeBusy}
-                      placeholder="예: 계약 관련 메모만 바탕으로 한 줄 결론과 검증 방법이 보이게 다시 정리해줘"
+                      placeholder="예: 오늘 해야 할 일을 기한 지난 항목은 빼고 체크리스트로 정리해줘"
                       onChange={(event) =>
                         setComposeSession((currentSession) => ({
                           ...currentSession,

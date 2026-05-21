@@ -99,16 +99,20 @@ test.describe("AI Note desktop smoke", () => {
     await expect(searchInput).toHaveAttribute("placeholder", "맥락 검색");
     await expect(contextSearchPanel).toBeVisible();
     await expect(appWindow.getByTestId("context-search-input")).toHaveCount(0);
-    await expect(contextSearchPanel.getByRole("button", { name: "닫기" })).toHaveCount(0);
+    await expect(contextSearchPanel.getByRole("button", { name: "닫기" })).toBeVisible();
     await expect(contextSearchPanel.getByTestId("context-search-description")).toHaveCount(0);
-    await expect(contextSearchPanel.getByTestId("submit-context-search-button")).toHaveCount(0);
+    await expect(contextSearchPanel.getByTestId("submit-context-search-button")).toBeVisible();
+    await expect(contextSearchPanel.getByTestId("submit-context-search-button")).toBeDisabled();
 
     await searchInput.fill("구매팀 계약 일정 찾아줘");
-    await searchInput.press("Enter");
+    await expect(contextSearchPanel.getByTestId("submit-context-search-button")).toBeEnabled();
+    await contextSearchPanel.getByTestId("submit-context-search-button").click();
 
     await expect(appWindow.getByTestId("context-search-loading-state")).toBeVisible();
     await expect(appWindow.getByTestId("context-search-results")).toBeVisible();
     await expect(appWindow.getByTestId("context-search-results").locator('[data-testid^="open-context-search-result-"]')).toHaveCount(1);
+    await expect(appWindow.getByTestId("context-search-results")).toContainText("요청어");
+    await expect(appWindow.getByTestId("context-search-results")).toContainText("계약 타임라인");
 
     await searchInput.fill("주간");
     await appWindow.getByTestId("sidebar-keyword-search-mode-button").click();
@@ -125,11 +129,16 @@ test.describe("AI Note desktop smoke", () => {
     await openResultButton.click();
 
     await expect(bodyInput).toHaveValue(/구매팀 계약 일정/);
+    await expect(contextSearchPanel).toBeVisible();
+    await expect(appWindow.getByTestId("context-search-results")).toBeVisible();
+    await expect(openResultButton.locator("xpath=..")).toHaveClass(/is-selected/);
 
     await appWindow.getByTestId("organize-note-button").click();
     await expect(appWindow.getByTestId("ai-prompt-form")).toBeVisible();
     await expect(contextSearchPanel).toBeHidden();
 
+    await searchInput.click();
+    await appWindow.getByTestId("sidebar-ai-context-search-mode-button").click();
     await searchInput.fill("구매팀 계약 일정 다시 찾아줘");
     await expect(contextSearchPanel).toBeVisible();
     await searchInput.press("Enter");
@@ -210,10 +219,10 @@ test.describe("AI Note desktop smoke", () => {
     await expect(searchInput).toBeDisabled();
 
     const composePromptInput = appWindow.getByTestId("compose-prompt-input");
-    await composePromptInput.fill("계약 메모를 다시 정리해줘");
+    await composePromptInput.fill("계약 메모를 자연스럽게 다시 정리해줘");
     await composePromptInput.press("Shift+Enter");
-    await composePromptInput.type("한 줄 결론과 검증 방법이 보이게 재구성해줘");
-    await expect(composePromptInput).toHaveValue("계약 메모를 다시 정리해줘\n한 줄 결론과 검증 방법이 보이게 재구성해줘");
+    await composePromptInput.type("필요한 다음 행동만 짧게 덧붙여줘");
+    await expect(composePromptInput).toHaveValue("계약 메모를 자연스럽게 다시 정리해줘\n필요한 다음 행동만 짧게 덧붙여줘");
     await composePromptInput.press("Enter");
 
     await expect(noteList.locator('[data-testid^="note-list-item-"]')).toHaveCount(countBefore + 1);
@@ -227,7 +236,7 @@ test.describe("AI Note desktop smoke", () => {
     expect(revealedLengthAfter).toBeGreaterThan(revealedLengthBefore);
 
     await expect(appWindow.getByTestId("compose-screen")).toBeHidden({ timeout: 8000 });
-    await expect(appWindow.getByTestId("note-body-input")).toHaveValue(/한 줄 결론/);
+    await expect(appWindow.getByTestId("note-body-input")).toHaveValue(/정리한 메모/);
     await expect(appWindow.getByTestId("note-body-input")).toHaveValue(/두 번째 계약 메모입니다/);
     await expect(appWindow.getByTestId("note-body-input")).not.toHaveValue(/점심 메뉴 메모입니다/);
   });

@@ -1,41 +1,32 @@
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="ai-note-shell" x1="156" y1="132" x2="870" y2="900" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#202127"/>
-      <stop offset="1" stop-color="#0D0E13"/>
+    <linearGradient id="paper-fill" x1="278" y1="156" x2="724" y2="846" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F4F7FA"/>
     </linearGradient>
-    <radialGradient id="ai-note-glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(530 322) rotate(90) scale(570)">
-      <stop offset="0" stop-color="#4F5EFF" stop-opacity="0.18"/>
-      <stop offset="0.42" stop-color="#1E2339" stop-opacity="0.08"/>
-      <stop offset="1" stop-color="#0D0E13" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="ai-note-fold" x1="607" y1="246" x2="742" y2="394" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#95F4EA"/>
-      <stop offset="1" stop-color="#4F5EFF"/>
+    <linearGradient id="accent-fill" x1="302" y1="246" x2="302" y2="760" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#19C2B4"/>
+      <stop offset="1" stop-color="#0A84FF"/>
     </linearGradient>
-    <linearGradient id="ai-note-ribbon" x1="401" y1="374" x2="643" y2="654" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#1F2234"/>
-      <stop offset="1" stop-color="#11131C"/>
+    <linearGradient id="spark-fill" x1="684" y1="210" x2="792" y2="338" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#19C2B4"/>
+      <stop offset="1" stop-color="#0A84FF"/>
     </linearGradient>
-    <filter id="ai-note-shadow" x="230" y="174" width="564" height="616" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
-      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
-      <feOffset dy="18"/>
-      <feGaussianBlur stdDeviation="18"/>
-      <feComposite in2="hardAlpha" operator="out"/>
-      <feColorMatrix type="matrix" values="0 0 0 0 0.0352941 0 0 0 0 0.0431373 0 0 0 0 0.0862745 0 0 0 0.14 0"/>
-      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_0_1"/>
-      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_0_1" result="shape"/>
+    <filter id="paper-shadow" x="168" y="118" width="696" height="800" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="30" stdDeviation="34" flood-color="#162033" flood-opacity="0.14"/>
     </filter>
   </defs>
-  <rect x="72" y="72" width="880" height="880" rx="236" fill="url(#ai-note-shell)"/>
-  <rect x="72" y="72" width="880" height="880" rx="236" fill="url(#ai-note-glow)"/>
-  <g filter="url(#ai-note-shadow)">
-    <path d="M344 228C344 205.909 361.909 188 384 188H582L714 320V688C714 716.719 690.719 740 662 740H384C361.909 740 344 722.091 344 700V228Z" fill="#F7F1E8"/>
-    <path d="M582 188L714 320H620C598.909 320 582 303.091 582 282V188Z" fill="url(#ai-note-fold)"/>
-    <path d="M402 404C402 386.327 416.327 372 434 372H466C483.673 372 498 386.327 498 404V606C498 623.673 483.673 638 466 638H434C416.327 638 402 623.673 402 606V404Z" fill="url(#ai-note-ribbon)"/>
-    <path d="M558 404C558 386.327 572.327 372 590 372H622C639.673 372 654 386.327 654 404V606C654 623.673 639.673 638 622 638H590C572.327 638 558 623.673 558 606V404Z" fill="url(#ai-note-ribbon)"/>
-    <path d="M474.093 569.014C465.267 557.804 466.58 541.547 477.059 531.864L556.618 385.95C569.736 373.856 589.997 374.678 602.085 387.786C614.173 400.894 613.503 421.154 600.589 433.249L520.928 579.255C510.449 588.938 492.606 588.122 481.065 577.146L474.093 569.014Z" fill="url(#ai-note-fold)"/>
-    <path d="M626 461C626 470.941 617.941 479 608 479C598.059 479 590 470.941 590 461C590 451.059 598.059 443 608 443C617.941 443 626 451.059 626 461Z" fill="#A4FFF0" fill-opacity="0.72"/>
+  <rect x="72" y="72" width="880" height="880" rx="228" fill="#F8FAFC"/>
+  <rect x="84" y="84" width="856" height="856" rx="216" stroke="#D8E0EA" stroke-width="24"/>
+  <g filter="url(#paper-shadow)">
+    <path d="M260 176C260 145.072 285.072 120 316 120H626L792 286V736C792 780.183 756.183 816 712 816H316C285.072 816 260 790.928 260 760V176Z" fill="url(#paper-fill)"/>
+    <path d="M626 120L792 286H682C651.072 286 626 260.928 626 230V120Z" fill="#E8EEF5"/>
+    <path d="M630 120V228C630 257.823 654.177 282 684 282H792" stroke="#CAD5E2" stroke-width="18" stroke-linejoin="round"/>
+    <rect x="310" y="236" width="42" height="524" rx="21" fill="url(#accent-fill)"/>
+    <path d="M424 398H630" stroke="#1E2633" stroke-width="42" stroke-linecap="round"/>
+    <path d="M424 510H674" stroke="#1E2633" stroke-width="42" stroke-linecap="round"/>
+    <path d="M424 622H588" stroke="#1E2633" stroke-width="42" stroke-linecap="round"/>
+    <path d="M721 208L744 263L799 286L744 309L721 364L698 309L643 286L698 263L721 208Z" fill="url(#spark-fill)"/>
+    <path d="M628 308L640 337L669 349L640 361L628 390L616 361L587 349L616 337L628 308Z" fill="#19C2B4"/>
   </g>
 </svg>

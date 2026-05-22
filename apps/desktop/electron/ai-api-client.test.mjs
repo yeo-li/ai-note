@@ -176,3 +176,75 @@ test("json api client allows loopback http API URLs for local development", asyn
   assert.equal(requestUrl, "http://127.0.0.1:1234/v1beta/models/gemini-2.5-flash:generateContent");
   assert.deepEqual(result, { ok: true });
 });
+
+test("json api client maps service unavailable responses to a retryable user-facing error", async () => {
+  const client = createJsonApiClient({
+    apiKey: "test-key",
+    request() {
+      return Promise.resolve(createResponse({ ok: false, status: 503 }));
+    }
+  });
+
+  await assert.rejects(
+    client.requestJson({
+      prompt: "prompt",
+      schemaName: "test_schema",
+      schema: { type: "object", properties: {}, additionalProperties: false },
+      parseFailureMessage: "parse failed"
+    }),
+    (error) => {
+      assert.equal(error instanceof OrganizeProviderError, true);
+      assert.equal(error.code, "API_TEMPORARILY_UNAVAILABLE");
+      assert.equal(error.message, "AI API가 일시적으로 응답하지 않아요. 잠시 뒤 다시 시도해 주세요.");
+      return true;
+    }
+  );
+});
+
+test("json api client maps rate limit responses to a retryable user-facing error", async () => {
+  const client = createJsonApiClient({
+    apiKey: "test-key",
+    request() {
+      return Promise.resolve(createResponse({ ok: false, status: 429 }));
+    }
+  });
+
+  await assert.rejects(
+    client.requestJson({
+      prompt: "prompt",
+      schemaName: "test_schema",
+      schema: { type: "object", properties: {}, additionalProperties: false },
+      parseFailureMessage: "parse failed"
+    }),
+    (error) => {
+      assert.equal(error instanceof OrganizeProviderError, true);
+      assert.equal(error.code, "API_RATE_LIMITED");
+      assert.equal(error.message, "AI API 사용량 제한에 도달했어요. 잠시 뒤 다시 시도해 주세요.");
+      return true;
+    }
+  );
+});
+
+test("json api client keeps authentication failures actionable", async () => {
+  const client = createJsonApiClient({
+    apiKey: "test-key",
+    request() {
+      return Promise.resolve(createResponse({ ok: false, status: 403 }));
+    }
+  });
+
+  await assert.rejects(
+    client.requestJson({
+      prompt: "prompt",
+      schemaName: "test_schema",
+      schema: { type: "object", properties: {}, additionalProperties: false },
+      parseFailureMessage: "parse failed"
+    }),
+    (error) => {
+      assert.equal(error instanceof OrganizeProviderError, true);
+      assert.equal(error.code, "API_AUTHENTICATION_FAILED");
+      assert.equal(error.message, "AI API 인증에 실패했어요. API_KEY 값을 확인해 주세요.");
+      return true;
+    }
+  );
+});

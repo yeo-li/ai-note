@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -152,6 +152,82 @@ test("memo store reads legacy notes.json data and migrates on write", async () =
     const migratedPayload = JSON.parse(await readFile(join(userDataPath, "memos.json"), "utf8"));
 
     assert.equal(Array.isArray(migratedPayload.memos), true);
+    assert.equal(migratedPayload.memos.length, 2);
+    assert.equal(migratedPayload.memos.some((memo) => memo.id === legacyMemo.id), true);
+  } finally {
+    await rm(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test("memo store backs up corrupt memos.json and starts empty", async () => {
+  const userDataPath = await mkdtemp(join(tmpdir(), "ai-note-memo-store-"));
+  const memoFilePath = join(userDataPath, "memos.json");
+
+  try {
+    await writeFile(memoFilePath, "{not-json", "utf8");
+
+    const store = createMemoStore({ userDataPath });
+    const listed = await store.list();
+    const backupFiles = await readdir(userDataPath);
+
+    assert.deepEqual(listed, []);
+    assert.equal(backupFiles.some((fileName) => fileName.startsWith("memos.json.corrupt-")), true);
+
+    const created = await store.create({
+      title: "Recovered memo",
+      body: "Created after corrupt JSON backup."
+    });
+    const persistedPayload = JSON.parse(await readFile(memoFilePath, "utf8"));
+
+    assert.equal(persistedPayload.memos.length, 1);
+    assert.equal(persistedPayload.memos[0]?.id, created.id);
+  } finally {
+    await rm(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test("memo store falls back to legacy notes.json when memos.json is corrupt", async () => {
+  const userDataPath = await mkdtemp(join(tmpdir(), "ai-note-memo-store-"));
+  const memoFilePath = join(userDataPath, "memos.json");
+  const legacyFilePath = join(userDataPath, "notes.json");
+  const legacyMemo = {
+    id: "legacy-after-corrupt-json",
+    title: "Legacy backup",
+    body: "Use this when memos.json cannot be parsed.",
+    createdAt: "2026-01-01T09:00:00.000Z",
+    updatedAt: "2026-01-01T10:00:00.000Z"
+  };
+
+  try {
+    await writeFile(memoFilePath, "{not-json", "utf8");
+    await writeFile(
+      legacyFilePath,
+      JSON.stringify(
+        {
+          version: 1,
+          notes: [legacyMemo]
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+
+    const store = createMemoStore({ userDataPath });
+    const listed = await store.list();
+    const backupFiles = await readdir(userDataPath);
+
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0]?.id, legacyMemo.id);
+    assert.equal(backupFiles.some((fileName) => fileName.startsWith("memos.json.corrupt-")), true);
+
+    await store.create({
+      title: "New memo",
+      body: "Created after fallback."
+    });
+
+    const migratedPayload = JSON.parse(await readFile(memoFilePath, "utf8"));
+
     assert.equal(migratedPayload.memos.length, 2);
     assert.equal(migratedPayload.memos.some((memo) => memo.id === legacyMemo.id), true);
   } finally {

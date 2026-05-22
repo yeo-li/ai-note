@@ -101,6 +101,22 @@ function normalizeApiError(error, parseFailureMessage) {
   return new OrganizeProviderError("API_FAILED", "AI API 요청에 실패했어요. 네트워크 상태를 확인해 주세요.", error);
 }
 
+function createResponseError(status) {
+  if (status === 401 || status === 403) {
+    return new OrganizeProviderError("API_AUTHENTICATION_FAILED", "AI API 인증에 실패했어요. API_KEY 값을 확인해 주세요.");
+  }
+
+  if (status === 429) {
+    return new OrganizeProviderError("API_RATE_LIMITED", "AI API 사용량 제한에 도달했어요. 잠시 뒤 다시 시도해 주세요.");
+  }
+
+  if (status >= 500 && status <= 599) {
+    return new OrganizeProviderError("API_TEMPORARILY_UNAVAILABLE", "AI API가 일시적으로 응답하지 않아요. 잠시 뒤 다시 시도해 주세요.");
+  }
+
+  return new OrganizeProviderError("API_FAILED", `AI API 요청에 실패했어요. (status ${status})`);
+}
+
 export function createJsonApiClient({
   apiKey = process.env.API_KEY,
   apiUrl = process.env.AI_NOTE_API_URL || defaultApiUrl,
@@ -144,11 +160,7 @@ export function createJsonApiClient({
         });
 
         if (!response.ok) {
-          if (response.status === 401 || response.status === 403) {
-            throw new OrganizeProviderError("API_AUTHENTICATION_FAILED", "AI API 인증에 실패했어요. API_KEY 값을 확인해 주세요.");
-          }
-
-          throw new OrganizeProviderError("API_FAILED", `AI API 요청에 실패했어요. (status ${response.status})`);
+          throw createResponseError(response.status);
         }
 
         const payload = await response.json();

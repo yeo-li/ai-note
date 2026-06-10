@@ -207,12 +207,14 @@ textarea:focus-visible {
 .sidebar {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
-  width: var(--sidebar-fixed-width);
-  min-width: var(--sidebar-fixed-width);
-  max-width: var(--sidebar-fixed-width);
+  /* width/min-width/max-width are controlled by the grid parent when resizing is active */
+  width: 100%;
+  min-width: 0;
+  max-width: none;
   min-height: 0;
   border-right: 1px solid rgba(22, 23, 25, 0.08);
   background: #f8f9fb;
+  overflow: hidden;
 }
 
 .sidebar-head {
@@ -2968,5 +2970,807 @@ textarea:focus-visible {
 
   .delete-modal-actions .paper-button {
     flex: 1 1 auto;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Panel resize handles
+   ══════════════════════════════════════════════════════════════ */
+
+.panel-resize-handle {
+  position: relative;
+  width: 6px;
+  min-width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+  z-index: 10;
+}
+
+.panel-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  background: transparent;
+  border-radius: 2px;
+  transition: background 140ms ease, opacity 140ms ease;
+}
+
+.panel-resize-handle:hover::after {
+  background: rgba(10, 132, 255, 0.35);
+}
+
+.panel-resize-handle:active::after {
+  background: rgba(10, 132, 255, 0.55);
+}
+
+/* Override fixed sidebar width when dynamic resize is active */
+.app-body:not(.is-sticky-mode) .sidebar {
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   AI chat expand mode
+   ══════════════════════════════════════════════════════════════ */
+
+.editor-pane--hidden {
+  display: none !important;
+}
+
+.ai-chat-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Active state for expand/collapse toggle button */
+.paper-button-icon.is-active {
+  background: rgba(10, 132, 255, 0.1);
+  color: var(--brand);
+}
+
+.paper-button-icon.is-active:hover {
+  background: rgba(10, 132, 255, 0.16);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Editor redesign — Obsidian / Claude style
+   ══════════════════════════════════════════════════════════════ */
+
+/* Constrain reading width for long lines — the single biggest readability win */
+.editor-card {
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
+
+/* Better editor typography */
+.paper-editor {
+  font-size: 1rem;
+  line-height: 1.78;
+  letter-spacing: -0.008em;
+  color: var(--text-main);
+  caret-color: var(--text-main);
+}
+
+.paper-editor::placeholder {
+  color: var(--text-faint);
+  letter-spacing: 0;
+}
+
+/* Cleaner paper-head: subtle border, tighter vertical rhythm */
+.paper-head {
+  padding: 20px clamp(18px, 2vw, 28px) 10px;
+  border-bottom: 1px solid rgba(22, 23, 25, 0.06);
+  background: #ffffff;
+}
+
+/* Paper title (kicker) — bolder, slightly larger */
+.paper-kicker {
+  font-size: 1.22rem;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  color: var(--text-main);
+}
+
+/* Toolbar buttons — smaller and tighter */
+.paper-toolbar-editor .paper-button-icon {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+}
+
+.paper-toolbar-editor .paper-button-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Note body canvas — more breathing room at top */
+.paper-body {
+  padding-top: 8px;
+  padding-bottom: 40px;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   AI transform UX — clearer flow, better visual hierarchy
+   ══════════════════════════════════════════════════════════════ */
+
+/* Outer shell: vertical stack, not side-by-side */
+.ai-prompt-shell {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  align-items: stretch;
+  border-bottom: 1px solid rgba(22, 23, 25, 0.07);
+  background: #fafbfc;
+  -webkit-app-region: no-drag;
+}
+
+/* Step 1: Prompt input row — most prominent element */
+.ai-prompt-form {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px clamp(14px, 1.5vw, 20px);
+  border-bottom: 1px solid rgba(22, 23, 25, 0.06);
+  -webkit-app-region: no-drag;
+}
+
+.ai-prompt-input {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1.5px solid rgba(22, 23, 25, 0.1);
+  background: #ffffff;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.ai-prompt-input:focus-within {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.1);
+}
+
+.ai-prompt-input input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  outline: none;
+  font-size: 0.95rem;
+  color: var(--text-main);
+}
+
+.ai-prompt-input input::placeholder {
+  color: var(--text-faint);
+}
+
+/* Step 2: Action bar — accept / reject after preview is shown.
+   Using direct child combinator to avoid padding the in-form submit wrapper. */
+.ai-prompt-shell > .ai-prompt-actions {
+  padding: 8px clamp(14px, 1.5vw, 20px);
+  background: #fafbfc;
+  border-top: 1px solid rgba(22, 23, 25, 0.05);
+}
+
+/* Template panel: minimal, not intrusive */
+.ai-template-panel {
+  border: none;
+  border-top: 1px solid rgba(22, 23, 25, 0.06);
+  border-radius: 0;
+  background: transparent;
+  padding: 8px clamp(14px, 1.5vw, 20px) 10px;
+}
+
+/* Transform review panels: better visual split */
+.transform-review-layout {
+  gap: 1px;
+  background: rgba(22, 23, 25, 0.07);
+}
+
+.transform-review-panel {
+  background: #ffffff;
+  padding: 20px clamp(16px, 1.8vw, 24px);
+}
+
+.transform-review-panel--accent {
+  background: #f7f9ff;
+}
+
+.transform-review-panel-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--brand-deep);
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+.transform-review-panel-head strong {
+  font-size: 0.92rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+/* Feedback banner: more polished */
+.transform-feedback-banner {
+  margin: 0;
+  border-radius: 0;
+  border-top: 1px solid rgba(22, 23, 25, 0.06);
+  padding: 10px clamp(14px, 1.5vw, 20px);
+}
+
+/* Declutter the AI-edit review: the long explanatory paragraphs add noise.
+   The labels + headings already make the before/after split self-explanatory. */
+.transform-review-panel-note {
+  display: none;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   AI chat — readable centered column when expanded to fill the editor.
+   Without this the thread + composer stretch edge-to-edge on wide screens,
+   which is the readability problem the full-width mode is meant to solve.
+   ══════════════════════════════════════════════════════════════ */
+.app-body.is-chat-expanded .ai-chat-thread,
+.app-body.is-chat-expanded .ai-chat-suggestions,
+.app-body.is-chat-expanded .ai-chat-composer {
+  width: 100%;
+  max-width: 820px;
+  margin-inline: auto;
+}
+
+/* Give the conversation more vertical breathing room in expanded mode */
+.app-body.is-chat-expanded .ai-chat-thread {
+  padding-inline: 24px;
+  gap: 16px;
+}
+
+.app-body.is-chat-expanded .ai-chat-message {
+  padding: 14px 16px;
+}
+
+/* Header should stay aligned with the centered column, not float far left */
+.app-body.is-chat-expanded .ai-chat-header {
+  width: 100%;
+  max-width: 820px;
+  margin-inline: auto;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ChatGPT macOS — design language
+   Native-first, calm, minimal. Few colours, soft borders, gentle motion.
+   Monochrome accent (no blue), SF Pro typography, 150–250ms ease-out.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Light palette (per spec) */
+  --page-bg: #ffffff;
+  --surface: #ffffff;
+  --surface-alt: #f7f7f8;       /* sidebar / quiet panels */
+  --surface-tint: #f7f7f8;
+  --surface-tint-strong: #ffffff;
+  --surface-elev: #ffffff;       /* cards / bubbles */
+  --text-main: #111111;
+  --text-soft: #666666;
+  --text-muted: #444444;
+  --text-faint: #8e8e93;
+  --border: #e5e5e5;
+  --border-soft: #ececed;
+  --hover-bg: #f4f4f5;           /* the only thing a hover changes */
+  --hover-bg-strong: #ececed;
+
+  /* Accent is monochrome: solid near-black, white text */
+  --brand: #111111;
+  --brand-hover: #000000;
+  --brand-dark: #ffffff;
+  --brand-deep: #111111;
+  --brand-soft: #f4f4f5;
+  --brand-border: #d9d9de;
+
+  /* Quiet focus + shadows */
+  --focus-ring: rgba(17, 17, 17, 0.16);
+  --focus-shadow: 0 0 0 3px rgba(17, 17, 17, 0.08);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.04), 0 10px 28px rgba(0, 0, 0, 0.06);
+  --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.06), 0 24px 60px rgba(0, 0, 0, 0.12);
+
+  --radius-card: 12px;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --editor-pad-x: clamp(10px, 1vw, 16px);
+
+  color-scheme: light;
+  font-family:
+    "SF Pro Display",
+    "SF Pro Text",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Pretendard",
+    "Inter",
+    sans-serif;
+}
+
+/* — Buttons: no depth, hover only nudges the background — */
+.link-button,
+.paper-button,
+.status-button {
+  transition:
+    background-color 200ms var(--ease-out),
+    border-color 200ms var(--ease-out),
+    color 200ms var(--ease-out),
+    box-shadow 200ms var(--ease-out);
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.link-button:hover,
+.paper-button:hover,
+.status-button:hover {
+  background: var(--hover-bg);
+  box-shadow: none;
+}
+
+.link-button-primary,
+.paper-button-primary {
+  background: var(--brand);
+  color: var(--brand-dark);
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.link-button-primary:hover,
+.paper-button-primary:hover {
+  background: var(--brand-hover);
+  box-shadow: none;
+}
+
+.paper-button-icon:hover {
+  background: var(--hover-bg);
+}
+
+/* — Inputs — */
+.sidebar-search,
+.paper-search {
+  background: var(--surface-alt);
+  border-color: var(--border);
+  border-radius: 12px;
+  transition: border-color 200ms var(--ease-out), box-shadow 200ms var(--ease-out);
+}
+
+.sidebar-search:focus-within,
+.paper-search:focus-within {
+  border-color: var(--brand-border);
+  box-shadow: var(--focus-shadow);
+}
+
+/* — Surfaces — */
+.app-body,
+.paper {
+  background: var(--surface);
+}
+
+.sidebar {
+  background: var(--surface-alt);
+  border-right: 1px solid var(--border);
+}
+
+.ai-chat-panel {
+  background: var(--surface-alt);
+  border-left: 1px solid var(--border);
+}
+
+.ai-chat-header,
+.ai-chat-suggestions {
+  border-color: var(--border);
+}
+
+.ai-chat-composer {
+  background: color-mix(in srgb, var(--surface-alt) 80%, transparent);
+}
+
+.ai-chat-composer textarea {
+  background: var(--surface);
+  border-color: var(--border);
+  border-radius: 12px;
+}
+
+.ai-chat-message {
+  border-color: var(--border-soft);
+  border-radius: var(--radius-card);
+  background: var(--surface-elev);
+  box-shadow: none;
+}
+
+/* GPT-style user bubble: quiet neutral fill, not a saturated colour */
+.ai-chat-message--user {
+  background: var(--hover-bg);
+  border-color: transparent;
+  color: var(--text-main);
+}
+
+.ai-chat-result-card,
+.ai-chat-created-preview {
+  background: var(--surface-alt);
+  border-color: var(--border);
+  border-radius: 10px;
+}
+
+.ai-chat-source-chip,
+.ai-chat-suggestion,
+.ai-chat-thinking {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.ai-chat-kicker,
+.ai-chat-result-card__reason,
+.transform-review-panel-label,
+.transform-review-panel--accent .transform-review-panel-label {
+  color: var(--text-soft);
+}
+
+/* Selected states stay monochrome */
+.ai-chat-result-card.is-selected {
+  background: var(--brand-soft);
+  border-color: var(--brand-border);
+  box-shadow: inset 3px 0 0 var(--brand);
+}
+
+/* Buttons never wrap their label */
+.link-button,
+.paper-button,
+.status-button {
+  white-space: nowrap;
+}
+
+.ai-prompt-actions {
+  flex-shrink: 0;
+}
+
+/* AI-edit shell + transform panels follow the same calm surfaces */
+.ai-prompt-shell,
+.ai-prompt-shell > .ai-prompt-actions {
+  background: var(--surface-alt);
+  border-color: var(--border);
+}
+
+/* Fill the surface edge-to-edge: cancel the paper-head horizontal padding so
+   the panel background reaches the component border instead of leaving white
+   gutters. Inner rows keep their own padding, so content stays aligned. */
+.ai-prompt-shell {
+  margin-inline: calc(-1 * var(--editor-pad-x));
+  border-top: 1px solid var(--border);
+}
+
+/* Minimal left/right whitespace in the note editor: drop the centered reading
+   column and shrink the side padding so the body uses the full pane width.
+   Toolbar (paper-head) and body share one padding token, so they stay aligned. */
+.paper-head,
+.paper-body {
+  padding-inline: var(--editor-pad-x);
+}
+
+.editor-card {
+  max-width: none;
+  width: 100%;
+  margin-inline: 0;
+}
+
+.ai-prompt-input {
+  background: var(--surface);
+  border-color: var(--border);
+  border-radius: 12px;
+}
+
+.ai-prompt-input:focus-within {
+  border-color: var(--brand);
+  box-shadow: var(--focus-shadow);
+}
+
+.transform-review-layout {
+  background: var(--border);
+}
+
+.transform-review-panel {
+  background: var(--surface);
+}
+
+.transform-review-panel--accent {
+  background: var(--surface-alt);
+}
+
+.transform-review-change {
+  color: var(--text-main);
+  font-weight: 600;
+  background: #fff3cd;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+/* Modal */
+.delete-modal {
+  border-radius: 16px;
+  box-shadow: var(--shadow-2);
+}
+
+/* Chat header: keep the title on the left and group the expand + close buttons
+   together on the right (space-between was centring the expand button). */
+.ai-chat-header-actions {
+  margin-left: auto;
+}
+
+/* No divider under the editor toolbar — let the note flow cleanly from the top */
+.paper-head {
+  border-bottom: none;
+}
+
+/* Brand row now holds only the new-note (+) button — keep it on the right */
+.sidebar-brand {
+  grid-template-columns: 1fr;
+}
+
+.sidebar-brand-actions {
+  justify-self: end;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   AI memo-edit panel — cleaner command-bar layout (ChatGPT / Claude reference)
+   One calm surface. The input is the hero up top; the prompt-template manager
+   is demoted to a quiet footer instead of dominating the panel.
+   ────────────────────────────────────────────────────────────────────────── */
+.ai-prompt-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 14px var(--editor-pad-x) 12px;
+  background: var(--surface);
+  border-top: none;
+  border-bottom: 1px solid var(--border);
+}
+
+/* 1) Input row — top, prominent */
+.ai-prompt-shell .ai-prompt-form {
+  order: 0;
+  padding: 0;
+  border-bottom: none;
+  gap: 10px;
+}
+
+.ai-prompt-shell .ai-prompt-input {
+  min-height: 50px;
+  padding: 0 16px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.ai-prompt-shell .ai-prompt-input input {
+  font-size: 0.98rem;
+}
+
+.ai-prompt-form .ai-prompt-actions .paper-button-primary {
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 12px;
+}
+
+/* 2) Feedback (success / error) sits right under the input */
+.ai-prompt-shell .transform-feedback-banner {
+  order: 1;
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-alt);
+}
+
+/* 3) Cancel / apply row */
+.ai-prompt-shell > .ai-prompt-actions {
+  order: 2;
+  padding: 10px 0 0;
+  background: transparent;
+  border-top: none;
+}
+
+/* 4) Templates — demoted to a quiet footer chip row */
+.ai-prompt-shell .ai-template-panel {
+  order: 3;
+  margin-top: 12px;
+  padding: 10px 0 0;
+  border: none;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  gap: 8px;
+}
+
+.ai-template-panel__header strong {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.ai-template-panel__header .paper-button {
+  min-height: 28px;
+  padding: 0 11px;
+  font-size: 0.76rem;
+}
+
+/* Drop the filler sentence when no templates are saved */
+.ai-template-empty {
+  display: none;
+}
+
+.ai-template-chip {
+  border-radius: 999px;
+  border-color: var(--border);
+  background: var(--surface-alt);
+}
+
+.ai-template-chip:hover {
+  background: var(--hover-bg);
+}
+
+/* Selected memo: quiet filled highlight only — no black left accent bar */
+.note-list-item.is-selected {
+  box-shadow: none;
+}
+
+/* Soften every standard fade to the spec'd motion window */
+@media (prefers-reduced-motion: no-preference) {
+  .sidebar-note,
+  .ai-chat-result-card,
+  .ai-chat-suggestion,
+  .ai-chat-source-chip {
+    transition:
+      background-color 200ms var(--ease-out),
+      border-color 200ms var(--ease-out),
+      color 200ms var(--ease-out);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Dark mode (per spec)
+   ══════════════════════════════════════════════════════════════════════════ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page-bg: #1c1c1e;
+    --surface: #1c1c1e;
+    --surface-alt: #161618;
+    --surface-tint: #161618;
+    --surface-tint-strong: #1c1c1e;
+    --surface-elev: #2c2c2e;
+    --text-main: #ffffff;
+    --text-soft: #a1a1aa;
+    --text-muted: #d4d4d8;
+    --text-faint: #8e8e93;
+    --border: #2c2c2e;
+    --border-soft: #2c2c2e;
+    --hover-bg: #2c2c2e;
+    --hover-bg-strong: #3a3a3c;
+
+    --brand: #ffffff;
+    --brand-hover: #ededed;
+    --brand-dark: #111111;
+    --brand-deep: #ffffff;
+    --brand-soft: #2c2c2e;
+    --brand-border: #3a3a3c;
+
+    --focus-ring: rgba(255, 255, 255, 0.22);
+    --focus-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px rgba(0, 0, 0, 0.5);
+    --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.5), 0 24px 60px rgba(0, 0, 0, 0.6);
+
+    color-scheme: dark;
+  }
+
+  body {
+    background: var(--page-bg);
+  }
+
+  /* Repaint the surfaces that still carry hard-coded light values */
+  .app-body,
+  .paper,
+  .paper-head,
+  .editor-card,
+  .compose-workspace {
+    background: var(--surface);
+  }
+
+  .ai-chat-composer textarea,
+  .ai-prompt-input,
+  .sidebar-search,
+  .paper-search {
+    background: var(--surface-elev);
+    color: var(--text-main);
+  }
+
+  .ai-prompt-shell,
+  .ai-prompt-shell > .ai-prompt-actions {
+    background: var(--surface-alt);
+  }
+
+  .ai-chat-message--user {
+    background: var(--hover-bg-strong);
+    color: var(--text-main);
+  }
+
+  /* Sidebar nav + AI buttons carry hard-coded white / light gradients */
+  .sidebar-search-mode-button,
+  .sidebar-ai-action-button,
+  .sidebar-ai-chat-button {
+    background: var(--surface-elev);
+    border-color: var(--border);
+  }
+
+  .sidebar-ai-action-button,
+  .sidebar-ai-chat-button {
+    background: var(--surface-elev);
+  }
+
+  .sidebar-search-mode-button.is-active,
+  .sidebar-ai-action-button.is-active,
+  .sidebar-ai-chat-button.is-active {
+    background: var(--hover-bg-strong);
+    border-color: var(--brand-border);
+    color: var(--text-main);
+  }
+
+  .sidebar-nav-item:hover,
+  .note-list-item:hover {
+    background: var(--hover-bg);
+  }
+
+  .sidebar-nav-item.is-active {
+    background: var(--surface-elev);
+    border-color: var(--border);
+    color: var(--text-main);
+  }
+
+  .note-list-item.is-selected,
+  .note-list-item:focus-within {
+    background: var(--surface-elev);
+    border-color: var(--border);
+  }
+
+  .paper-button-icon.is-active {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+  }
+
+  .storage-lock-banner,
+  .ai-chat-message--error {
+    background: #2a2118;
+    border-color: #4a3a1e;
+  }
+
+  /* Diff highlight readable on dark */
+  .transform-review-change {
+    background: rgba(255, 224, 130, 0.22);
+    color: #ffe08a;
+  }
+
+  ::placeholder {
+    color: var(--text-faint);
   }
 }

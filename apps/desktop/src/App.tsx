@@ -3,7 +3,6 @@ import type { Memo, MemoChangeEvent, MemoCreateInput, MemoId, MemoOrganizeIntent
 import type { MemoStoreHealth } from "./shared/memo-bridge";
 import type { PromptTemplate } from "./shared/prompt-template-bridge";
 import { buildMemoTitleFromBody, deriveNoteHeadline } from "./note-content";
-import brandMarkUrl from "./assets/brand-mark.svg";
 
 type DiffSegment = {
   text: string;
@@ -975,6 +974,9 @@ function App() {
     name: "",
     prompt: ""
   });
+  const [sidebarWidth, setSidebarWidth] = useState(280);
+  const [chatWidth, setChatWidth] = useState(380);
+  const [isChatExpanded, setIsChatExpanded] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const aiPromptInputRef = useRef<HTMLInputElement | null>(null);
   const composePromptInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -988,6 +990,8 @@ function App() {
   const emptyCreateButtonRef = useRef<HTMLButtonElement | null>(null);
   const emptyFirstResultButtonRef = useRef<HTMLButtonElement | null>(null);
   const emptyClearSearchButtonRef = useRef<HTMLButtonElement | null>(null);
+  const sidebarResizeDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const chatResizeDragRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   const hasQuery = sidebarSearchMode === "keyword" && query.trim().length > 0;
   const isComposeScreenOpen = !isStickyMode && activeSidebarSurface === "compose";
@@ -2240,6 +2244,46 @@ function App() {
     setIsAiChatOpen(false);
   }, [isStickyMode]);
 
+  useEffect(() => {
+    function onSidebarMouseMove(event: MouseEvent) {
+      if (!sidebarResizeDragRef.current) return;
+      const delta = event.clientX - sidebarResizeDragRef.current.startX;
+      setSidebarWidth(Math.min(Math.max(sidebarResizeDragRef.current.startWidth + delta, 200), 480));
+    }
+    function onSidebarMouseUp() {
+      if (!sidebarResizeDragRef.current) return;
+      sidebarResizeDragRef.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+    window.addEventListener("mousemove", onSidebarMouseMove);
+    window.addEventListener("mouseup", onSidebarMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onSidebarMouseMove);
+      window.removeEventListener("mouseup", onSidebarMouseUp);
+    };
+  }, []);
+
+  useEffect(() => {
+    function onChatMouseMove(event: MouseEvent) {
+      if (!chatResizeDragRef.current) return;
+      const delta = chatResizeDragRef.current.startX - event.clientX;
+      setChatWidth(Math.min(Math.max(chatResizeDragRef.current.startWidth + delta, 300), 700));
+    }
+    function onChatMouseUp() {
+      if (!chatResizeDragRef.current) return;
+      chatResizeDragRef.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+    window.addEventListener("mousemove", onChatMouseMove);
+    window.addEventListener("mouseup", onChatMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onChatMouseMove);
+      window.removeEventListener("mouseup", onChatMouseUp);
+    };
+  }, []);
+
   function patchActiveNote(update: Partial<Note>, message?: string) {
     if (isMutationLocked) {
       setStatusMessage("저장소 연결이 복구될 때까지 편집이 잠겨 있어요.");
@@ -2896,10 +2940,26 @@ function App() {
     "app-body",
     isSidebarOpen && !isStickyMode ? "" : "is-sidebar-hidden",
     isAiChatOpen && !isStickyMode ? "is-ai-chat-open" : "",
+    isChatExpanded && isAiChatOpen && !isStickyMode ? "is-chat-expanded" : "",
     isStickyMode ? "is-sticky-mode" : ""
   ]
     .filter(Boolean)
     .join(" ");
+
+  // 패널 너비를 동적으로 조절하기 위해 inline style로 grid-template-columns를 덮어쓴다.
+  const appBodyGridStyle = (() => {
+    if (isStickyMode) return {};
+    const hasSidebar = isSidebarOpen;
+    const hasChat = isAiChatOpen;
+    if (!hasSidebar && !hasChat) return { gridTemplateColumns: "1fr" };
+    if (!hasSidebar && hasChat) {
+      return { gridTemplateColumns: isChatExpanded ? "1fr" : `1fr 6px ${chatWidth}px` };
+    }
+    if (hasSidebar && !hasChat) return { gridTemplateColumns: `${sidebarWidth}px 6px 1fr` };
+    if (isChatExpanded) return { gridTemplateColumns: `${sidebarWidth}px 6px 1fr` };
+    return { gridTemplateColumns: `${sidebarWidth}px 6px 1fr 6px ${chatWidth}px` };
+  })();
+
   const paperStatusLabel = isMutationLocked
     ? "읽기 전용"
     : isTransformPreviewGenerating
@@ -2919,23 +2979,10 @@ function App() {
         <div className="visually-hidden" role="status" aria-live="polite" aria-atomic="true" data-testid="status-live-region">
           {statusMessage}
         </div>
-        <section className={appBodyClassName}>
+        <section className={appBodyClassName} style={appBodyGridStyle}>
           <aside className="sidebar" id="memo-sidebar">
             <div className="sidebar-head">
               <div className="sidebar-brand">
-                <div className="sidebar-brand-copy">
-                  <img
-                    className="sidebar-brand-mark"
-                    src={brandMarkUrl}
-                    alt=""
-                    aria-hidden="true"
-                    data-testid="app-brand-mark"
-                  />
-                  <span className="sidebar-brand-text">
-                    <strong>AI Note</strong>
-                  </span>
-                </div>
-
                 <div className="sidebar-brand-actions">
                   <button
                     className="link-button sidebar-create-button"
@@ -3193,7 +3240,19 @@ function App() {
 
           </aside>
 
-          <section className="editor-pane">
+          {isSidebarOpen && !isStickyMode ? (
+            <div
+              className="panel-resize-handle panel-resize-handle--sidebar"
+              aria-hidden="true"
+              onMouseDown={(event) => {
+                sidebarResizeDragRef.current = { startX: event.clientX, startWidth: sidebarWidth };
+                document.body.style.cursor = "col-resize";
+                document.body.style.userSelect = "none";
+              }}
+            />
+          ) : null}
+
+          <section className={`editor-pane${isChatExpanded && isAiChatOpen && !isStickyMode ? " editor-pane--hidden" : ""}`}>
             {isStickyMode ? (
               <div className="sticky-note-canvas">
                 <article className="sticky-note-card">
@@ -3673,7 +3732,7 @@ function App() {
                             data-testid="submit-ai-prompt-button"
                             disabled={isMutationLocked || isPreviewActionCoolingDown || isTransformPreviewGenerating}
                           >
-                            {isTransformPreviewGenerating ? "생성 중…" : activeDraft ? "다시 생성" : "미리보기"}
+                            {isTransformPreviewGenerating ? "생성 중…" : activeDraft ? "다시 생성" : "수정"}
                           </button>
                         </div>
                       </form>
@@ -3880,12 +3939,40 @@ function App() {
             )}
           </section>
 
+          {!isStickyMode && isAiChatOpen && !isChatExpanded ? (
+            <div
+              className="panel-resize-handle panel-resize-handle--chat"
+              aria-hidden="true"
+              onMouseDown={(event) => {
+                chatResizeDragRef.current = { startX: event.clientX, startWidth: chatWidth };
+                document.body.style.cursor = "col-resize";
+                document.body.style.userSelect = "none";
+              }}
+            />
+          ) : null}
+
           {!isStickyMode && isAiChatOpen ? (
             <aside className="ai-chat-panel" data-testid="ai-chat-panel" aria-label="AI 채팅">
               <header className="ai-chat-header">
                 <div>
                   <span className="ai-chat-kicker">AI Chat</span>
                   <strong>메모와 대화하기</strong>
+                </div>
+                <div className="ai-chat-header-actions">
+                  <button
+                    className={`paper-button paper-button-icon${isChatExpanded ? " is-active" : ""}`}
+                    type="button"
+                    aria-label={isChatExpanded ? "채팅 패널 줄이기" : "채팅 화면 크게 보기"}
+                    title={isChatExpanded ? "채팅 패널 줄이기" : "채팅 화면 크게 보기"}
+                    onClick={() => setIsChatExpanded((prev) => !prev)}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      {isChatExpanded
+                        ? <><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></>
+                        : <><path d="M3 8V5a2 2 0 0 1 2-2h3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M21 16v3a2 2 0 0 1-2 2h-3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/></>
+                      }
+                    </svg>
+                  </button>
                 </div>
                 <button
                   className="paper-button paper-button-icon"
@@ -3894,6 +3981,7 @@ function App() {
                   aria-label="AI 채팅 닫기"
                   onClick={() => {
                     setIsAiChatOpen(false);
+                    setIsChatExpanded(false);
                     setStatusMessage("AI 채팅 패널을 닫았어요.");
                   }}
                 >

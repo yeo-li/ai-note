@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, screen, shell } from "electron";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { memoChannels } from "./memo-channels.mjs";
 import { promptTemplateChannels } from "./prompt-template-channels.mjs";
@@ -13,6 +14,12 @@ import { createMemoSqliteStore } from "./store/memo-sqlite-store.mjs";
 import { createPromptTemplateStore } from "./store/prompt-template-store.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// apps/desktop/.env에서 환경변수 로드 (파일이 있을 때만)
+const envFilePath = resolve(__dirname, "../.env");
+if (existsSync(envFilePath)) {
+  process.loadEnvFile(envFilePath);
+}
 const rendererUrl = process.env.VITE_DEV_SERVER_URL;
 const rendererPath = join(__dirname, "../dist/index.html");
 const windowIconPath = join(__dirname, "assets/window-icon.png");

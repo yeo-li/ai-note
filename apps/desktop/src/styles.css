@@ -3548,17 +3548,22 @@ textarea:focus-visible {
    ────────────────────────────────────────────────────────────────────────── */
 .ai-prompt-shell {
   display: flex;
-  flex-direction: column;
-  gap: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
   padding: 14px var(--editor-pad-x) 12px;
   background: transparent;
   border-top: none;
   border-bottom: 1px solid var(--border-soft);
 }
 
-/* 1) Input row — top, prominent */
+/* 1) Input — grows to fill the row, but wraps onto its own row first
+   if the cancel/apply buttons no longer fit beside it. */
 .ai-prompt-shell .ai-prompt-form {
   order: 0;
+  flex: 1 1 240px;
+  min-width: 0;
   padding: 0;
   border-bottom: none;
   gap: 10px;
@@ -3590,7 +3595,8 @@ textarea:focus-visible {
 
 /* 2) Feedback (success / error) sits right under the input */
 .ai-prompt-shell .transform-feedback-banner {
-  order: 1;
+  order: 2;
+  flex: 1 1 100%;
   margin: 10px 0 0;
   padding: 10px 12px;
   border: 1px solid var(--border);
@@ -3599,19 +3605,23 @@ textarea:focus-visible {
   background: var(--surface-alt);
 }
 
-/* 3) Cancel / apply row */
+/* 3) Cancel / apply — beside the input when there's room, otherwise its own row */
 .ai-prompt-shell > .ai-prompt-actions {
-  order: 2;
-  padding: 10px 0 0;
+  order: 1;
+  flex: 0 0 auto;
+  padding: 0;
   background: transparent;
   border-top: none;
 }
 
-/* 4) Templates — demoted to a quiet footer chip row */
+/* 4) Templates — demoted to a quiet footer chip row.
+   구분선이 패널 좌우 끝까지 닿도록 패딩을 상쇄하고 다시 채운다. */
 .ai-prompt-shell .ai-template-panel {
   order: 3;
+  flex: 1 1 100%;
   margin-top: 12px;
-  padding: 10px 0 0;
+  margin-inline: calc(-1 * var(--editor-pad-x));
+  padding: 10px var(--editor-pad-x) 0;
   border: none;
   border-top: 1px solid var(--border);
   border-radius: 0;

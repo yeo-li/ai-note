@@ -262,22 +262,25 @@ textarea:focus-visible {
   min-width: 0;
   max-width: none;
   min-height: 0;
-  border-right: 1px solid var(--border);
   background: var(--glass-sidebar);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur-strong);
+  backdrop-filter: var(--glass-blur-strong);
   overflow: hidden;
 }
 
 .sidebar-head {
-  padding: 20px 18px 16px;
+  position: relative;
+  z-index: 2;
+  padding: 12px 18px;
   display: grid;
   gap: 12px;
-  background: transparent;
-  border-bottom: 0;
+  background: var(--glass-toolbar);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-bottom: none;
+  box-shadow: 0 1px 0 var(--border-soft), 0 12px 24px -20px rgba(0, 0, 0, 0.22);
 }
 
-.sidebar-brand,
 .sidebar-summary,
 .paper-topline,
 .paper-heading-tools,
@@ -290,39 +293,15 @@ textarea:focus-visible {
   gap: 10px;
 }
 
-.sidebar-brand {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+.sidebar-actions-row {
+  display: flex;
   align-items: center;
-  column-gap: 14px;
+  gap: 8px;
 }
 
-.app-shell.is-macos .sidebar-brand {
+.app-shell.is-macos .sidebar-actions-row {
   min-height: 42px;
   padding-left: calc(var(--mac-titlebar-safe-left) - 6px);
-}
-
-.sidebar-brand-copy {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 32px;
-}
-
-.sidebar-brand-mark {
-  width: 32px;
-  height: 32px;
-  display: block;
-  flex: 0 0 auto;
-}
-
-.sidebar-brand-text {
-  display: grid;
-  align-items: center;
-  min-width: 0;
-  min-height: 32px;
 }
 
 .note-list-state,
@@ -341,23 +320,7 @@ textarea:focus-visible {
   text-transform: uppercase;
 }
 
-.sidebar-brand strong {
-  display: block;
-  font-size: 1rem;
-  font-weight: 700;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  white-space: nowrap;
-}
-
-.sidebar-brand-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
-}
-
-.sidebar-brand-actions .link-button {
+.sidebar-actions-row .link-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -373,7 +336,7 @@ textarea:focus-visible {
   box-shadow: var(--shadow-hairline);
 }
 
-.sidebar-brand-actions .link-button:hover {
+.sidebar-actions-row .link-button:hover {
   background: var(--brand-soft);
   color: var(--brand-deep);
   transform: none;
@@ -389,13 +352,15 @@ textarea:focus-visible {
 }
 
 .sidebar-create-button svg,
-.header-create-note-button svg {
+.header-create-note-button svg,
+.sidebar-ai-chat-button--icon svg {
   width: 16px;
   height: 16px;
 }
 
 .sidebar-create-button svg path,
-.header-create-note-button svg path {
+.header-create-note-button svg path,
+.sidebar-ai-chat-button--icon svg :is(path, circle, rect, line, polyline, polygon) {
   stroke: currentColor;
   stroke-width: 2;
   fill: none;
@@ -410,6 +375,8 @@ textarea:focus-visible {
   gap: 8px;
   min-height: 42px;
   padding: 0 12px;
+  flex: 1 1 auto;
+  min-width: 0;
   border-radius: var(--radius-control);
   background: var(--glass-input);
   border: 1px solid var(--border);
@@ -512,6 +479,24 @@ textarea:focus-visible {
   width: 17px;
   height: 17px;
   flex: 0 0 auto;
+}
+
+.sidebar-actions-row .sidebar-ai-chat-button--icon {
+  width: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  justify-content: center;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.75);
+  box-shadow: var(--shadow-hairline);
+}
+
+.sidebar-actions-row .sidebar-ai-chat-button--icon:hover {
+  background: var(--brand-soft);
+  color: var(--brand-deep);
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .sidebar-ai-chat-button svg :is(path, circle, rect, line, polyline, polygon) {
@@ -1373,11 +1358,10 @@ textarea:focus-visible {
   min-height: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
-  border-left: 1px solid var(--border);
   /* editor보다 한 단계 가라앉은 보조 레이어 */
   background: var(--glass-panel);
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur-strong);
+  backdrop-filter: var(--glass-blur-strong);
   overflow: hidden;
 }
 
@@ -1386,12 +1370,18 @@ textarea:focus-visible {
 }
 
 .ai-chat-header {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 18px 16px 12px;
-  border-bottom: 1px solid rgba(22, 23, 25, 0.06);
+  padding: 12px 18px;
+  border-bottom: none;
+  background: var(--glass-toolbar);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: 0 1px 0 var(--border-soft), 0 12px 24px -20px rgba(0, 0, 0, 0.22);
 }
 
 .ai-chat-header > div {
@@ -1884,14 +1874,17 @@ textarea:focus-visible {
 }
 
 .paper-head {
+  position: relative;
+  z-index: 2;
   display: grid;
-  gap: 12px;
+  gap: 8px;
   padding: 16px clamp(18px, 2vw, 28px) 8px;
-  /* 본문 위에 떠 있는 toolbar 레이어: 옅은 반투명 + hairline로 분리 */
-  border-bottom: 1px solid var(--border-soft);
+  /* 본문 위에 떠 있는 toolbar 레이어: hairline 대신 그림자로 자연스럽게 분리 */
+  border-bottom: none;
   background: var(--glass-toolbar);
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
+  box-shadow: 0 1px 0 var(--border-soft), 0 12px 24px -20px rgba(0, 0, 0, 0.22);
 }
 
 .paper-topline,
@@ -1986,7 +1979,14 @@ textarea:focus-visible {
 .paper-toolbar-editor__group {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
+  padding: 4px;
+  border-radius: var(--radius-pill);
+  /* 버튼 묶음을 하나의 떠 있는 유리 캡슐로 표현 */
+  background: var(--glass-input);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 0.5px 0 var(--border-glass), var(--shadow-soft);
 }
 
 .paper-toolbar-editor__group--left {
@@ -2997,17 +2997,7 @@ textarea:focus-visible {
     padding: 0;
   }
 
-  .sidebar-brand {
-    grid-template-columns: 1fr;
-    align-items: flex-start;
-  }
-
-  .sidebar-brand-actions {
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .app-shell.is-macos .sidebar-brand {
+  .app-shell.is-macos .sidebar-actions-row {
     padding-left: calc(var(--mac-titlebar-safe-left) - 28px);
   }
 
@@ -3114,17 +3104,20 @@ textarea:focus-visible {
   bottom: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 2px;
-  background: transparent;
-  border-radius: 2px;
-  transition: background 140ms ease, opacity 140ms ease;
+  /* 평소엔 일반 패널 테두리(1px hairline)와 동일하게 보이도록 */
+  width: 1px;
+  background: var(--border);
+  border-radius: 0;
+  transition: background 140ms ease, width 140ms ease;
 }
 
 .panel-resize-handle:hover::after {
+  width: 2px;
   background: rgba(10, 132, 255, 0.35);
 }
 
 .panel-resize-handle:active::after {
+  width: 2px;
   background: rgba(10, 132, 255, 0.55);
 }
 
@@ -3185,9 +3178,9 @@ textarea:focus-visible {
   letter-spacing: 0;
 }
 
-/* Cleaner paper-head: tighter vertical rhythm (surface/border는 기본 정의를 따른다) */
+/* Cleaner paper-head: sidebar-head/ai-chat-header와 같은 높이로 맞춘 좁은 헤더 (surface/border는 기본 정의를 따른다) */
 .paper-head {
-  padding: 20px clamp(18px, 2vw, 28px) 10px;
+  padding: 12px clamp(18px, 2vw, 28px) 8px;
 }
 
 /* Paper title (kicker) — bolder, slightly larger */
@@ -3210,10 +3203,10 @@ textarea:focus-visible {
   height: 16px;
 }
 
-/* Note body canvas — more breathing room at top */
+/* Note body canvas — 여백을 최소화하되 scrollbar-gutter로 텍스트와 스크롤바가 겹치지 않게 한다 */
 .paper-body {
-  padding-top: 8px;
-  padding-bottom: 40px;
+  padding-top: 4px;
+  padding-bottom: 16px;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -3423,7 +3416,6 @@ textarea:focus-visible {
   color: #ffffff;
 }
 
-.ai-chat-header,
 .ai-chat-suggestions {
   border-color: var(--border-soft);
 }
@@ -3530,15 +3522,6 @@ textarea:focus-visible {
    together on the right (space-between was centring the expand button). */
 .ai-chat-header-actions {
   margin-left: auto;
-}
-
-/* Brand row now holds only the new-note (+) button — keep it on the right */
-.sidebar-brand {
-  grid-template-columns: 1fr;
-}
-
-.sidebar-brand-actions {
-  justify-self: end;
 }
 
 /* ──────────────────────────────────────────────────────────────────────────

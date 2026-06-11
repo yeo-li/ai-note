@@ -1,16 +1,9 @@
 import type { Dispatch, KeyboardEvent, ReactNode, RefObject, SetStateAction } from "react";
 import type { MemoId } from "@ai-note/shared/memo";
 import { deriveNoteHeadline } from "../note-content";
+import brandMarkUrl from "../assets/brand-mark.svg";
 import type { Note } from "../domain/note";
 import type { ContextSearchState, SidebarSurface, SidebarView } from "../domain/workspace";
-import {
-  NoteMenuIcon,
-  PlusIcon,
-  SearchIcon,
-  SidebarFavoriteIcon,
-  SidebarListIcon,
-  ToolbarSparklesIcon
-} from "./icons";
 
 type SidebarProps = {
   activeNote: Note | null;
@@ -60,6 +53,7 @@ export function Sidebar(props: SidebarProps) {
 function SidebarHead(props: SidebarProps) {
   return (
     <div className="sidebar-head" data-testid="app-brand-mark">
+      <img className="app-main-icon" src={brandMarkUrl} alt="AI Note" />
       <SidebarActions {...props} />
       <SidebarSearch {...props} />
       <SidebarNav {...props} />
@@ -71,7 +65,7 @@ function SidebarActions({ handleCreateNote, isAiChatOpen, isComposeScreenOpen, i
   return (
     <div className="sidebar-actions-row">
       <button className="link-button sidebar-create-button" type="button" data-testid="sidebar-create-note-button" aria-label="새 메모 만들기" title="새 메모 만들기" disabled={isMutationLocked || isComposeScreenOpen} onClick={() => void handleCreateNote()}>
-        <PlusIcon />
+        새 메모
       </button>
       {!isStickyMode ? <AiChatToggleButton isAiChatOpen={isAiChatOpen} isMutationLocked={isMutationLocked} toggleAiChatPanel={toggleAiChatPanel} /> : null}
     </div>
@@ -81,7 +75,7 @@ function SidebarActions({ handleCreateNote, isAiChatOpen, isComposeScreenOpen, i
 function AiChatToggleButton({ isAiChatOpen, isMutationLocked, toggleAiChatPanel }: Pick<SidebarProps, "isAiChatOpen" | "isMutationLocked" | "toggleAiChatPanel">) {
   return (
     <button className={`sidebar-ai-chat-button sidebar-ai-chat-button--icon${isAiChatOpen ? " is-active" : ""}`} type="button" data-testid="sidebar-ai-chat-button" aria-label={isAiChatOpen ? "AI 채팅 닫기" : "AI 채팅 열기"} title={isAiChatOpen ? "AI 채팅 닫기" : "AI 채팅 열기"} aria-pressed={isAiChatOpen} disabled={isMutationLocked && !isAiChatOpen} onClick={toggleAiChatPanel}>
-      <ToolbarSparklesIcon />
+      {isAiChatOpen ? "AI 채팅 닫기" : "AI 채팅"}
     </button>
   );
 }
@@ -89,7 +83,6 @@ function AiChatToggleButton({ isAiChatOpen, isMutationLocked, toggleAiChatPanel 
 function SidebarSearch({ handleSearch, query, searchInputRef }: SidebarProps) {
   return (
     <label className="sidebar-search">
-      <SearchIcon />
       <span className="visually-hidden">키워드 검색</span>
       <input ref={searchInputRef} type="text" placeholder="키워드 검색" data-testid="note-search-input" autoComplete="off" spellCheck={false} value={query} onChange={(event) => handleSearch(event.target.value)} onKeyDown={(event) => closeSearchOnEscape(event, searchInputRef)} />
     </label>
@@ -109,11 +102,9 @@ function SidebarNav({ isComposeScreenOpen, sidebarView, switchSidebarView }: Sid
   return (
     <nav className="sidebar-nav" aria-label="사이드바 탐색">
       <SidebarNavButton active={sidebarView === "all"} disabled={isComposeScreenOpen} testId="sidebar-all-view-button" onClick={() => switchSidebarView("all")}>
-        <SidebarListIcon />
         <span>전체 메모</span>
       </SidebarNavButton>
       <SidebarNavButton active={sidebarView === "favorites"} disabled={isComposeScreenOpen} testId="sidebar-favorites-view-button" onClick={() => switchSidebarView("favorites")}>
-        <SidebarFavoriteIcon />
         <span>즐겨찾기</span>
       </SidebarNavButton>
     </nav>
@@ -267,7 +258,7 @@ function NoteListActions(props: SidebarProps & { note: Note; noteLabel: string }
   return (
     <div className="note-list-actions" data-note-menu-root="true" onClick={(event) => event.stopPropagation()}>
       <button className="note-list-menu-button" type="button" data-testid="selected-note-menu-button" disabled={props.isComposeScreenOpen} aria-label={`${props.noteLabel} 메모 메뉴`} aria-expanded={isNoteMenuOpen} aria-controls={isNoteMenuOpen ? noteMenuIdValue : undefined} onClick={() => props.toggleNoteMenu(props.note.id)}>
-        <NoteMenuIcon />
+        메뉴
       </button>
       {isNoteMenuOpen ? <NoteMenu noteId={props.note.id} noteMenuIdValue={noteMenuIdValue} {...props} /> : null}
     </div>

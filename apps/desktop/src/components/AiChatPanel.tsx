@@ -4,7 +4,6 @@ import { aiChatSuggestions } from "../domain/ai-chat";
 import type { AiChatMessage } from "../domain/ai-chat";
 import type { Note } from "../domain/note";
 import type { AiChatInputHandler, MemoIdHandler } from "./component-types";
-import { StickyCloseIcon } from "./icons";
 
 type AiChatPanelProps = {
   activeNote: Note | null;
@@ -61,7 +60,7 @@ function AiChatHeader({ closeAiChatPanel }: { closeAiChatPanel: () => void }) {
         <strong>메모와 대화하기</strong>
       </div>
       <button className="paper-button paper-button-icon" type="button" data-testid="close-ai-chat-button" aria-label="AI 채팅 닫기" onClick={closeAiChatPanel}>
-        <StickyCloseIcon />
+        닫기
       </button>
     </header>
   );

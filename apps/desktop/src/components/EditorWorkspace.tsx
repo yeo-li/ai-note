@@ -5,14 +5,6 @@ import type { FindMatch, Note } from "../domain/note";
 import type { TransformDraft, TransformFeedback, TransformSession } from "../domain/transform";
 import type { SidebarView } from "../domain/workspace";
 import type { PromptTemplateEditorState } from "../hooks/usePromptTemplates";
-import {
-  NoteFavoriteIcon,
-  ToolbarFindIcon,
-  ToolbarSidebarIcon,
-  ToolbarSparklesIcon,
-  ToolbarStickyIcon,
-  ToolbarUndoIcon
-} from "./icons";
 
 type EditorFeedback = TransformFeedback | { kind: "progress"; title: string; message: string };
 
@@ -131,7 +123,7 @@ function EditorToolbar(props: EditorWorkspaceProps) {
 function SidebarToggleButton({ isSidebarOpen, toggleSidebar }: EditorWorkspaceProps) {
   return (
     <button className="paper-button paper-button-icon" type="button" data-testid="editor-toggle-sidebar-button" aria-label={isSidebarOpen ? "목록 닫기" : "목록 열기"} title={isSidebarOpen ? "목록 닫기" : "목록 열기"} aria-controls="memo-sidebar" aria-expanded={isSidebarOpen} onClick={toggleSidebar}>
-      <ToolbarSidebarIcon />
+      {isSidebarOpen ? "목록 닫기" : "목록 열기"}
     </button>
   );
 }
@@ -139,7 +131,7 @@ function SidebarToggleButton({ isSidebarOpen, toggleSidebar }: EditorWorkspacePr
 function OpenStickyButton({ activeNote, handleOpenStickyNoteWindow }: EditorWorkspaceProps) {
   return (
     <button className="paper-button paper-button-icon" type="button" data-testid="open-sticky-note-button" aria-label="스티커 메모로 열기" title="스티커 메모로 열기" disabled={!activeNote} onClick={() => void handleOpenStickyNoteWindow()}>
-      <ToolbarStickyIcon />
+      스티커
     </button>
   );
 }
@@ -151,7 +143,7 @@ function FavoriteButton({ activeNote, isActiveNoteBusy, toggleFavorite }: Editor
 
   return (
     <button className={`paper-button paper-button-icon editor-favorite-button${activeNote.favorite ? " is-favorite" : ""}`} type="button" data-testid="selected-note-favorite-button" aria-label={activeNote.favorite ? "즐겨찾기를 해제해요" : "즐겨찾기에 추가해요"} aria-pressed={activeNote.favorite} disabled={isActiveNoteBusy} onClick={() => toggleFavorite(activeNote.id)}>
-      <NoteFavoriteIcon />
+      {activeNote.favorite ? "즐겨찾기 해제" : "즐겨찾기"}
     </button>
   );
 }
@@ -161,7 +153,7 @@ function OrganizeButton(props: EditorWorkspaceProps) {
 
   return (
     <button className="paper-button paper-button-icon" type="button" data-testid="organize-note-button" aria-label="AI로 정리하기" title="AI로 정리하기" disabled={disabled} onClick={props.openAiPromptComposer}>
-      <ToolbarSparklesIcon />
+      AI 정리
     </button>
   );
 }
@@ -171,7 +163,7 @@ function FindToggleButton(props: EditorWorkspaceProps) {
 
   return (
     <button className="paper-button paper-button-icon" type="button" data-testid="note-find-toggle-button" aria-label="메모 안에서 찾기" title="메모 안에서 찾기" disabled={disabled} onClick={props.openFindBar}>
-      <ToolbarFindIcon />
+      찾기
     </button>
   );
 }
@@ -188,8 +180,7 @@ function FindBar(props: EditorWorkspaceProps) {
   return (
     <div className="note-find-bar" role="search" aria-label="메모 안에서 찾기" data-testid="note-find-bar">
       <label className="note-find-input-shell">
-        <ToolbarFindIcon />
-        <span className="visually-hidden">메모 안에서 찾기</span>
+        <span>찾기</span>
         <input ref={props.findInputRef} type="search" data-testid="note-find-input" value={props.findQuery} placeholder="이 메모에서 찾기" onChange={(event) => updateFindQuery(event.target.value, props)} onKeyDown={(event) => handleFindKeyDown(event, props)} />
       </label>
       <span className="note-find-count" data-testid="note-find-count">{getFindCountLabel(props)}</span>
@@ -227,10 +218,10 @@ function FindActions({ closeFindBar, findMatches, moveFindMatch }: EditorWorkspa
   return (
     <div className="note-find-actions">
       <button className="paper-button paper-button-icon" type="button" data-testid="note-find-prev-button" aria-label="이전 결과로 이동" disabled={findMatches.length === 0} onClick={() => moveFindMatch(-1)}>
-        <ToolbarUndoIcon />
+        이전
       </button>
       <button className="paper-button paper-button-icon" type="button" data-testid="note-find-next-button" aria-label="다음 결과로 이동" disabled={findMatches.length === 0} onClick={() => moveFindMatch(1)}>
-        <ToolbarFindIcon />
+        다음
       </button>
       <button className="paper-button" type="button" data-testid="note-find-close-button" onClick={() => closeFindBar()}>
         닫기

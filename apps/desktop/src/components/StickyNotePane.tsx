@@ -1,6 +1,5 @@
 import type { RefObject } from "react";
 import type { Note } from "../domain/note";
-import { PlusIcon, StickyCloseIcon, StickyPinIcon } from "./icons";
 
 type StickyNotePaneProps = {
   activeNote: Note | null;
@@ -44,7 +43,7 @@ function StickyToolbar(props: StickyNotePaneProps) {
 function CloseStickyButton({ closeStickySurface, isDedicatedStickyWindow }: StickyNotePaneProps) {
   return (
     <button className="sticky-note-toolbar__button sticky-note-toolbar__button--close" type="button" data-testid="sticky-mode-exit-button" aria-label={isDedicatedStickyWindow ? "스티커 창 닫기" : "일반 모드로 돌아가기"} onClick={closeStickySurface}>
-      <StickyCloseIcon />
+      {isDedicatedStickyWindow ? "닫기" : "일반 모드"}
     </button>
   );
 }
@@ -52,7 +51,7 @@ function CloseStickyButton({ closeStickySurface, isDedicatedStickyWindow }: Stic
 function PinStickyButton({ isStickyPinned, toggleStickyPinned }: StickyNotePaneProps) {
   return (
     <button className={`sticky-note-toolbar__button sticky-note-toolbar__button--pin${isStickyPinned ? " is-pinned" : ""}`} type="button" data-testid="sticky-mode-pin-button" aria-label={isStickyPinned ? "스티커 메모 고정 해제" : "스티커 메모 고정"} aria-pressed={isStickyPinned} onClick={() => void toggleStickyPinned()}>
-      <StickyPinIcon />
+      {isStickyPinned ? "고정 해제" : "고정"}
     </button>
   );
 }
@@ -60,7 +59,7 @@ function PinStickyButton({ isStickyPinned, toggleStickyPinned }: StickyNotePaneP
 function NewStickyButton({ handleCreateStickyNoteWindow, isMutationLocked }: StickyNotePaneProps) {
   return (
     <button className="sticky-note-toolbar__button sticky-note-toolbar__button--new" type="button" data-testid="sticky-mode-new-note-button" aria-label="새 스티커 메모 만들기" disabled={isMutationLocked} onClick={() => void handleCreateStickyNoteWindow()}>
-      <PlusIcon />
+      새 메모
     </button>
   );
 }
@@ -93,7 +92,7 @@ function StickyEmptyState() {
   return (
     <section className="sticky-note-empty" data-testid="editor-empty-state">
       <strong>메모가 없어요</strong>
-      <p>왼쪽 위 + 버튼으로 새 스티커 메모를 추가해 주세요.</p>
+      <p>새 메모 버튼으로 스티커 메모를 추가해 주세요.</p>
     </section>
   );
 }

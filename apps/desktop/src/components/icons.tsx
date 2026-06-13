@@ -72,6 +72,22 @@ export function IconClose({ className }: IconProps) {
   );
 }
 
+export function IconBolt({ className }: IconProps) {
+  return (
+    <svg className={className} {...BASE_PROPS}>
+      <path d="M13 3 6 13h5l-1 8 7-10h-5l1-8Z" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function IconCheck({ className }: IconProps) {
+  return (
+    <svg className={className} {...BASE_PROPS}>
+      <path d="M5 12.5 9.5 17 19 7" />
+    </svg>
+  );
+}
+
 export function IconSearch({ className }: IconProps) {
   return (
     <svg className={className} {...BASE_PROPS}>

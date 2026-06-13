@@ -1,9 +1,10 @@
-import { app, BrowserWindow, ipcMain, screen, shell } from "electron";
+import { app, BrowserWindow, globalShortcut, ipcMain, Menu, nativeImage, screen, shell, Tray } from "electron";
 import { dirname, join, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { memoChannels } from "./memo-channels.mjs";
 import { promptTemplateChannels } from "./prompt-template-channels.mjs";
+import { quickCaptureChannels } from "./quick-capture-channels.mjs";
 import { createMemoSearchService } from "./search/memo-search-service.mjs";
 import { createContextSearchService } from "./search/context-search-service.mjs";
 import { createComposeService, normalizeComposeInput } from "./compose/compose-service.mjs";
@@ -25,6 +26,9 @@ if (existsSync(envFilePath)) {
 const rendererUrl = process.env.VITE_DEV_SERVER_URL;
 const rendererPath = join(__dirname, "../dist/index.html");
 const windowIconPath = join(__dirname, "assets/window-icon.png");
+const trayIconPath = join(__dirname, "assets/trayIconTemplate.png");
+
+let appTray = null;
 const defaultMinimumSize = {
   width: 640,
   height: 720
@@ -37,6 +41,11 @@ const stickyWindowMinimumSize = {
   width: 360,
   height: 480
 };
+const quickCaptureWindowSize = {
+  width: 360,
+  height: 200
+};
+const quickCaptureShortcut = "CommandOrControl+Shift+N";
 const isPlaywrightE2E = process.env.PLAYWRIGHT_E2E === "1";
 const userDataPathOverride = process.env.AI_NOTE_USER_DATA_PATH;
 const memoEventChannels = {
@@ -441,11 +450,15 @@ function createOrganizerForEnvironment() {
   return localOrganizer;
 }
 
-function loadRendererWindow(windowInstance, { stickyMode = false, noteId = null } = {}) {
+function loadRendererWindow(windowInstance, { stickyMode = false, quickCaptureMode = false, noteId = null } = {}) {
   const query = new URLSearchParams();
 
   if (stickyMode) {
     query.set("view", "sticky");
+  }
+
+  if (quickCaptureMode) {
+    query.set("view", "quick-capture");
   }
 
   if (typeof noteId === "string" && noteId.trim().length > 0) {
@@ -561,6 +574,75 @@ function createStickyNoteWindow(noteId = null) {
   return stickyWindow;
 }
 
+function createQuickCaptureWindow() {
+  const focusedWindow = BrowserWindow.getFocusedWindow();
+  const baseDisplay = focusedWindow
+    ? screen.getDisplayMatching(focusedWindow.getBounds())
+    : screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const workArea = baseDisplay.workArea;
+  const width = Math.min(quickCaptureWindowSize.width, workArea.width);
+  const height = Math.min(quickCaptureWindowSize.height, workArea.height);
+  const x = workArea.x + Math.floor((workArea.width - width) / 2);
+  const y = workArea.y + Math.floor((workArea.height - height) / 3);
+
+  const windowOptions = {
+    x,
+    y,
+    width,
+    height,
+    icon: windowIconPath,
+    backgroundColor: "#fffdf9",
+    frame: false,
+    alwaysOnTop: true,
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    show: false,
+    webPreferences: {
+      preload: join(__dirname, "preload.cjs"),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  };
+
+  const quickCaptureWindow = new BrowserWindow(windowOptions);
+  quickCaptureWindow.setAlwaysOnTop(true, "floating");
+  quickCaptureWindow.once("ready-to-show", () => {
+    quickCaptureWindow.show();
+    quickCaptureWindow.focus();
+  });
+
+  void loadRendererWindow(quickCaptureWindow, { quickCaptureMode: true });
+  attachExternalLinkHandler(quickCaptureWindow);
+
+  return quickCaptureWindow;
+}
+
+function createAppTray(openQuickCaptureWindow) {
+  const trayIcon = nativeImage.createFromPath(trayIconPath);
+  trayIcon.setTemplateImage(true);
+  const tray = new Tray(trayIcon);
+
+  const trayMenu = Menu.buildFromTemplate([
+    {
+      label: "빠른 메모 작성",
+      click: () => openQuickCaptureWindow()
+    },
+    { type: "separator" },
+    {
+      label: "종료",
+      click: () => app.quit()
+    }
+  ]);
+
+  tray.setToolTip("AI 메모장");
+  tray.on("click", () => openQuickCaptureWindow());
+  tray.on("right-click", () => tray.popUpContextMenu(trayMenu));
+
+  return tray;
+}
+
 app.whenReady().then(() => {
   const primaryMemoStore = createPrimaryMemoStore(app.getPath("userData"));
   const memoStore = primaryMemoStore.store;
@@ -661,9 +743,72 @@ app.whenReady().then(() => {
     return targetWindow.isAlwaysOnTop();
   });
 
-  createWindow();
+  let mainWindow = null;
+  let activeQuickCaptureWindow = null;
+
+  function openQuickCaptureWindow() {
+    if (activeQuickCaptureWindow && !activeQuickCaptureWindow.isDestroyed()) {
+      if (activeQuickCaptureWindow.isMinimized()) {
+        activeQuickCaptureWindow.restore();
+      }
+
+      activeQuickCaptureWindow.focus();
+      return;
+    }
+
+    const shouldRestoreBackground = Boolean(mainWindow && !mainWindow.isDestroyed() && !mainWindow.isFocused());
+
+    activeQuickCaptureWindow = createQuickCaptureWindow();
+    activeQuickCaptureWindow.on("closed", () => {
+      activeQuickCaptureWindow = null;
+
+      if (!shouldRestoreBackground || !mainWindow || mainWindow.isDestroyed()) {
+        return;
+      }
+
+      if (process.platform === "darwin") {
+        app.hide();
+      } else if (!mainWindow.isMinimized()) {
+        mainWindow.minimize();
+      }
+    });
+  }
+
+  ipcMain.handle(quickCaptureChannels.open, () => {
+    openQuickCaptureWindow();
+    return true;
+  });
+
+  ipcMain.handle(quickCaptureChannels.close, (event) => {
+    const targetWindow = BrowserWindow.fromWebContents(event.sender);
+
+    if (targetWindow && !targetWindow.isDestroyed()) {
+      targetWindow.close();
+    }
+
+    return true;
+  });
+
+  if (!isPlaywrightE2E) {
+    const shortcutRegistered = globalShortcut.register(quickCaptureShortcut, openQuickCaptureWindow);
+
+    if (!shortcutRegistered) {
+      console.error("[quick-capture] 전역 단축키 등록에 실패했습니다.", quickCaptureShortcut);
+    }
+
+    appTray = createAppTray(openQuickCaptureWindow);
+  }
+
+  mainWindow = createWindow();
 
   app.on("before-quit", () => {
+    globalShortcut.unregisterAll();
+
+    if (appTray) {
+      appTray.destroy();
+      appTray = null;
+    }
+
     if (typeof memoStore.close === "function") {
       memoStore.close();
     }
@@ -671,7 +816,7 @@ app.whenReady().then(() => {
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+      mainWindow = createWindow();
     }
   });
 });

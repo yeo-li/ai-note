@@ -1,7 +1,8 @@
 import type { Dispatch, KeyboardEvent, MouseEvent, ReactNode, RefObject, SetStateAction } from "react";
 import type { MemoId } from "@ai-note/shared/memo";
 import { deriveNoteHeadline } from "../note-content";
-import { IconChat, IconPlus } from "./icons";
+import { IconBolt, IconChat, IconPlus } from "./icons";
+import { canOpenQuickCaptureWindow, isMacOSPlatform, openQuickCaptureWindow } from "../infrastructure/desktop-window";
 import type { Note } from "../domain/note";
 import type { ContextSearchState, SidebarSurface, SidebarView } from "../domain/workspace";
 
@@ -67,8 +68,25 @@ function SidebarActions({ isAiChatOpen, isMutationLocked, isStickyMode, toggleAi
 
   return (
     <div className="sidebar-actions-row">
+      <QuickCaptureButton />
       <AiChatToggleButton isAiChatOpen={isAiChatOpen} isMutationLocked={isMutationLocked} toggleAiChatPanel={toggleAiChatPanel} />
     </div>
+  );
+}
+
+function QuickCaptureButton() {
+  if (!canOpenQuickCaptureWindow()) {
+    return null;
+  }
+
+  const shortcutLabel = isMacOSPlatform() ? "⌘⇧N" : "Ctrl+Shift+N";
+  const label = `빠른 메모 (전역 단축키 ${shortcutLabel})`;
+
+  return (
+    <button className="sidebar-ai-chat-button sidebar-ai-chat-button--icon" type="button" data-testid="sidebar-quick-capture-button" aria-label={label} title={label} onClick={() => void openQuickCaptureWindow()}>
+      <IconBolt className="button-icon" />
+      <span className="visually-hidden">빠른 메모</span>
+    </button>
   );
 }
 

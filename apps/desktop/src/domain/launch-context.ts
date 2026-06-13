@@ -2,6 +2,7 @@ import type { MemoId } from "@ai-note/shared/memo";
 
 export type LaunchContext = {
   stickyMode: boolean;
+  quickCaptureMode: boolean;
   requestedNoteId: MemoId | null;
 };
 
@@ -15,12 +16,13 @@ export function readLaunchContext(): LaunchContext {
 }
 
 function createDefaultLaunchContext(): LaunchContext {
-  return { stickyMode: false, requestedNoteId: null };
+  return { stickyMode: false, quickCaptureMode: false, requestedNoteId: null };
 }
 
 function createLaunchContextFromQuery(query: URLSearchParams): LaunchContext {
   return {
     stickyMode: query.get("view") === "sticky",
+    quickCaptureMode: query.get("view") === "quick-capture",
     requestedNoteId: readRequestedNoteId(query)
   };
 }

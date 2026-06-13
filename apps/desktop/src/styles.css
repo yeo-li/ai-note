@@ -2147,6 +2147,114 @@ a {
 }
 
 /* ==========================================================================
+   Quick capture popup
+   ========================================================================== */
+.quick-capture-pane {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  background-color: var(--surface);
+  background-image: var(--paper-grain);
+  background-size: var(--paper-grain-size);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.quick-capture-card {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.quick-capture-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 8px 6px 14px;
+  -webkit-app-region: drag;
+}
+
+.quick-capture-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+  letter-spacing: 0.02em;
+}
+
+.quick-capture-close-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  color: var(--ink-secondary);
+  -webkit-app-region: no-drag;
+  transition: background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
+}
+
+.quick-capture-close-button .button-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.quick-capture-close-button:hover {
+  background: var(--hover-fill);
+  color: var(--ink);
+}
+
+.quick-capture-input {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  padding: 4px 16px;
+  font-family: var(--font-editor);
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--ink);
+  caret-color: var(--accent);
+  resize: none;
+}
+
+.quick-capture-input::placeholder {
+  color: var(--ink-tertiary);
+}
+
+.quick-capture-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.quick-capture-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 14px 12px;
+}
+
+.quick-capture-hint {
+  font-size: 11px;
+  color: var(--ink-tertiary);
+}
+
+.quick-capture-save-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.quick-capture-save-button .button-icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* ==========================================================================
    Delete confirmation modal
    ========================================================================== */
 .delete-modal-backdrop {

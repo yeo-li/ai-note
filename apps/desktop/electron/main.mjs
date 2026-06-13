@@ -26,10 +26,7 @@ if (existsSync(envFilePath)) {
 const rendererUrl = process.env.VITE_DEV_SERVER_URL;
 const rendererPath = join(__dirname, "../dist/index.html");
 const windowIconPath = join(__dirname, "assets/window-icon.png");
-const trayIconSize = {
-  width: 18,
-  height: 18
-};
+const trayIconPath = join(__dirname, "assets/trayIconTemplate.png");
 
 let appTray = null;
 const defaultMinimumSize = {
@@ -623,7 +620,8 @@ function createQuickCaptureWindow() {
 }
 
 function createAppTray(openQuickCaptureWindow) {
-  const trayIcon = nativeImage.createFromPath(windowIconPath).resize(trayIconSize);
+  const trayIcon = nativeImage.createFromPath(trayIconPath);
+  trayIcon.setTemplateImage(true);
   const tray = new Tray(trayIcon);
 
   tray.setToolTip("AI 메모장");

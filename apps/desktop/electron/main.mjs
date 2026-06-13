@@ -743,6 +743,7 @@ app.whenReady().then(() => {
     return targetWindow.isAlwaysOnTop();
   });
 
+  let mainWindow = null;
   let activeQuickCaptureWindow = null;
 
   function openQuickCaptureWindow() {
@@ -755,9 +756,21 @@ app.whenReady().then(() => {
       return;
     }
 
+    const shouldRestoreBackground = Boolean(mainWindow && !mainWindow.isDestroyed() && !mainWindow.isFocused());
+
     activeQuickCaptureWindow = createQuickCaptureWindow();
     activeQuickCaptureWindow.on("closed", () => {
       activeQuickCaptureWindow = null;
+
+      if (!shouldRestoreBackground || !mainWindow || mainWindow.isDestroyed()) {
+        return;
+      }
+
+      if (process.platform === "darwin") {
+        app.hide();
+      } else if (!mainWindow.isMinimized()) {
+        mainWindow.minimize();
+      }
     });
   }
 
@@ -786,7 +799,7 @@ app.whenReady().then(() => {
     appTray = createAppTray(openQuickCaptureWindow);
   }
 
-  createWindow();
+  mainWindow = createWindow();
 
   app.on("before-quit", () => {
     globalShortcut.unregisterAll();
@@ -803,7 +816,7 @@ app.whenReady().then(() => {
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+      mainWindow = createWindow();
     }
   });
 });

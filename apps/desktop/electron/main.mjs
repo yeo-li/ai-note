@@ -624,20 +624,21 @@ function createAppTray(openQuickCaptureWindow) {
   trayIcon.setTemplateImage(true);
   const tray = new Tray(trayIcon);
 
+  const trayMenu = Menu.buildFromTemplate([
+    {
+      label: "빠른 메모 작성",
+      click: () => openQuickCaptureWindow()
+    },
+    { type: "separator" },
+    {
+      label: "종료",
+      click: () => app.quit()
+    }
+  ]);
+
   tray.setToolTip("AI 메모장");
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      {
-        label: "빠른 메모 작성",
-        click: () => openQuickCaptureWindow()
-      },
-      { type: "separator" },
-      {
-        label: "종료",
-        click: () => app.quit()
-      }
-    ])
-  );
+  tray.on("click", () => openQuickCaptureWindow());
+  tray.on("right-click", () => tray.popUpContextMenu(trayMenu));
 
   return tray;
 }

@@ -400,7 +400,7 @@ async function requestTransformPreview(context: TransformPreviewContext) {
 
   const result = await organizeMemo(createTransformPreviewRequest(activeNote, context.trimmedPrompt));
   context.updateActiveTransformSession((session) => applyTransformPreviewResult(session, activeNote.id, context.trimmedPrompt, result, context.startedAt));
-  context.params.setStatusMessage(result.summary);
+  context.params.setStatusMessage(hasOrganizeSuggestion(result) ? result.summary : "AI 정리 결과를 받지 못했어요.");
 }
 
 function createTransformPreviewRequest(activeNote: Note, trimmedPrompt: string) {
@@ -416,12 +416,34 @@ function createTransformPreviewRequest(activeNote: Note, trimmedPrompt: string) 
 function applyTransformPreviewResult(session: TransformSession, noteId: MemoId, trimmedPrompt: string, result: TransformPreviewResult, startedAt: number) {
   const elapsedLabel = formatElapsedSeconds(Date.now() - startedAt);
 
+  if (!hasOrganizeSuggestion(result)) {
+    return {
+      ...session,
+      isOpen: true,
+      startedAt,
+      draft: null,
+      feedback: createTransformEmptyResultFeedback(elapsedLabel)
+    };
+  }
+
   return {
     ...session,
     isOpen: true,
     startedAt,
     draft: createTransformDraft(noteId, trimmedPrompt, result),
     feedback: createTransformFeedback(result, elapsedLabel)
+  };
+}
+
+function hasOrganizeSuggestion(result: TransformPreviewResult): result is TransformPreviewResult & { suggested: string } {
+  return typeof (result as { suggested?: unknown })?.suggested === "string";
+}
+
+function createTransformEmptyResultFeedback(elapsedLabel: string) {
+  return {
+    kind: "warning" as const,
+    title: "AI 정리 결과 없음",
+    message: `${elapsedLabel} 만에 응답을 받았지만 정리 결과가 없었어요.`
   };
 }
 

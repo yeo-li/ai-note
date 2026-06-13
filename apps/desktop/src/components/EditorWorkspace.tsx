@@ -1,4 +1,5 @@
 import type { Dispatch, FormEvent, KeyboardEvent, RefObject, SetStateAction } from "react";
+import { IconPin, IconSearch, IconSidebarPanel, IconSparkles, IconStar } from "./icons";
 import type { PromptTemplate } from "../shared/prompt-template-bridge";
 import type { DiffSegment } from "../domain/diff";
 import type { FindMatch, Note } from "../domain/note";
@@ -14,6 +15,7 @@ type EditorWorkspaceProps = {
   activeNote: Note | null;
   activeTransformFeedback: EditorFeedback | null;
   aiPromptInputRef: RefObject<HTMLInputElement>;
+  committedFindQuery: string;
   emptyCreateButtonRef: RefObject<HTMLButtonElement>;
   findInputRef: RefObject<HTMLInputElement>;
   findMatches: FindMatch[];
@@ -49,7 +51,6 @@ type EditorWorkspaceProps = {
   closePromptTemplateEditor: () => void;
   handleCreateNote: () => Promise<void>;
   handleOpenStickyNoteWindow: () => Promise<void>;
-  moveFindMatch: (direction: 1 | -1) => void;
   openAiPromptComposer: () => void;
   openFindBar: () => void;
   openPromptTemplateEditor: (template?: PromptTemplate) => void;
@@ -58,7 +59,7 @@ type EditorWorkspaceProps = {
   persistPromptTemplate: () => Promise<void>;
   removePromptTemplate: (templateId: string) => Promise<void>;
   restoreOriginal: () => void;
-  setFindMatchIndex: Dispatch<SetStateAction<number>>;
+  searchFind: (direction: 1 | -1) => void;
   setFindQuery: Dispatch<SetStateAction<string>>;
   setPromptTemplateEditor: Dispatch<SetStateAction<PromptTemplateEditorState>>;
   startTransformPreview: () => Promise<void>;
@@ -123,7 +124,8 @@ function EditorToolbar(props: EditorWorkspaceProps) {
 function SidebarToggleButton({ isSidebarOpen, toggleSidebar }: EditorWorkspaceProps) {
   return (
     <button className="paper-button paper-button-icon" type="button" data-testid="editor-toggle-sidebar-button" aria-label={isSidebarOpen ? "목록 닫기" : "목록 열기"} title={isSidebarOpen ? "목록 닫기" : "목록 열기"} aria-controls="memo-sidebar" aria-expanded={isSidebarOpen} onClick={toggleSidebar}>
-      {isSidebarOpen ? "목록 닫기" : "목록 열기"}
+      <IconSidebarPanel open={isSidebarOpen} className="button-icon" />
+      <span className="visually-hidden">{isSidebarOpen ? "목록 닫기" : "목록 열기"}</span>
     </button>
   );
 }
@@ -131,7 +133,8 @@ function SidebarToggleButton({ isSidebarOpen, toggleSidebar }: EditorWorkspacePr
 function OpenStickyButton({ activeNote, handleOpenStickyNoteWindow }: EditorWorkspaceProps) {
   return (
     <button className="paper-button paper-button-icon" type="button" data-testid="open-sticky-note-button" aria-label="스티커 메모로 열기" title="스티커 메모로 열기" disabled={!activeNote} onClick={() => void handleOpenStickyNoteWindow()}>
-      스티커
+      <IconPin className="button-icon" />
+      <span className="visually-hidden">스티커 메모로 열기</span>
     </button>
   );
 }
@@ -143,7 +146,8 @@ function FavoriteButton({ activeNote, isActiveNoteBusy, toggleFavorite }: Editor
 
   return (
     <button className={`paper-button paper-button-icon editor-favorite-button${activeNote.favorite ? " is-favorite" : ""}`} type="button" data-testid="selected-note-favorite-button" aria-label={activeNote.favorite ? "즐겨찾기를 해제해요" : "즐겨찾기에 추가해요"} aria-pressed={activeNote.favorite} disabled={isActiveNoteBusy} onClick={() => toggleFavorite(activeNote.id)}>
-      {activeNote.favorite ? "즐겨찾기 해제" : "즐겨찾기"}
+      <IconStar filled={activeNote.favorite} className="button-icon" />
+      <span className="visually-hidden">{activeNote.favorite ? "즐겨찾기를 해제해요" : "즐겨찾기에 추가해요"}</span>
     </button>
   );
 }
@@ -152,8 +156,9 @@ function OrganizeButton(props: EditorWorkspaceProps) {
   const disabled = props.isMutationLocked || props.isStickyMode || !props.activeNote || props.isAnyTransformGenerating;
 
   return (
-    <button className="paper-button paper-button-icon" type="button" data-testid="organize-note-button" aria-label="AI로 정리하기" title="AI로 정리하기" disabled={disabled} onClick={props.openAiPromptComposer}>
-      AI 정리
+    <button className={`paper-button paper-button-accent${props.isAiPromptOpen ? " is-active" : ""}`} type="button" data-testid="organize-note-button" aria-label="AI로 정리하기" title="AI로 정리하기" aria-pressed={props.isAiPromptOpen} disabled={disabled} onClick={props.openAiPromptComposer}>
+      <IconSparkles className="button-icon" />
+      <span>AI 정리</span>
     </button>
   );
 }
@@ -163,7 +168,8 @@ function FindToggleButton(props: EditorWorkspaceProps) {
 
   return (
     <button className="paper-button paper-button-icon" type="button" data-testid="note-find-toggle-button" aria-label="메모 안에서 찾기" title="메모 안에서 찾기" disabled={disabled} onClick={props.openFindBar}>
-      찾기
+      <IconSearch className="button-icon" />
+      <span className="visually-hidden">메모 안에서 찾기</span>
     </button>
   );
 }
@@ -189,15 +195,14 @@ function FindBar(props: EditorWorkspaceProps) {
   );
 }
 
-function updateFindQuery(query: string, { setFindMatchIndex, setFindQuery }: EditorWorkspaceProps) {
+function updateFindQuery(query: string, { setFindQuery }: EditorWorkspaceProps) {
   setFindQuery(query);
-  setFindMatchIndex(0);
 }
 
 function handleFindKeyDown(event: KeyboardEvent<HTMLInputElement>, props: EditorWorkspaceProps) {
   if (event.key === "Enter") {
     event.preventDefault();
-    props.moveFindMatch(event.shiftKey ? -1 : 1);
+    props.searchFind(event.shiftKey ? -1 : 1);
   }
 
   if (event.key === "Escape") {
@@ -206,21 +211,28 @@ function handleFindKeyDown(event: KeyboardEvent<HTMLInputElement>, props: Editor
   }
 }
 
-function getFindCountLabel({ findMatches, findMatchIndex, findQuery }: EditorWorkspaceProps) {
+function getFindCountLabel({ committedFindQuery, findMatches, findMatchIndex, findQuery }: EditorWorkspaceProps) {
   if (findQuery.trim().length === 0) {
     return "찾을 내용을 입력해 주세요";
+  }
+
+  if (findQuery.trim() !== committedFindQuery.trim()) {
+    return "Enter를 눌러 검색하세요";
   }
 
   return `${findMatches.length === 0 ? 0 : findMatchIndex + 1}/${findMatches.length}`;
 }
 
-function FindActions({ closeFindBar, findMatches, moveFindMatch }: EditorWorkspaceProps) {
+function FindActions({ closeFindBar, findMatches, findQuery, committedFindQuery, searchFind }: EditorWorkspaceProps) {
+  const isUncommitted = findQuery.trim().length > 0 && findQuery.trim() !== committedFindQuery.trim();
+  const isDisabled = !isUncommitted && findMatches.length === 0;
+
   return (
     <div className="note-find-actions">
-      <button className="paper-button paper-button-icon" type="button" data-testid="note-find-prev-button" aria-label="이전 결과로 이동" disabled={findMatches.length === 0} onClick={() => moveFindMatch(-1)}>
+      <button className="paper-button" type="button" data-testid="note-find-prev-button" aria-label="이전 결과로 이동" disabled={isDisabled} onClick={() => searchFind(-1)}>
         이전
       </button>
-      <button className="paper-button paper-button-icon" type="button" data-testid="note-find-next-button" aria-label="다음 결과로 이동" disabled={findMatches.length === 0} onClick={() => moveFindMatch(1)}>
+      <button className="paper-button" type="button" data-testid="note-find-next-button" aria-label="다음 결과로 이동" disabled={isDisabled} onClick={() => searchFind(1)}>
         다음
       </button>
       <button className="paper-button" type="button" data-testid="note-find-close-button" onClick={() => closeFindBar()}>

@@ -4,11 +4,6 @@ import type { ContextSearchResult } from "./search";
 
 export type AiChatIntent = "search" | "summary" | "compose";
 export type AiChatStatus = "idle" | "thinking";
-type AiChatIntentSignals = {
-  wantsCompose: boolean;
-  wantsSearch: boolean;
-  wantsSummary: boolean;
-};
 type ComposeRevealCursor = {
   delayMs: number | null;
   nextIndex: number;
@@ -62,11 +57,6 @@ export type AiChatMessage =
       createdAt: number;
     };
 
-export const aiChatSuggestions = [
-  "계약 일정과 관련된 메모 찾아줘",
-  "오늘 할 일을 핵심만 요약해줘"
-];
-
 export function createAiChatMessageId() {
   return `ai-chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -82,12 +72,6 @@ export function createInitialAiChatMessages(): AiChatMessage[] {
       createdAt: Date.now()
     }
   ];
-}
-
-export function inferAiChatIntent(prompt: string): AiChatIntent {
-  const normalizedPrompt = prompt.trim().toLowerCase();
-
-  return resolveAiChatIntent(readAiChatIntentSignals(normalizedPrompt));
 }
 
 export function extractMemoSnippet(body: string, fallback: string, headline?: string) {
@@ -120,21 +104,6 @@ export function getComposeRevealStep(text: string, startIndex: number) {
   }
 
   return scanComposeRevealStep(text, startIndex);
-}
-
-function readAiChatIntentSignals(normalizedPrompt: string): AiChatIntentSignals {
-  return {
-    wantsCompose: /(새\s*메모|새로운\s*메모|초안|작성|생성|만들|compose|draft|create)/.test(normalizedPrompt),
-    wantsSummary: /(요약|정리|핵심|브리핑|알려|summar|summary|brief)/.test(normalizedPrompt),
-    wantsSearch: /(찾|검색|관련|목록|리스트|보여|어떤|어디|find|search|list)/.test(normalizedPrompt)
-  };
-}
-
-function resolveAiChatIntent(signals: AiChatIntentSignals): AiChatIntent {
-  if (signals.wantsCompose) return "compose";
-  if (signals.wantsSummary) return "summary";
-  if (signals.wantsSearch) return "search";
-  return "search";
 }
 
 function buildAiChatSummaryItems(results: ContextSearchResult[]) {

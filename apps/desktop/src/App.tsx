@@ -112,9 +112,12 @@ function App() {
     aiChatInput,
     setAiChatInput,
     aiChatMessages,
+    aiChatMode,
+    setAiChatMode,
     aiChatStatus,
     isAiChatThinking,
     isChatExpanded,
+    cancelAiChatRequest,
     closeAiChatPanel,
     toggleAiChatPanel,
     submitAiChatPrompt,
@@ -162,16 +165,16 @@ function App() {
     return selectedNote ?? notes[0];
   }, [notes, scopedNotes, selectedNote, selectedNoteId, sidebarView]);
   const {
+    committedFindQuery,
     findInputRef,
     findMatches,
     findMatchIndex,
     findQuery,
     isFindBarOpen,
-    setFindMatchIndex,
     setFindQuery,
     openFindBar: openFindBarFromHook,
     closeFindBar: closeFindBarFromHook,
-    moveFindMatch: moveFindMatchFromHook
+    searchFind: searchFindFromHook
   } = useFindController({
     activeNote,
     isStickyMode,
@@ -452,8 +455,8 @@ function App() {
     closeFindBarFromHook(options);
   }
 
-  function moveFindMatch(direction: 1 | -1) {
-    moveFindMatchFromHook(direction);
+  function searchFind(direction: 1 | -1) {
+    searchFindFromHook(direction);
   }
 
   function openAiPromptComposer() {
@@ -597,6 +600,7 @@ function App() {
                 activeTransformFeedback={activeTransformFeedback}
                 aiPromptInputRef={aiPromptInputRef}
                 emptyCreateButtonRef={emptyCreateButtonRef}
+                committedFindQuery={committedFindQuery}
                 findInputRef={findInputRef}
                 findMatches={findMatches}
                 findMatchIndex={findMatchIndex}
@@ -631,7 +635,6 @@ function App() {
                 closePromptTemplateEditor={closePromptTemplateEditor}
                 handleCreateNote={handleCreateNote}
                 handleOpenStickyNoteWindow={handleOpenStickyNoteWindow}
-                moveFindMatch={moveFindMatch}
                 openAiPromptComposer={openAiPromptComposer}
                 openFindBar={openFindBar}
                 openPromptTemplateEditor={openPromptTemplateEditor}
@@ -640,7 +643,7 @@ function App() {
                 persistPromptTemplate={persistPromptTemplate}
                 removePromptTemplate={removePromptTemplate}
                 restoreOriginal={restoreOriginal}
-                setFindMatchIndex={setFindMatchIndex}
+                searchFind={searchFind}
                 setFindQuery={setFindQuery}
                 setPromptTemplateEditor={setPromptTemplateEditor}
                 startTransformPreview={startTransformPreview}
@@ -665,11 +668,14 @@ function App() {
               aiChatInput={aiChatInput}
               aiChatInputRef={aiChatInputRef}
               aiChatMessages={aiChatMessages}
+              aiChatMode={aiChatMode}
               aiChatThreadRef={aiChatThreadRef}
               isAiChatThinking={isAiChatThinking}
+              cancelAiChatRequest={cancelAiChatRequest}
               closeAiChatPanel={closeAiChatPanel}
               openNoteFromAiChat={openNoteFromAiChat}
               setAiChatInput={setAiChatInput}
+              setAiChatMode={setAiChatMode}
               submitAiChatPrompt={submitAiChatPrompt}
             />
           ) : null}

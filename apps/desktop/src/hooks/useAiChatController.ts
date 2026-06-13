@@ -1,14 +1,13 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { MemoId } from "@ai-note/shared/memo";
 import { buildMemoTitleFromBody } from "../note-content";
 import {
   buildAiChatSummary,
   createAiChatMessageId,
-  createInitialAiChatMessages,
-  inferAiChatIntent
+  createInitialAiChatMessages
 } from "../domain/ai-chat";
-import type { AiChatMessage, AiChatStatus } from "../domain/ai-chat";
+import type { AiChatIntent, AiChatMessage, AiChatStatus } from "../domain/ai-chat";
 import { createInitialComposeSession } from "../domain/compose-session";
 import type { ComposeSession } from "../domain/compose-session";
 import type { ContextSearchState, SidebarSearchMode, SidebarSurface } from "../domain/workspace";
@@ -55,6 +54,7 @@ export function useAiChatController(params: UseAiChatControllerParams) {
     closeAiChatPanel: () => closeAiChatPanel(context),
     toggleAiChatPanel: () => toggleAiChatPanel(context),
     submitAiChatPrompt: (promptOverride?: string) => submitAiChatPrompt(promptOverride, context),
+    cancelAiChatRequest: () => cancelAiChatRequest(context),
     openNoteFromAiChat: (noteId: MemoId) => openNoteFromAiChat(noteId, context)
   };
 }
@@ -65,8 +65,10 @@ function useAiChatState() {
   const [aiChatMessages, setAiChatMessages] = useState<AiChatMessage[]>(createInitialAiChatMessages);
   const [aiChatStatus, setAiChatStatus] = useState<AiChatStatus>("idle");
   const [isChatExpanded, setIsChatExpanded] = useState(false);
+  const [aiChatMode, setAiChatMode] = useState<AiChatIntent>("search");
+  const aiChatCancelledRef = useRef(false);
 
-  return { isAiChatOpen, setIsAiChatOpen, aiChatInput, setAiChatInput, aiChatMessages, aiChatStatus, setAiChatMessages, setAiChatStatus, isChatExpanded, setIsChatExpanded };
+  return { isAiChatOpen, setIsAiChatOpen, aiChatInput, setAiChatInput, aiChatMessages, aiChatStatus, setAiChatMessages, setAiChatStatus, isChatExpanded, setIsChatExpanded, aiChatMode, setAiChatMode, aiChatCancelledRef };
 }
 
 function appendAiChatMessage(message: AiChatMessage, { setAiChatMessages }: AiChatContext) {
@@ -126,6 +128,7 @@ async function fetchAiChatSearchResults(prompt: string, context: AiChatContext) 
 
 async function answerAiChatWithSearch(prompt: string, context: AiChatContext) {
   const results = await fetchAiChatSearchResults(prompt, context);
+  if (context.aiChatCancelledRef.current) return;
 
   if (results.length === 0) {
     appendAiChatMessage(createNoSearchResultsMessage(), context);
@@ -147,6 +150,7 @@ function createSearchResultsMessage(prompt: string, results: Awaited<ReturnType<
 
 async function answerAiChatWithSummary(prompt: string, context: AiChatContext) {
   const results = await fetchAiChatSearchResults(prompt, context);
+  if (context.aiChatCancelledRef.current) return;
 
   if (results.length === 0) {
     appendAiChatMessage(createNoSummaryResultsMessage(), context);
@@ -173,6 +177,7 @@ function createTextResponse(title: string, text: string): AiChatMessage {
 async function answerAiChatWithComposedMemo(prompt: string, context: AiChatContext) {
   ensureCanComposeMemo(context);
   const result = await composeMemo({ prompt, intent: deriveOrganizeIntent(prompt) });
+  if (context.aiChatCancelledRef.current) return;
 
   if (result.kind === "refused") {
     appendAiChatMessage(createComposeRefusalMessage(result), context);
@@ -220,13 +225,24 @@ async function submitAiChatPrompt(promptOverride: string | undefined, context: A
   const trimmedPrompt = (promptOverride ?? context.aiChatInput).trim();
   if (!prepareAiChatPrompt(trimmedPrompt, context)) return;
 
+  context.aiChatCancelledRef.current = false;
+
   try {
     await answerAiChatPrompt(trimmedPrompt, context);
   } catch (error) {
-    appendAiChatError(error, context);
+    if (!context.aiChatCancelledRef.current) appendAiChatError(error, context);
   } finally {
-    context.setAiChatStatus("idle");
+    if (!context.aiChatCancelledRef.current) context.setAiChatStatus("idle");
   }
+}
+
+function cancelAiChatRequest(context: AiChatContext) {
+  if (context.aiChatStatus !== "thinking") return;
+
+  context.aiChatCancelledRef.current = true;
+  context.setAiChatStatus("idle");
+  appendAiChatMessage({ id: createAiChatMessageId(), role: "assistant", kind: "text", title: "요청을 중단했어요", text: "다음 요청을 이어서 입력할 수 있어요.", createdAt: Date.now() }, context);
+  context.setStatusMessage("AI 채팅 요청을 중단했어요.");
 }
 
 function prepareAiChatPrompt(trimmedPrompt: string, context: AiChatContext) {
@@ -243,9 +259,8 @@ function prepareAiChatPrompt(trimmedPrompt: string, context: AiChatContext) {
 }
 
 async function answerAiChatPrompt(trimmedPrompt: string, context: AiChatContext) {
-  const intent = inferAiChatIntent(trimmedPrompt);
-  if (intent === "compose") return answerAiChatWithComposedMemo(trimmedPrompt, context);
-  if (intent === "summary") return answerAiChatWithSummary(trimmedPrompt, context);
+  if (context.aiChatMode === "compose") return answerAiChatWithComposedMemo(trimmedPrompt, context);
+  if (context.aiChatMode === "summary") return answerAiChatWithSummary(trimmedPrompt, context);
   return answerAiChatWithSearch(trimmedPrompt, context);
 }
 

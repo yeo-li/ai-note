@@ -1,4 +1,5 @@
 import type { RefObject } from "react";
+import { IconClose, IconPin, IconPlus } from "./icons";
 import type { Note } from "../domain/note";
 
 type StickyNotePaneProps = {
@@ -41,25 +42,32 @@ function StickyToolbar(props: StickyNotePaneProps) {
 }
 
 function CloseStickyButton({ closeStickySurface, isDedicatedStickyWindow }: StickyNotePaneProps) {
+  const label = isDedicatedStickyWindow ? "스티커 창 닫기" : "일반 모드로 돌아가기";
+
   return (
-    <button className="sticky-note-toolbar__button sticky-note-toolbar__button--close" type="button" data-testid="sticky-mode-exit-button" aria-label={isDedicatedStickyWindow ? "스티커 창 닫기" : "일반 모드로 돌아가기"} onClick={closeStickySurface}>
-      {isDedicatedStickyWindow ? "닫기" : "일반 모드"}
+    <button className="sticky-note-toolbar__button sticky-note-toolbar__button--close" type="button" data-testid="sticky-mode-exit-button" aria-label={label} title={label} onClick={closeStickySurface}>
+      <IconClose className="button-icon" />
+      <span className="visually-hidden">{label}</span>
     </button>
   );
 }
 
 function PinStickyButton({ isStickyPinned, toggleStickyPinned }: StickyNotePaneProps) {
+  const label = isStickyPinned ? "스티커 메모 고정 해제" : "스티커 메모 고정";
+
   return (
-    <button className={`sticky-note-toolbar__button sticky-note-toolbar__button--pin${isStickyPinned ? " is-pinned" : ""}`} type="button" data-testid="sticky-mode-pin-button" aria-label={isStickyPinned ? "스티커 메모 고정 해제" : "스티커 메모 고정"} aria-pressed={isStickyPinned} onClick={() => void toggleStickyPinned()}>
-      {isStickyPinned ? "고정 해제" : "고정"}
+    <button className={`sticky-note-toolbar__button sticky-note-toolbar__button--pin${isStickyPinned ? " is-pinned" : ""}`} type="button" data-testid="sticky-mode-pin-button" aria-label={label} title={label} aria-pressed={isStickyPinned} onClick={() => void toggleStickyPinned()}>
+      <IconPin className="button-icon" />
+      <span className="visually-hidden">{label}</span>
     </button>
   );
 }
 
 function NewStickyButton({ handleCreateStickyNoteWindow, isMutationLocked }: StickyNotePaneProps) {
   return (
-    <button className="sticky-note-toolbar__button sticky-note-toolbar__button--new" type="button" data-testid="sticky-mode-new-note-button" aria-label="새 스티커 메모 만들기" disabled={isMutationLocked} onClick={() => void handleCreateStickyNoteWindow()}>
-      새 메모
+    <button className="sticky-note-toolbar__button sticky-note-toolbar__button--new" type="button" data-testid="sticky-mode-new-note-button" aria-label="새 스티커 메모 만들기" title="새 스티커 메모 만들기" disabled={isMutationLocked} onClick={() => void handleCreateStickyNoteWindow()}>
+      <IconPlus className="button-icon" />
+      <span className="visually-hidden">새 스티커 메모 만들기</span>
     </button>
   );
 }

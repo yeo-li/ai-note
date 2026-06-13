@@ -1,7 +1,7 @@
-import type { Dispatch, KeyboardEvent, ReactNode, RefObject, SetStateAction } from "react";
+import type { Dispatch, KeyboardEvent, MouseEvent, ReactNode, RefObject, SetStateAction } from "react";
 import type { MemoId } from "@ai-note/shared/memo";
 import { deriveNoteHeadline } from "../note-content";
-import brandMarkUrl from "../assets/brand-mark.svg";
+import { IconChat, IconPlus } from "./icons";
 import type { Note } from "../domain/note";
 import type { ContextSearchState, SidebarSurface, SidebarView } from "../domain/workspace";
 
@@ -53,7 +53,6 @@ export function Sidebar(props: SidebarProps) {
 function SidebarHead(props: SidebarProps) {
   return (
     <div className="sidebar-head" data-testid="app-brand-mark">
-      <img className="app-main-icon" src={brandMarkUrl} alt="AI Note" />
       <SidebarActions {...props} />
       <SidebarSearch {...props} />
       <SidebarNav {...props} />
@@ -61,13 +60,14 @@ function SidebarHead(props: SidebarProps) {
   );
 }
 
-function SidebarActions({ handleCreateNote, isAiChatOpen, isComposeScreenOpen, isMutationLocked, isStickyMode, toggleAiChatPanel }: SidebarProps) {
+function SidebarActions({ isAiChatOpen, isMutationLocked, isStickyMode, toggleAiChatPanel }: SidebarProps) {
+  if (isStickyMode) {
+    return null;
+  }
+
   return (
     <div className="sidebar-actions-row">
-      <button className="link-button sidebar-create-button" type="button" data-testid="sidebar-create-note-button" aria-label="새 메모 만들기" title="새 메모 만들기" disabled={isMutationLocked || isComposeScreenOpen} onClick={() => void handleCreateNote()}>
-        새 메모
-      </button>
-      {!isStickyMode ? <AiChatToggleButton isAiChatOpen={isAiChatOpen} isMutationLocked={isMutationLocked} toggleAiChatPanel={toggleAiChatPanel} /> : null}
+      <AiChatToggleButton isAiChatOpen={isAiChatOpen} isMutationLocked={isMutationLocked} toggleAiChatPanel={toggleAiChatPanel} />
     </div>
   );
 }
@@ -75,7 +75,8 @@ function SidebarActions({ handleCreateNote, isAiChatOpen, isComposeScreenOpen, i
 function AiChatToggleButton({ isAiChatOpen, isMutationLocked, toggleAiChatPanel }: Pick<SidebarProps, "isAiChatOpen" | "isMutationLocked" | "toggleAiChatPanel">) {
   return (
     <button className={`sidebar-ai-chat-button sidebar-ai-chat-button--icon${isAiChatOpen ? " is-active" : ""}`} type="button" data-testid="sidebar-ai-chat-button" aria-label={isAiChatOpen ? "AI 채팅 닫기" : "AI 채팅 열기"} title={isAiChatOpen ? "AI 채팅 닫기" : "AI 채팅 열기"} aria-pressed={isAiChatOpen} disabled={isMutationLocked && !isAiChatOpen} onClick={toggleAiChatPanel}>
-      {isAiChatOpen ? "AI 채팅 닫기" : "AI 채팅"}
+      <IconChat className="button-icon" />
+      <span className="visually-hidden">{isAiChatOpen ? "AI 채팅 닫기" : "AI 채팅 열기"}</span>
     </button>
   );
 }
@@ -193,18 +194,30 @@ function ContextSearchResults({ activeNote, contextSearch, openNoteFromContextSe
 function NotesSurface(props: SidebarProps) {
   return (
     <>
-      <SidebarSectionHeading sidebarCountLabel={props.sidebarCountLabel} sidebarView={props.sidebarView} />
+      <SidebarSectionHeading {...props} />
       <NotesListOrEmpty {...props} />
     </>
   );
 }
 
-function SidebarSectionHeading({ sidebarCountLabel, sidebarView }: Pick<SidebarProps, "sidebarCountLabel" | "sidebarView">) {
+function SidebarSectionHeading(props: SidebarProps) {
   return (
     <div className="sidebar-section-heading">
-      <span>{sidebarView === "favorites" ? "즐겨찾기" : "최근"}</span>
-      <span>{sidebarCountLabel}</span>
+      <span className="sidebar-section-heading__label">
+        <span>{props.sidebarView === "favorites" ? "즐겨찾기" : "최근"}</span>
+        <span className="sidebar-section-heading__count">{props.sidebarCountLabel}</span>
+      </span>
+      <SidebarCreateButton {...props} />
     </div>
+  );
+}
+
+function SidebarCreateButton({ handleCreateNote, isComposeScreenOpen, isMutationLocked }: SidebarProps) {
+  return (
+    <button className="paper-button paper-button-icon sidebar-create-button" type="button" data-testid="sidebar-create-note-button" aria-label="새 메모 만들기" title="새 메모 만들기" disabled={isMutationLocked || isComposeScreenOpen} onClick={() => void handleCreateNote()}>
+      <IconPlus className="button-icon" />
+      <span className="visually-hidden">새 메모 만들기</span>
+    </button>
   );
 }
 
@@ -227,18 +240,29 @@ function NotesList(props: SidebarProps) {
 function NoteListItem(props: SidebarProps & { note: Note }) {
   const isSelected = props.activeNote?.id === props.note.id;
   const noteLabel = deriveNoteHeadline(props.note.body);
+  const isNoteMenuOpen = props.noteMenuId === props.note.id;
+  const noteMenuIdValue = `note-actions-menu-${props.note.id}`;
 
   return (
-    <li className={`note-list-item${isSelected ? " is-selected" : ""}`} data-mode={props.note.mode} onClick={() => selectNote(props.note.id, props)}>
-      <button className="note-list-item-button" data-testid={`note-list-item-${props.note.id}`} type="button" disabled={props.isComposeScreenOpen} aria-current={isSelected ? "true" : undefined} aria-label={`${noteLabel} 메모`} onClick={() => selectNote(props.note.id, props)}>
+    <li className={`note-list-item${isSelected ? " is-selected" : ""}`} data-mode={props.note.mode} onClick={() => selectNote(props.note.id, props)} onContextMenu={(event) => openNoteContextMenu(event, props.note.id, props)}>
+      <button className="note-list-item-button" data-testid={`note-list-item-${props.note.id}`} type="button" disabled={props.isComposeScreenOpen} aria-current={isSelected ? "true" : undefined} aria-label={`${noteLabel} 메모`} aria-expanded={isNoteMenuOpen} aria-controls={isNoteMenuOpen ? noteMenuIdValue : undefined} onClick={() => selectNote(props.note.id, props)}>
         <span className="note-list-copy">
           <strong>{noteLabel}</strong>
           <span className="note-list-date">{props.note.dateLabel === "이제" ? props.note.updatedAt : props.note.dateLabel}</span>
         </span>
       </button>
-      {isSelected ? <NoteListActions {...props} noteLabel={noteLabel} /> : null}
+      {isNoteMenuOpen ? <NoteMenu noteId={props.note.id} noteMenuIdValue={noteMenuIdValue} {...props} /> : null}
     </li>
   );
+}
+
+function openNoteContextMenu(event: MouseEvent<HTMLLIElement>, noteId: MemoId, props: SidebarProps) {
+  if (props.isComposeScreenOpen) {
+    return;
+  }
+
+  event.preventDefault();
+  props.toggleNoteMenu(noteId);
 }
 
 function selectNote(noteId: MemoId, { isComposeScreenOpen, setDeleteIntentId, setNoteMenuId, setSelectedNoteId }: SidebarProps) {
@@ -251,23 +275,9 @@ function selectNote(noteId: MemoId, { isComposeScreenOpen, setDeleteIntentId, se
   setNoteMenuId(null);
 }
 
-function NoteListActions(props: SidebarProps & { note: Note; noteLabel: string }) {
-  const isNoteMenuOpen = props.noteMenuId === props.note.id;
-  const noteMenuIdValue = `note-actions-menu-${props.note.id}`;
-
-  return (
-    <div className="note-list-actions" data-note-menu-root="true" onClick={(event) => event.stopPropagation()}>
-      <button className="note-list-menu-button" type="button" data-testid="selected-note-menu-button" disabled={props.isComposeScreenOpen} aria-label={`${props.noteLabel} 메모 메뉴`} aria-expanded={isNoteMenuOpen} aria-controls={isNoteMenuOpen ? noteMenuIdValue : undefined} onClick={() => props.toggleNoteMenu(props.note.id)}>
-        메뉴
-      </button>
-      {isNoteMenuOpen ? <NoteMenu noteId={props.note.id} noteMenuIdValue={noteMenuIdValue} {...props} /> : null}
-    </div>
-  );
-}
-
 function NoteMenu(props: SidebarProps & { noteId: MemoId; noteMenuIdValue: string }) {
   return (
-    <div className="note-list-menu" id={props.noteMenuIdValue}>
+    <div className="note-list-menu" id={props.noteMenuIdValue} data-note-menu-root="true" onClick={(event) => event.stopPropagation()}>
       <button className="note-list-menu-item note-list-menu-item-danger" type="button" data-testid="selected-note-delete-button" disabled={props.isMutationLocked} onClick={() => props.beginDeleteNote(props.noteId)}>
         삭제
       </button>

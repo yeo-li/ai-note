@@ -15,11 +15,13 @@ type UseFindControllerParams = {
 };
 
 type FindControllerState = {
+  committedFindQuery: string;
   findInputRef: RefObject<HTMLInputElement>;
   findMatches: FindMatch[];
   findMatchIndex: number;
   findQuery: string;
   isFindBarOpen: boolean;
+  setCommittedFindQuery: Dispatch<SetStateAction<string>>;
   setFindMatchIndex: Dispatch<SetStateAction<number>>;
   setFindQuery: Dispatch<SetStateAction<string>>;
   setIsFindBarOpen: Dispatch<SetStateAction<boolean>>;
@@ -36,11 +38,12 @@ export function useFindController(params: UseFindControllerParams) {
 function useFindControllerState(noteBody: string): FindControllerState {
   const [isFindBarOpen, setIsFindBarOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
+  const [committedFindQuery, setCommittedFindQuery] = useState("");
   const [findMatchIndex, setFindMatchIndex] = useState(0);
   const findInputRef = useRef<HTMLInputElement>(null);
-  const findMatches = useMemo(() => findMatchesInBody(noteBody, findQuery), [findQuery, noteBody]);
+  const findMatches = useMemo(() => findMatchesInBody(noteBody, committedFindQuery), [committedFindQuery, noteBody]);
 
-  return { findInputRef, findMatches, findMatchIndex, findQuery, isFindBarOpen, setFindMatchIndex, setFindQuery, setIsFindBarOpen };
+  return { committedFindQuery, findInputRef, findMatches, findMatchIndex, findQuery, isFindBarOpen, setCommittedFindQuery, setFindMatchIndex, setFindQuery, setIsFindBarOpen };
 }
 
 function useFindControllerEffects(params: UseFindControllerParams, state: FindControllerState) {
@@ -53,27 +56,28 @@ function useFindControllerEffects(params: UseFindControllerParams, state: FindCo
 
 function createFindControllerResult(params: UseFindControllerParams, state: FindControllerState) {
   return {
+    committedFindQuery: state.committedFindQuery,
     findInputRef: state.findInputRef,
     findMatches: state.findMatches,
     findMatchIndex: state.findMatchIndex,
     findQuery: state.findQuery,
     isFindBarOpen: state.isFindBarOpen,
-    setFindMatchIndex: state.setFindMatchIndex,
     setFindQuery: state.setFindQuery,
     openFindBar: () => openFindBar(params, state),
     closeFindBar: (options?: { restoreEditorFocus?: boolean }) => closeFindBar(params, state, options),
-    moveFindMatch: (direction: 1 | -1) => moveFindMatch(params, state, direction)
+    searchFind: (direction: 1 | -1) => searchFind(params, state, direction)
   };
 }
 
 function useResetFindOnNoteChange(activeNoteId: string | undefined, state: FindControllerState) {
-  const { setFindMatchIndex, setFindQuery, setIsFindBarOpen } = state;
+  const { setCommittedFindQuery, setFindMatchIndex, setFindQuery, setIsFindBarOpen } = state;
 
   useEffect(() => {
     setIsFindBarOpen(false);
     setFindQuery("");
+    setCommittedFindQuery("");
     setFindMatchIndex(0);
-  }, [activeNoteId, setFindMatchIndex, setFindQuery, setIsFindBarOpen]);
+  }, [activeNoteId, setCommittedFindQuery, setFindMatchIndex, setFindQuery, setIsFindBarOpen]);
 }
 
 function useFindInputFocus(isFindBarOpen: boolean, findInputRef: RefObject<HTMLInputElement>) {
@@ -153,17 +157,41 @@ function closeFindBar(params: UseFindControllerParams, state: FindControllerStat
   const { restoreEditorFocus = true } = options;
   state.setIsFindBarOpen(false);
   state.setFindQuery("");
+  state.setCommittedFindQuery("");
   state.setFindMatchIndex(0);
   if (restoreEditorFocus) params.noteBodyInputRef.current?.focus();
   params.setStatusMessage("메모 안에서 찾기를 닫았어요.");
 }
 
+function searchFind(params: UseFindControllerParams, state: FindControllerState, direction: 1 | -1) {
+  const trimmedQuery = state.findQuery.trim();
+
+  if (trimmedQuery.length === 0) {
+    return;
+  }
+
+  if (trimmedQuery !== state.committedFindQuery.trim()) {
+    state.setCommittedFindQuery(state.findQuery);
+    state.setFindMatchIndex(0);
+
+    const matches = findMatchesInBody(params.activeNote?.body ?? "", state.findQuery);
+    if (matches.length === 0) {
+      params.setStatusMessage(`"${trimmedQuery}"을 찾지 못했어요.`);
+    } else {
+      params.setStatusMessage(`"${trimmedQuery}" 검색 결과 ${matches.length}개를 찾았어요.`);
+    }
+    return;
+  }
+
+  moveFindMatch(params, state, direction);
+}
+
 function moveFindMatch(params: UseFindControllerParams, state: FindControllerState, direction: 1 | -1) {
   if (state.findMatches.length === 0) {
-    params.setStatusMessage(`"${state.findQuery.trim()}"을 찾지 못했어요.`);
+    params.setStatusMessage(`"${state.committedFindQuery.trim()}"을 찾지 못했어요.`);
     return;
   }
 
   state.setFindMatchIndex((currentIndex) => (currentIndex + direction + state.findMatches.length) % state.findMatches.length);
-  params.setStatusMessage(`"${state.findQuery.trim()}" 검색 결과 ${state.findMatches.length}개 중에서 이동하고 있어요.`);
+  params.setStatusMessage(`"${state.committedFindQuery.trim()}" 검색 결과 ${state.findMatches.length}개 중에서 이동하고 있어요.`);
 }

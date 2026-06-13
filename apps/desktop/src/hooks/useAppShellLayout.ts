@@ -34,13 +34,13 @@ function getAppBodyGridStyle(params: UseAppShellLayoutParams) {
   if (params.isStickyMode) return {};
   if (!params.isSidebarOpen && !params.isAiChatOpen) return { gridTemplateColumns: "1fr" };
   if (!params.isSidebarOpen) return getChatOnlyGridStyle(params);
-  if (!params.isAiChatOpen) return { gridTemplateColumns: `${params.sidebarWidth}px 6px 1fr` };
-  if (params.isChatExpanded) return { gridTemplateColumns: `${params.sidebarWidth}px 6px 1fr` };
-  return { gridTemplateColumns: `${params.sidebarWidth}px 6px 1fr 6px ${params.chatWidth}px` };
+  if (!params.isAiChatOpen) return { gridTemplateColumns: `${params.sidebarWidth}px 1px 1fr` };
+  if (params.isChatExpanded) return { gridTemplateColumns: `${params.sidebarWidth}px 1px 1fr` };
+  return { gridTemplateColumns: `${params.sidebarWidth}px 1px 1fr 1px ${params.chatWidth}px` };
 }
 
 function getChatOnlyGridStyle({ chatWidth, isChatExpanded }: UseAppShellLayoutParams) {
   return {
-    gridTemplateColumns: isChatExpanded ? "1fr" : `1fr 6px ${chatWidth}px`
+    gridTemplateColumns: isChatExpanded ? "1fr" : `1fr 1px ${chatWidth}px`
   };
 }

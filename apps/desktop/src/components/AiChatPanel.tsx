@@ -1,20 +1,22 @@
 import type { FormEvent, KeyboardEvent, RefObject } from "react";
 import { deriveNoteHeadline } from "../note-content";
-import { aiChatSuggestions } from "../domain/ai-chat";
-import type { AiChatMessage } from "../domain/ai-chat";
+import type { AiChatIntent, AiChatMessage } from "../domain/ai-chat";
 import type { Note } from "../domain/note";
-import type { AiChatInputHandler, MemoIdHandler } from "./component-types";
+import type { AiChatInputHandler, AiChatModeHandler, MemoIdHandler } from "./component-types";
 
 type AiChatPanelProps = {
   activeNote: Note | null;
   aiChatInput: string;
   aiChatInputRef: RefObject<HTMLTextAreaElement>;
   aiChatMessages: AiChatMessage[];
+  aiChatMode: AiChatIntent;
   aiChatThreadRef: RefObject<HTMLDivElement>;
   isAiChatThinking: boolean;
+  cancelAiChatRequest: () => void;
   closeAiChatPanel: () => void;
   openNoteFromAiChat: MemoIdHandler;
   setAiChatInput: AiChatInputHandler;
+  setAiChatMode: AiChatModeHandler;
   submitAiChatPrompt: (promptOverride?: string) => Promise<void>;
 };
 
@@ -23,13 +25,18 @@ export function AiChatPanel({
   aiChatInput,
   aiChatInputRef,
   aiChatMessages,
+  aiChatMode,
   aiChatThreadRef,
   isAiChatThinking,
+  cancelAiChatRequest,
   closeAiChatPanel,
   openNoteFromAiChat,
   setAiChatInput,
+  setAiChatMode,
   submitAiChatPrompt
 }: AiChatPanelProps) {
+  const isAiChatEmpty = aiChatMessages.length <= 1;
+
   return (
     <aside className="ai-chat-panel" data-testid="ai-chat-panel" aria-label="AI 채팅">
       <AiChatHeader closeAiChatPanel={closeAiChatPanel} />
@@ -37,15 +44,18 @@ export function AiChatPanel({
         activeNote={activeNote}
         aiChatMessages={aiChatMessages}
         aiChatThreadRef={aiChatThreadRef}
+        isAiChatEmpty={isAiChatEmpty}
         isAiChatThinking={isAiChatThinking}
         openNoteFromAiChat={openNoteFromAiChat}
       />
-      <AiChatSuggestions isAiChatThinking={isAiChatThinking} submitAiChatPrompt={submitAiChatPrompt} />
       <AiChatComposer
         aiChatInput={aiChatInput}
         aiChatInputRef={aiChatInputRef}
+        aiChatMode={aiChatMode}
         isAiChatThinking={isAiChatThinking}
+        cancelAiChatRequest={cancelAiChatRequest}
         setAiChatInput={setAiChatInput}
+        setAiChatMode={setAiChatMode}
         submitAiChatPrompt={submitAiChatPrompt}
       />
     </aside>
@@ -70,13 +80,14 @@ type AiChatThreadProps = {
   activeNote: Note | null;
   aiChatMessages: AiChatMessage[];
   aiChatThreadRef: RefObject<HTMLDivElement>;
+  isAiChatEmpty: boolean;
   isAiChatThinking: boolean;
   openNoteFromAiChat: MemoIdHandler;
 };
 
-function AiChatThread({ activeNote, aiChatMessages, aiChatThreadRef, isAiChatThinking, openNoteFromAiChat }: AiChatThreadProps) {
+function AiChatThread({ activeNote, aiChatMessages, aiChatThreadRef, isAiChatEmpty, isAiChatThinking, openNoteFromAiChat }: AiChatThreadProps) {
   return (
-    <div className="ai-chat-thread" data-testid="ai-chat-thread" ref={aiChatThreadRef}>
+    <div className={`ai-chat-thread${isAiChatEmpty ? " ai-chat-thread--empty" : ""}`} data-testid="ai-chat-thread" ref={aiChatThreadRef}>
       {aiChatMessages.map((message) => (
         <AiChatMessageCard key={message.id} activeNote={activeNote} message={message} openNoteFromAiChat={openNoteFromAiChat} />
       ))}
@@ -198,38 +209,76 @@ function MessageHead({ label, title }: { label: string; title: string }) {
   );
 }
 
-function AiChatSuggestions({ isAiChatThinking, submitAiChatPrompt }: { isAiChatThinking: boolean; submitAiChatPrompt: (promptOverride?: string) => Promise<void> }) {
+type AiChatComposerProps = {
+  aiChatInput: string;
+  aiChatInputRef: RefObject<HTMLTextAreaElement>;
+  aiChatMode: AiChatIntent;
+  isAiChatThinking: boolean;
+  cancelAiChatRequest: () => void;
+  setAiChatInput: AiChatInputHandler;
+  setAiChatMode: AiChatModeHandler;
+  submitAiChatPrompt: (promptOverride?: string) => Promise<void>;
+};
+
+function AiChatComposer({ aiChatInput, aiChatInputRef, aiChatMode, isAiChatThinking, cancelAiChatRequest, setAiChatInput, setAiChatMode, submitAiChatPrompt }: AiChatComposerProps) {
   return (
-    <div className="ai-chat-suggestions" aria-label="추천 요청">
-      {aiChatSuggestions.map((suggestion) => (
-        <button key={suggestion} className="ai-chat-suggestion" type="button" disabled={isAiChatThinking} onClick={() => void submitAiChatPrompt(suggestion)}>
-          {suggestion}
+    <form className="ai-chat-composer" data-testid="ai-chat-form" onSubmit={(event) => submitAiChatForm(event, submitAiChatPrompt)}>
+      <AiChatModeSelector aiChatMode={aiChatMode} isAiChatThinking={isAiChatThinking} setAiChatMode={setAiChatMode} />
+      <div className="ai-chat-composer-row">
+        <label>
+          <span className="visually-hidden">AI 채팅 입력</span>
+          <textarea ref={aiChatInputRef} data-testid="ai-chat-input" value={aiChatInput} disabled={isAiChatThinking} placeholder={getComposerPlaceholder(aiChatMode)} onChange={(event) => setAiChatInput(event.target.value)} onKeyDown={(event) => handleAiChatKeyDown(event, submitAiChatPrompt)} />
+        </label>
+        {isAiChatThinking ? (
+          <button className="paper-button paper-button-danger" type="button" data-testid="cancel-ai-chat-button" onClick={cancelAiChatRequest}>
+            중단
+          </button>
+        ) : (
+          <button className="paper-button paper-button-primary" type="submit" data-testid="submit-ai-chat-button" disabled={aiChatInput.trim().length === 0}>
+            보내기
+          </button>
+        )}
+      </div>
+    </form>
+  );
+}
+
+const AI_CHAT_MODE_OPTIONS: { mode: AiChatIntent; label: string; title: string }[] = [
+  { mode: "search", label: "검색", title: "관련 메모를 찾아요" },
+  { mode: "summary", label: "요약", title: "관련 메모를 찾아 핵심을 요약해요" },
+  { mode: "compose", label: "생성", title: "관련 메모를 근거로 새 메모 초안을 만들어요" }
+];
+
+type AiChatModeSelectorProps = {
+  aiChatMode: AiChatIntent;
+  isAiChatThinking: boolean;
+  setAiChatMode: AiChatModeHandler;
+};
+
+function AiChatModeSelector({ aiChatMode, isAiChatThinking, setAiChatMode }: AiChatModeSelectorProps) {
+  return (
+    <div className="ai-chat-mode-selector" role="group" aria-label="AI 채팅 모드 선택">
+      {AI_CHAT_MODE_OPTIONS.map((option) => (
+        <button
+          key={option.mode}
+          type="button"
+          className={`ai-chat-mode-button${aiChatMode === option.mode ? " is-active" : ""}`}
+          title={option.title}
+          aria-pressed={aiChatMode === option.mode}
+          disabled={isAiChatThinking}
+          onClick={() => setAiChatMode(option.mode)}
+        >
+          {option.label}
         </button>
       ))}
     </div>
   );
 }
 
-type AiChatComposerProps = {
-  aiChatInput: string;
-  aiChatInputRef: RefObject<HTMLTextAreaElement>;
-  isAiChatThinking: boolean;
-  setAiChatInput: AiChatInputHandler;
-  submitAiChatPrompt: (promptOverride?: string) => Promise<void>;
-};
-
-function AiChatComposer({ aiChatInput, aiChatInputRef, isAiChatThinking, setAiChatInput, submitAiChatPrompt }: AiChatComposerProps) {
-  return (
-    <form className="ai-chat-composer" data-testid="ai-chat-form" onSubmit={(event) => submitAiChatForm(event, submitAiChatPrompt)}>
-      <label>
-        <span className="visually-hidden">AI 채팅 입력</span>
-        <textarea ref={aiChatInputRef} data-testid="ai-chat-input" value={aiChatInput} disabled={isAiChatThinking} placeholder="예: 계약 일정 관련 메모 찾아줘" onChange={(event) => setAiChatInput(event.target.value)} onKeyDown={(event) => handleAiChatKeyDown(event, submitAiChatPrompt)} />
-      </label>
-      <button className={`paper-button paper-button-primary${isAiChatThinking ? " is-loading" : ""}`} type="submit" data-testid="submit-ai-chat-button" disabled={isAiChatThinking || aiChatInput.trim().length === 0}>
-        보내기
-      </button>
-    </form>
-  );
+function getComposerPlaceholder(mode: AiChatIntent) {
+  if (mode === "summary") return "예: 이번 주 회의 내용을 핵심만 요약해줘";
+  if (mode === "compose") return "예: 관련 메모를 모아 회고 초안을 만들어줘";
+  return "예: 계약 일정과 관련된 메모 찾아줘";
 }
 
 function submitAiChatForm(event: FormEvent<HTMLFormElement>, submitAiChatPrompt: (promptOverride?: string) => Promise<void>) {

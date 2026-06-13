@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, screen, shell } from "electron";
+import { app, BrowserWindow, globalShortcut, ipcMain, Menu, nativeImage, screen, shell, Tray } from "electron";
 import { dirname, join, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -26,6 +26,12 @@ if (existsSync(envFilePath)) {
 const rendererUrl = process.env.VITE_DEV_SERVER_URL;
 const rendererPath = join(__dirname, "../dist/index.html");
 const windowIconPath = join(__dirname, "assets/window-icon.png");
+const trayIconSize = {
+  width: 18,
+  height: 18
+};
+
+let appTray = null;
 const defaultMinimumSize = {
   width: 640,
   height: 720
@@ -616,6 +622,28 @@ function createQuickCaptureWindow() {
   return quickCaptureWindow;
 }
 
+function createAppTray(openQuickCaptureWindow) {
+  const trayIcon = nativeImage.createFromPath(windowIconPath).resize(trayIconSize);
+  const tray = new Tray(trayIcon);
+
+  tray.setToolTip("AI 메모장");
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      {
+        label: "빠른 메모 작성",
+        click: () => openQuickCaptureWindow()
+      },
+      { type: "separator" },
+      {
+        label: "종료",
+        click: () => app.quit()
+      }
+    ])
+  );
+
+  return tray;
+}
+
 app.whenReady().then(() => {
   const primaryMemoStore = createPrimaryMemoStore(app.getPath("userData"));
   const memoStore = primaryMemoStore.store;
@@ -755,12 +783,19 @@ app.whenReady().then(() => {
     if (!shortcutRegistered) {
       console.error("[quick-capture] 전역 단축키 등록에 실패했습니다.", quickCaptureShortcut);
     }
+
+    appTray = createAppTray(openQuickCaptureWindow);
   }
 
   createWindow();
 
   app.on("before-quit", () => {
     globalShortcut.unregisterAll();
+
+    if (appTray) {
+      appTray.destroy();
+      appTray = null;
+    }
 
     if (typeof memoStore.close === "function") {
       memoStore.close();

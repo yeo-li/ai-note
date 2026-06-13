@@ -37,3 +37,27 @@ export async function setStickyPinned(pinned: boolean): Promise<boolean> {
 
   return setPinned(pinned);
 }
+
+export function canOpenQuickCaptureWindow() {
+  return Boolean(window.desktopAPI?.window?.openQuickCapture);
+}
+
+export async function openQuickCaptureWindow(): Promise<boolean> {
+  const openQuickCapture = window.desktopAPI?.window?.openQuickCapture;
+
+  if (!openQuickCapture) {
+    throw new Error("빠른 메모는 데스크톱 앱에서만 사용할 수 있어요.");
+  }
+
+  return openQuickCapture();
+}
+
+export async function closeQuickCaptureWindow(): Promise<void> {
+  const closeQuickCapture = window.desktopAPI?.window?.closeQuickCapture;
+
+  if (!closeQuickCapture) {
+    return;
+  }
+
+  await closeQuickCapture();
+}

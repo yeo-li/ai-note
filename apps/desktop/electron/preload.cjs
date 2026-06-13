@@ -28,6 +28,10 @@ const windowChannels = {
   openStickyNote: "window:open-sticky-note",
   setStickyPinned: "window:set-sticky-pinned"
 };
+const quickCaptureChannels = {
+  open: "window:open-quick-capture",
+  close: "quick-capture:close-window"
+};
 
 const memoAPI = {
   health() {
@@ -118,6 +122,12 @@ contextBridge.exposeInMainWorld("desktopAPI", {
     },
     setStickyPinned(pinned) {
       return ipcRenderer.invoke(windowChannels.setStickyPinned, Boolean(pinned));
+    },
+    openQuickCapture() {
+      return ipcRenderer.invoke(quickCaptureChannels.open);
+    },
+    closeQuickCapture() {
+      return ipcRenderer.invoke(quickCaptureChannels.close);
     }
   },
   versions: {

@@ -1,9 +1,10 @@
-import { app, BrowserWindow, ipcMain, screen, shell } from "electron";
+import { app, BrowserWindow, globalShortcut, ipcMain, screen, shell } from "electron";
 import { dirname, join, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { memoChannels } from "./memo-channels.mjs";
 import { promptTemplateChannels } from "./prompt-template-channels.mjs";
+import { quickCaptureChannels } from "./quick-capture-channels.mjs";
 import { createMemoSearchService } from "./search/memo-search-service.mjs";
 import { createContextSearchService } from "./search/context-search-service.mjs";
 import { createComposeService, normalizeComposeInput } from "./compose/compose-service.mjs";
@@ -37,6 +38,11 @@ const stickyWindowMinimumSize = {
   width: 360,
   height: 480
 };
+const quickCaptureWindowSize = {
+  width: 360,
+  height: 200
+};
+const quickCaptureShortcut = "CommandOrControl+Shift+N";
 const isPlaywrightE2E = process.env.PLAYWRIGHT_E2E === "1";
 const userDataPathOverride = process.env.AI_NOTE_USER_DATA_PATH;
 const memoEventChannels = {
@@ -441,11 +447,15 @@ function createOrganizerForEnvironment() {
   return localOrganizer;
 }
 
-function loadRendererWindow(windowInstance, { stickyMode = false, noteId = null } = {}) {
+function loadRendererWindow(windowInstance, { stickyMode = false, quickCaptureMode = false, noteId = null } = {}) {
   const query = new URLSearchParams();
 
   if (stickyMode) {
     query.set("view", "sticky");
+  }
+
+  if (quickCaptureMode) {
+    query.set("view", "quick-capture");
   }
 
   if (typeof noteId === "string" && noteId.trim().length > 0) {
@@ -561,6 +571,51 @@ function createStickyNoteWindow(noteId = null) {
   return stickyWindow;
 }
 
+function createQuickCaptureWindow() {
+  const focusedWindow = BrowserWindow.getFocusedWindow();
+  const baseDisplay = focusedWindow
+    ? screen.getDisplayMatching(focusedWindow.getBounds())
+    : screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const workArea = baseDisplay.workArea;
+  const width = Math.min(quickCaptureWindowSize.width, workArea.width);
+  const height = Math.min(quickCaptureWindowSize.height, workArea.height);
+  const x = workArea.x + Math.floor((workArea.width - width) / 2);
+  const y = workArea.y + Math.floor((workArea.height - height) / 3);
+
+  const windowOptions = {
+    x,
+    y,
+    width,
+    height,
+    icon: windowIconPath,
+    backgroundColor: "#fffdf9",
+    frame: false,
+    alwaysOnTop: true,
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    show: false,
+    webPreferences: {
+      preload: join(__dirname, "preload.cjs"),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  };
+
+  const quickCaptureWindow = new BrowserWindow(windowOptions);
+  quickCaptureWindow.setAlwaysOnTop(true, "floating");
+  quickCaptureWindow.once("ready-to-show", () => {
+    quickCaptureWindow.show();
+    quickCaptureWindow.focus();
+  });
+
+  void loadRendererWindow(quickCaptureWindow, { quickCaptureMode: true });
+  attachExternalLinkHandler(quickCaptureWindow);
+
+  return quickCaptureWindow;
+}
+
 app.whenReady().then(() => {
   const primaryMemoStore = createPrimaryMemoStore(app.getPath("userData"));
   const memoStore = primaryMemoStore.store;
@@ -661,9 +716,48 @@ app.whenReady().then(() => {
     return targetWindow.isAlwaysOnTop();
   });
 
+  let activeQuickCaptureWindow = null;
+
+  function openQuickCaptureWindow() {
+    if (activeQuickCaptureWindow && !activeQuickCaptureWindow.isDestroyed()) {
+      activeQuickCaptureWindow.focus();
+      return;
+    }
+
+    activeQuickCaptureWindow = createQuickCaptureWindow();
+    activeQuickCaptureWindow.on("closed", () => {
+      activeQuickCaptureWindow = null;
+    });
+  }
+
+  ipcMain.handle(quickCaptureChannels.open, () => {
+    openQuickCaptureWindow();
+    return true;
+  });
+
+  ipcMain.handle(quickCaptureChannels.close, (event) => {
+    const targetWindow = BrowserWindow.fromWebContents(event.sender);
+
+    if (targetWindow && !targetWindow.isDestroyed()) {
+      targetWindow.close();
+    }
+
+    return true;
+  });
+
+  if (!isPlaywrightE2E) {
+    const shortcutRegistered = globalShortcut.register(quickCaptureShortcut, openQuickCaptureWindow);
+
+    if (!shortcutRegistered) {
+      console.error("[quick-capture] 전역 단축키 등록에 실패했습니다.", quickCaptureShortcut);
+    }
+  }
+
   createWindow();
 
   app.on("before-quit", () => {
+    globalShortcut.unregisterAll();
+
     if (typeof memoStore.close === "function") {
       memoStore.close();
     }

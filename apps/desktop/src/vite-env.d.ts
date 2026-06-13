@@ -33,6 +33,8 @@ type DesktopAPI = {
   window?: {
     openStickyNote: (noteId?: string | null) => Promise<boolean>;
     setStickyPinned: (pinned: boolean) => Promise<boolean>;
+    openQuickCapture: () => Promise<boolean>;
+    closeQuickCapture: () => Promise<boolean>;
   };
   clipboard?: {
     writeText: (text: string) => void;

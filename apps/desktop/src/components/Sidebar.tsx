@@ -2,7 +2,7 @@ import type { Dispatch, KeyboardEvent, MouseEvent, ReactNode, RefObject, SetStat
 import type { MemoId } from "@ai-note/shared/memo";
 import { deriveNoteHeadline } from "../note-content";
 import { IconBolt, IconChat, IconPlus } from "./icons";
-import { canOpenQuickCaptureWindow, openQuickCaptureWindow } from "../infrastructure/desktop-window";
+import { canOpenQuickCaptureWindow, isMacOSPlatform, openQuickCaptureWindow } from "../infrastructure/desktop-window";
 import type { Note } from "../domain/note";
 import type { ContextSearchState, SidebarSurface, SidebarView } from "../domain/workspace";
 
@@ -79,8 +79,11 @@ function QuickCaptureButton() {
     return null;
   }
 
+  const shortcutLabel = isMacOSPlatform() ? "⌘⇧N" : "Ctrl+Shift+N";
+  const label = `빠른 메모 (전역 단축키 ${shortcutLabel})`;
+
   return (
-    <button className="sidebar-ai-chat-button sidebar-ai-chat-button--icon" type="button" data-testid="sidebar-quick-capture-button" aria-label="빠른 메모 (전역 단축키 ⌘⇧N)" title="빠른 메모 (전역 단축키 ⌘⇧N)" onClick={() => void openQuickCaptureWindow()}>
+    <button className="sidebar-ai-chat-button sidebar-ai-chat-button--icon" type="button" data-testid="sidebar-quick-capture-button" aria-label={label} title={label} onClick={() => void openQuickCaptureWindow()}>
       <IconBolt className="button-icon" />
       <span className="visually-hidden">빠른 메모</span>
     </button>

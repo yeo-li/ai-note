@@ -720,6 +720,10 @@ app.whenReady().then(() => {
 
   function openQuickCaptureWindow() {
     if (activeQuickCaptureWindow && !activeQuickCaptureWindow.isDestroyed()) {
+      if (activeQuickCaptureWindow.isMinimized()) {
+        activeQuickCaptureWindow.restore();
+      }
+
       activeQuickCaptureWindow.focus();
       return;
     }

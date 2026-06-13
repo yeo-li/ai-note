@@ -1,5 +1,6 @@
 import type { KeyboardEvent } from "react";
 import { useQuickCaptureController } from "../hooks/useQuickCaptureController";
+import { isMacOSPlatform } from "../infrastructure/desktop-window";
 import { IconCheck, IconClose } from "./icons";
 
 export function QuickCapturePane() {
@@ -47,7 +48,7 @@ function QuickCaptureFooter({
 }) {
   return (
     <footer className="quick-capture-footer">
-      <span className="quick-capture-hint">Esc 닫기 · ⌘Enter 저장</span>
+      <span className="quick-capture-hint">Esc 닫기 · {isMacOSPlatform() ? "⌘" : "Ctrl+"}Enter 저장</span>
       <button
         className="paper-button paper-button-primary quick-capture-save-button"
         type="button"

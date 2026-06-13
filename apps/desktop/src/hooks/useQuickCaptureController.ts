@@ -25,12 +25,17 @@ export function useQuickCaptureController() {
     try {
       await createQuickCaptureMemo(trimmedBody);
       await closeQuickCaptureWindow();
-    } catch {
+    } catch (error) {
       setIsSaving(false);
+      alert(error instanceof Error ? error.message : "메모를 저장하는 중 오류가 발생했어요.");
     }
   }
 
   async function discardAndClose() {
+    if (body.trim().length > 0 && !confirm("작성 중인 내용을 버리고 닫을까요?")) {
+      return;
+    }
+
     await closeQuickCaptureWindow();
   }
 

@@ -1,9 +1,12 @@
 import { app, BrowserWindow, ipcMain, screen, shell } from "electron";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { memoChannels } from "./memo-channels.mjs";
 import { promptTemplateChannels } from "./prompt-template-channels.mjs";
 import { createMemoSearchService } from "./search/memo-search-service.mjs";
+import { createContextSearchService } from "./search/context-search-service.mjs";
+import { createComposeService, normalizeComposeInput } from "./compose/compose-service.mjs";
 import { createAiMemoProvider } from "./ai-memo-provider.mjs";
 import { createLocalOrganizer } from "./organize/local-organizer.mjs";
 import { createGeminiApiOrganizeProvider } from "./organize/gemini-api-organizer.mjs";
@@ -13,6 +16,12 @@ import { createMemoSqliteStore } from "./store/memo-sqlite-store.mjs";
 import { createPromptTemplateStore } from "./store/prompt-template-store.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// apps/desktop/.env에서 환경변수 로드 (파일이 있을 때만)
+const envFilePath = resolve(__dirname, "../.env");
+if (existsSync(envFilePath)) {
+  process.loadEnvFile(envFilePath);
+}
 const rendererUrl = process.env.VITE_DEV_SERVER_URL;
 const rendererPath = join(__dirname, "../dist/index.html");
 const windowIconPath = join(__dirname, "assets/window-icon.png");
@@ -193,73 +202,6 @@ function normalizeOrganizeInput(value) {
   };
 }
 
-function normalizeComposeInput(value) {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const prompt = typeof value.prompt === "string" ? value.prompt.trim() : "";
-  const intent = value.intent === "polish" || value.intent === "polite" ? value.intent : null;
-
-  if (!prompt || !intent) {
-    return null;
-  }
-
-  return {
-    prompt,
-    intent
-  };
-}
-
-function createComposeRefusal({ refusalReason, message, relatedMemoIds = [] }) {
-  return {
-    kind: "refused",
-    refusalReason,
-    message,
-    relatedMemoIds,
-    relatedCount: relatedMemoIds.length
-  };
-}
-
-function getSearchTerms(query) {
-  return query
-    .toLocaleLowerCase()
-    .split(/\s+/u)
-    .map((term) => term.trim())
-    .filter((term) => term.length >= 2);
-}
-
-function buildContextSearchPreview(memo, query) {
-  const body = typeof memo.body === "string" ? memo.body.trim() : "";
-  const title = typeof memo.title === "string" ? memo.title.trim() : "";
-  const source = body || title;
-
-  if (!source) {
-    return "";
-  }
-
-  const normalizedSource = source.toLocaleLowerCase();
-  const matchedTerm = getSearchTerms(query).find((term) => normalizedSource.includes(term));
-  const matchIndex = matchedTerm ? normalizedSource.indexOf(matchedTerm) : -1;
-  const startIndex = matchIndex >= 0 ? Math.max(0, matchIndex - 32) : 0;
-  const endIndex = Math.min(source.length, startIndex + 96);
-  const prefix = startIndex > 0 ? "..." : "";
-  const suffix = endIndex < source.length ? "..." : "";
-
-  return `${prefix}${source.slice(startIndex, endIndex)}${suffix}`;
-}
-
-function buildContextSearchReason(memo, query) {
-  const searchableText = `${memo.title ?? ""} ${memo.body ?? ""}`.toLocaleLowerCase();
-  const matchedTerms = getSearchTerms(query).filter((term) => searchableText.includes(term)).slice(0, 3);
-
-  if (matchedTerms.length > 0) {
-    return `요청어 "${matchedTerms.join(", ")}"와 연결된 내용이 있습니다.`;
-  }
-
-  return "AI가 요청 맥락과 관련된 메모로 선택했습니다.";
-}
-
 function broadcastMemoChange(event, changeEvent) {
   const sourceWebContentsId = event?.sender?.id;
 
@@ -298,7 +240,7 @@ function broadcastOrganizeStateChange(changeEvent) {
   }
 }
 
-function registerMemoHandlers(memoStore, memoSearchService, organizer, aiMemoProvider, memoStoreContext) {
+function registerMemoHandlers(memoStore, memoSearchService, organizer, aiMemoProvider, memoStoreContext, contextSearchService, composeService) {
   ipcMain.handle(memoChannels.health, async () => {
     const baseHealth = {
       bridgeConnected: true,
@@ -383,26 +325,7 @@ function registerMemoHandlers(memoStore, memoSearchService, organizer, aiMemoPro
 
   ipcMain.handle(memoChannels.aiSearch, async (_event, query) => {
     const normalizedQuery = normalizeSearchQuery(query);
-
-    if (!normalizedQuery) {
-      return [];
-    }
-
-    const memos = await memoStore.list();
-    const memoIds = await aiMemoProvider.searchMemos({
-      query: normalizedQuery,
-      memos
-    });
-    const memoMap = new Map(memos.map((memo) => [memo.id, memo]));
-
-    return memoIds
-      .map((memoId) => memoMap.get(memoId))
-      .filter(Boolean)
-      .map((memo) => ({
-        memo,
-        preview: buildContextSearchPreview(memo, normalizedQuery),
-        reason: buildContextSearchReason(memo, normalizedQuery)
-      }));
+    return normalizedQuery ? contextSearchService.search(normalizedQuery) : [];
   });
 
   ipcMain.handle(memoChannels.organizeState, async () => Array.from(organizingMemoIds));
@@ -432,77 +355,7 @@ function registerMemoHandlers(memoStore, memoSearchService, organizer, aiMemoPro
       throw new Error("잘못된 메모 조합 요청입니다.");
     }
 
-    const memos = await memoStore.list();
-    const busyMemoIds = [];
-
-    try {
-      if (memos.length === 0) {
-        return createComposeRefusal({
-          refusalReason: "no_related_memos",
-          message: "작성된 메모가 없어 조합할 수 없어요. 먼저 관련 메모를 남겨 주세요."
-        });
-      }
-
-      const relatedMemoIds = await aiMemoProvider.searchMemos({
-        query: composeInput.prompt,
-        memos
-      });
-      const memoMap = new Map(memos.map((memo) => [memo.id, memo]));
-      const relatedMemos = relatedMemoIds.map((memoId) => memoMap.get(memoId)).filter(Boolean);
-      const relatedMemoIdSet = new Set(relatedMemos.map((memo) => memo.id));
-
-      if (relatedMemos.length === 0) {
-        return createComposeRefusal({
-          refusalReason: "no_related_memos",
-          message: "관련 메모를 찾지 못해 새 메모를 만들지 않았어요. 프롬프트를 더 구체적으로 적어 주세요.",
-          relatedMemoIds: []
-        });
-      }
-
-      relatedMemos.forEach((memo) => {
-        composingMemoIds.add(memo.id);
-        busyMemoIds.push(memo.id);
-        broadcastOrganizeStateChange({ memoId: memo.id, busy: true });
-      });
-
-      const result = await aiMemoProvider.composeMemos({
-        prompt: composeInput.prompt,
-        memos: relatedMemos
-      });
-
-      if (result.kind === "refused") {
-        return createComposeRefusal({
-          refusalReason: "insufficient_support",
-          message: result.message,
-          relatedMemoIds: relatedMemos.map((memo) => memo.id)
-        });
-      }
-
-      const sourceMemoIds = result.sourceMemoIds.filter((memoId) => relatedMemoIdSet.has(memoId));
-
-      if (sourceMemoIds.length === 0) {
-        return createComposeRefusal({
-          refusalReason: "insufficient_support",
-          message: "관련 메모는 찾았지만 근거가 충분하지 않아 새 메모를 만들지 않았어요.",
-          relatedMemoIds: relatedMemos.map((memo) => memo.id)
-        });
-      }
-
-      return {
-        kind: "composed",
-        title: result.title,
-        body: result.body,
-        relatedMemoIds: relatedMemos.map((memo) => memo.id),
-        relatedCount: relatedMemos.length,
-        sourceMemoIds,
-        sourceCount: sourceMemoIds.length
-      };
-    } finally {
-      busyMemoIds.forEach((memoId) => {
-        composingMemoIds.delete(memoId);
-        broadcastOrganizeStateChange({ memoId, busy: false });
-      });
-    }
+    return composeService.compose(composeInput);
   });
 }
 
@@ -771,7 +624,25 @@ app.whenReady().then(() => {
       }
     : createAiMemoProvider();
 
-  registerMemoHandlers(memoStore, memoSearchService, organizer, aiMemoProvider, primaryMemoStore);
+  const contextSearchService = createContextSearchService({
+    listMemos: () => memoStore.list(),
+    aiMemoProvider
+  });
+  const composeService = createComposeService({
+    listMemos: () => memoStore.list(),
+    aiMemoProvider,
+    onMemoBusyChange: (memoId, busy) => {
+      if (busy) {
+        composingMemoIds.add(memoId);
+      } else {
+        composingMemoIds.delete(memoId);
+      }
+
+      broadcastOrganizeStateChange({ memoId, busy });
+    }
+  });
+
+  registerMemoHandlers(memoStore, memoSearchService, organizer, aiMemoProvider, primaryMemoStore, contextSearchService, composeService);
   registerPromptTemplateHandlers(promptTemplateStore);
   ipcMain.handle("window:open-sticky-note", (_event, noteId) => {
     createStickyNoteWindow(typeof noteId === "string" ? noteId : null);

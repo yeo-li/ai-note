@@ -9,6 +9,85 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      (function () {
+        const notes = [
+          {
+            id: "note-1",
+            title: "프로젝트 킥오프 메모",
+            body: "오늘 회의에서 논의한 내용을 정리합니다.\n\n1. 핵심 요구사항 확인\n2. 사용 흐름 점검\n3. 남은 작업 분리\n4. 검증 기준 정리\n5. 다음 리뷰 일정 확정\n\n다음 주까지 1차 리뷰를 마칠 예정입니다. 추가로 논의가 필요한 사항은 회의록 하단에 정리해두었습니다.\n\n- 액션 아이템 1\n- 액션 아이템 2\n- 액션 아이템 3\n",
+            favorite: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          },
+          {
+            id: "note-2",
+            title: "장보기 목록",
+            body: "우유, 계란, 빵, 커피, 과일",
+            favorite: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          },
+          {
+            id: "note-3",
+            title: "독서 노트",
+            body: "이번 달 읽은 책에 대한 메모.",
+            favorite: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          }
+        ];
+
+        window.desktopAPI = {
+          platform: "darwin",
+          versions: { node: "20.0.0", chrome: "120.0.0", electron: "29.0.0" },
+          window: {
+            openStickyNote: async () => true,
+            setStickyPinned: async () => true
+          },
+          clipboard: { writeText: () => {} }
+        };
+
+        window.memoAPI = {
+          health: async () => ({ bridgeConnected: true, ready: true, storeKind: "sqlite" }),
+          list: async () => notes,
+          get: async (id) => notes.find((note) => note.id === id) ?? null,
+          create: async (input) => {
+            const note = {
+              id: `note-${Date.now()}`,
+              title: input?.title ?? "새 메모",
+              body: input?.body ?? "",
+              favorite: false,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+            notes.unshift(note);
+            return note;
+          },
+          update: async (id, patch) => {
+            const note = notes.find((item) => item.id === id);
+            if (!note) return null;
+            Object.assign(note, patch, { updatedAt: new Date().toISOString() });
+            return note;
+          },
+          delete: async () => true,
+          search: async () => [],
+          aiSearch: async () => [],
+          organizeState: async () => [],
+          organize: async () => ({ kind: "noop" }),
+          compose: async () => ({ kind: "refused", refusalReason: "no_related_memos", message: "", relatedMemoIds: [], relatedCount: 0 }),
+          onDidChange: () => () => {},
+          onDidOrganizeState: () => () => {}
+        };
+
+        window.promptTemplateAPI = {
+          list: async () => [],
+          create: async (input) => ({ id: `tpl-${Date.now()}`, ...input }),
+          update: async () => null,
+          delete: async () => true
+        };
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
   </html>

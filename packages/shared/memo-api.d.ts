@@ -1,5 +1,7 @@
 import type {
   Memo,
+  MemoCategoryCreateInput,
+  MemoCategoryDefinition,
   MemoCreateInput,
   MemoId,
   MemoOrganizeInput,
@@ -26,6 +28,18 @@ export type CreateMemoRequest = {
 
 export type CreateMemoResponse = {
   memo: Memo;
+};
+
+export type ListMemoCategoriesResponse = {
+  categories: MemoCategoryDefinition[];
+};
+
+export type CreateMemoCategoryRequest = {
+  input: MemoCategoryCreateInput;
+};
+
+export type CreateMemoCategoryResponse = {
+  category: MemoCategoryDefinition;
 };
 
 export type UpdateMemoRequest = {

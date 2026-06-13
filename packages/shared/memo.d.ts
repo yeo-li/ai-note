@@ -1,10 +1,22 @@
 export type MemoId = string;
 
-export type MemoCategory = "idea" | "task" | "journal" | "reference" | "other";
+export type MemoCategory = string;
+
+export type MemoCategoryDefinition = {
+  id: MemoCategory;
+  label: string;
+  builtin: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export const MEMO_CATEGORIES: readonly MemoCategory[];
 
-export const MEMO_CATEGORY_LABELS: Record<MemoCategory, string>;
+export const MEMO_CATEGORY_LABELS: Record<string, string>;
+
+export function normalizeMemoCategoryValue(value: unknown): MemoCategory | null;
+
+export function getMemoCategoryLabel(category: MemoCategory | null | undefined): string;
 
 export type Memo = {
   id: MemoId;
@@ -34,6 +46,10 @@ export type MemoCreateInput = {
   title?: string;
   body?: string;
   category?: MemoCategory | null;
+};
+
+export type MemoCategoryCreateInput = {
+  label: string;
 };
 
 export type MemoUpdateInput = {

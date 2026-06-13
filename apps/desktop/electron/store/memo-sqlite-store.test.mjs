@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import Database from "better-sqlite3";
 import { createMemoSqliteStore } from "./memo-sqlite-store.mjs";
 
 async function withTempSqliteStore(run) {
@@ -94,6 +95,29 @@ test("sqlite memo store persists favorite flag updates", async () => {
   });
 });
 
+test("sqlite memo store persists custom categories without requiring a memo", async () => {
+  const userDataPath = await mkdtemp(join(tmpdir(), "ai-note-memo-sqlite-store-"));
+  const store = createMemoSqliteStore({ userDataPath });
+
+  try {
+    const createdCategory = await store.createCategory({ label: "독서" });
+
+    assert.equal(createdCategory.id, "독서");
+    assert.equal(createdCategory.label, "독서");
+    assert.equal(createdCategory.builtin, false);
+    store.close();
+
+    const reloadedStore = createMemoSqliteStore({ userDataPath });
+    const categories = await reloadedStore.listCategories();
+
+    assert.equal(categories.some((category) => category.id === "idea" && category.builtin), true);
+    assert.equal(categories.some((category) => category.id === "독서" && !category.builtin), true);
+    reloadedStore.close();
+  } finally {
+    await rm(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test("sqlite memo store migrates existing memos.json data on first run", async () => {
   const userDataPath = await mkdtemp(join(tmpdir(), "ai-note-memo-sqlite-store-"));
 
@@ -162,6 +186,143 @@ test("sqlite memo store migrates legacy notes.json data when memos.json is missi
     assert.equal(listed.length, 1);
     assert.equal(listed[0]?.id, "memo-legacy-1");
     assert.equal(listed[0]?.title, "Migrated from notes");
+    store.close();
+  } finally {
+    await rm(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test("sqlite memo store upgrades existing databases before creating the category index", async () => {
+  const userDataPath = await mkdtemp(join(tmpdir(), "ai-note-memo-sqlite-store-"));
+  const dbPath = join(userDataPath, "memos.db");
+  const legacyDb = new Database(dbPath);
+
+  try {
+    legacyDb.exec(`
+      CREATE TABLE memos (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        favorite INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      INSERT INTO memos (id, title, body, favorite, created_at, updated_at)
+      VALUES ('memo-without-category', 'Old memo', 'Created before categories', 0, '2026-01-01T09:00:00.000Z', '2026-01-01T10:00:00.000Z');
+    `);
+  } finally {
+    legacyDb.close();
+  }
+
+  try {
+    const store = createMemoSqliteStore({ userDataPath });
+    const listed = await store.list();
+
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0]?.category, null);
+
+    const updated = await store.update("memo-without-category", { category: "idea" });
+
+    assert.equal(updated?.category, "idea");
+    store.close();
+
+    const verificationDb = new Database(dbPath);
+
+    try {
+      const columns = verificationDb.prepare("PRAGMA table_info(memos)").all();
+      const indexes = verificationDb.prepare("PRAGMA index_list(memos)").all();
+      const row = verificationDb.prepare("SELECT category FROM memos WHERE id = ?").get("memo-without-category");
+
+      assert.equal(columns.some((column) => column.name === "category"), true);
+      assert.equal(indexes.some((index) => index.name === "idx_memos_category"), true);
+      assert.equal(row?.category, "idea");
+    } finally {
+      verificationDb.close();
+    }
+  } finally {
+    await rm(userDataPath, { recursive: true, force: true });
+  }
+});
+
+test("sqlite memo store merges newer JSON fallback changes into an existing database", async () => {
+  const userDataPath = await mkdtemp(join(tmpdir(), "ai-note-memo-sqlite-store-"));
+  const dbPath = join(userDataPath, "memos.db");
+  const jsonPath = join(userDataPath, "memos.json");
+  const legacyDb = new Database(dbPath);
+
+  try {
+    legacyDb.exec(`
+      CREATE TABLE app_metadata (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+
+      CREATE TABLE memos (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        favorite INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      INSERT INTO memos (id, title, body, favorite, created_at, updated_at)
+      VALUES ('shared-memo', 'Shared memo', 'Existing SQLite body', 0, '2026-01-01T09:00:00.000Z', '2026-01-01T10:00:00.000Z');
+    `);
+    legacyDb
+      .prepare("INSERT INTO app_metadata (key, value) VALUES (?, ?)")
+      .run("legacy_import_source", jsonPath);
+    legacyDb
+      .prepare("INSERT INTO app_metadata (key, value) VALUES (?, ?)")
+      .run("legacy_imported_at", "2026-01-01T10:00:00.000Z");
+  } finally {
+    legacyDb.close();
+  }
+
+  try {
+    await writeFile(
+      jsonPath,
+      JSON.stringify(
+        {
+          version: 1,
+          memos: [
+            {
+              id: "shared-memo",
+              title: "Shared memo",
+              body: "Existing SQLite body",
+              favorite: true,
+              category: "idea",
+              createdAt: "2026-01-01T09:00:00.000Z",
+              updatedAt: "2026-01-01T10:00:00.000Z"
+            },
+            {
+              id: "json-fallback-memo",
+              title: "Saved while SQLite was unavailable",
+              body: "This memo only existed in memos.json.",
+              favorite: false,
+              category: "task",
+              createdAt: "2026-01-02T09:00:00.000Z",
+              updatedAt: "2026-01-02T10:00:00.000Z"
+            }
+          ]
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+
+    const store = createMemoSqliteStore({ userDataPath });
+    const listed = await store.list();
+    const sharedMemo = listed.find((memo) => memo.id === "shared-memo");
+    const fallbackMemo = listed.find((memo) => memo.id === "json-fallback-memo");
+
+    assert.equal(listed.length, 2);
+    assert.equal(sharedMemo?.category, "idea");
+    assert.equal(sharedMemo?.favorite, true);
+    assert.equal(fallbackMemo?.category, "task");
+    assert.equal(fallbackMemo?.title, "Saved while SQLite was unavailable");
     store.close();
   } finally {
     await rm(userDataPath, { recursive: true, force: true });

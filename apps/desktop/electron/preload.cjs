@@ -9,6 +9,8 @@ const memoChannels = {
   create: "memo:create",
   update: "memo:update",
   delete: "memo:delete",
+  listCategories: "memo:list-categories",
+  createCategory: "memo:create-category",
   search: "memo:search",
   aiSearch: "memo:ai-search",
   organize: "memo:organize",
@@ -54,6 +56,12 @@ const memoAPI = {
   },
   delete(id) {
     return ipcRenderer.invoke(memoChannels.delete, id);
+  },
+  listCategories() {
+    return ipcRenderer.invoke(memoChannels.listCategories);
+  },
+  createCategory(input) {
+    return ipcRenderer.invoke(memoChannels.createCategory, input);
   },
   search(query) {
     return ipcRenderer.invoke(memoChannels.search, query);

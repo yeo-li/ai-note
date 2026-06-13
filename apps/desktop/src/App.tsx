@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { MemoId } from "@ai-note/shared/memo";
+import type { MemoCategory, MemoId } from "@ai-note/shared/memo";
+import { createNoteCategoryDefinitions, mergeCategoryDefinitions } from "./domain/categories";
 import {
   matchesQuery,
 } from "./domain/note";
@@ -141,12 +142,15 @@ function App() {
 
   const {
     categorizingNoteIds,
+    categories,
     categoryFilter,
+    createCategory,
     setCategoryFilter,
     setNoteCategory,
     runAiCategorize
   } = useMemoCategoryController({
     isMutationLocked,
+    notes,
     setNotes,
     setStatusMessage
   });
@@ -166,13 +170,28 @@ function App() {
     [scopedNotes, query]
   );
   const selectedNote = notes.find((note) => note.id === selectedNoteId) ?? null;
+  const visibleCategories = useMemo(
+    () => mergeCategoryDefinitions(categories, createNoteCategoryDefinitions(notes)),
+    [categories, notes]
+  );
+  const categoryCounts = useMemo(
+    () =>
+      visibleCategories.reduce(
+        (counts, category) => ({
+          ...counts,
+          [category.id]: notes.filter((note) => note.category === category.id).length
+        }),
+        {} as Record<MemoCategory, number>
+      ),
+    [notes, visibleCategories]
+  );
 
   const activeNote = useMemo(() => {
     if (notes.length === 0) {
       return null;
     }
 
-    if (sidebarView === "favorites") {
+    if (sidebarView === "favorites" || categoryFilter !== "all") {
       if (scopedNotes.length === 0) {
         return null;
       }
@@ -181,7 +200,7 @@ function App() {
     }
 
     return selectedNote ?? notes[0];
-  }, [notes, scopedNotes, selectedNote, selectedNoteId, sidebarView]);
+  }, [categoryFilter, notes, scopedNotes, selectedNote, selectedNoteId, sidebarView]);
   const {
     committedFindQuery,
     findInputRef,
@@ -279,6 +298,7 @@ function App() {
     toggleFavorite
   } = useNoteMutationActions({
     activeNote,
+    categoryFilter,
     hasQuery,
     isMutationLocked,
     setDeleteIntentId,
@@ -530,6 +550,8 @@ function App() {
   const showPaperStatus = isMutationLocked || isTransformPreviewGenerating || Boolean(activeDraft);
   const sidebarCountLabel = hasQuery
     ? `결과 ${filteredNotes.length}개`
+    : categoryFilter !== "all"
+      ? `메모 ${scopedNotes.length}개`
     : sidebarView === "favorites"
       ? `즐겨찾기 ${scopedNotes.length}개`
       : `메모 ${notes.length}개`;
@@ -543,8 +565,11 @@ function App() {
           <Sidebar
             activeNote={activeNote}
             activeSidebarSurface={activeSidebarSurface}
+            categories={visibleCategories}
+            categoryCounts={categoryCounts}
             categoryFilter={categoryFilter}
             contextSearch={contextSearch}
+            createCategory={createCategory}
             filteredNotes={filteredNotes}
             hasQuery={hasQuery}
             isAiChatOpen={isAiChatOpen}
@@ -620,6 +645,8 @@ function App() {
                 activeTransformFeedback={activeTransformFeedback}
                 aiPromptInputRef={aiPromptInputRef}
                 categorizingNoteIds={categorizingNoteIds}
+                categories={visibleCategories}
+                categoryFilter={categoryFilter}
                 emptyCreateButtonRef={emptyCreateButtonRef}
                 committedFindQuery={committedFindQuery}
                 findInputRef={findInputRef}

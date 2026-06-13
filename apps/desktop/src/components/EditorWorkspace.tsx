@@ -1,7 +1,7 @@
 import type { Dispatch, FormEvent, KeyboardEvent, RefObject, SetStateAction } from "react";
-import { MEMO_CATEGORIES, MEMO_CATEGORY_LABELS } from "@ai-note/shared/memo";
-import type { MemoCategory, MemoId } from "@ai-note/shared/memo";
+import type { MemoCategory, MemoCategoryDefinition, MemoId } from "@ai-note/shared/memo";
 import { IconPin, IconSearch, IconSidebarPanel, IconSparkles, IconStar, IconTag } from "./icons";
+import { getCategoryDisplayLabel } from "../domain/categories";
 import type { PromptTemplate } from "../shared/prompt-template-bridge";
 import type { DiffSegment } from "../domain/diff";
 import type { FindMatch, Note } from "../domain/note";
@@ -18,6 +18,8 @@ type EditorWorkspaceProps = {
   activeTransformFeedback: EditorFeedback | null;
   aiPromptInputRef: RefObject<HTMLInputElement>;
   categorizingNoteIds: Record<MemoId, boolean>;
+  categories: MemoCategoryDefinition[];
+  categoryFilter: MemoCategory | "all";
   committedFindQuery: string;
   emptyCreateButtonRef: RefObject<HTMLButtonElement>;
   findInputRef: RefObject<HTMLInputElement>;
@@ -159,7 +161,7 @@ function FavoriteButton({ activeNote, isActiveNoteBusy, toggleFavorite }: Editor
   );
 }
 
-function CategorySelector({ activeNote, isActiveNoteBusy, isMutationLocked, setNoteCategory }: EditorWorkspaceProps) {
+function CategorySelector({ activeNote, categories, isActiveNoteBusy, isMutationLocked, setNoteCategory }: EditorWorkspaceProps) {
   if (!activeNote) {
     return null;
   }
@@ -167,11 +169,11 @@ function CategorySelector({ activeNote, isActiveNoteBusy, isMutationLocked, setN
   return (
     <label className="editor-category-select">
       <span className="visually-hidden">메모 카테고리</span>
-      <select data-testid="note-category-select" value={activeNote.category ?? ""} disabled={isMutationLocked || isActiveNoteBusy} onChange={(event) => void setNoteCategory(activeNote.id, toMemoCategory(event.target.value))}>
+      <select data-testid="note-category-select" value={activeNote.category ?? ""} disabled={isMutationLocked || isActiveNoteBusy} onChange={(event) => void setNoteCategory(activeNote.id, toMemoCategory(event.target.value, categories))}>
         <option value="">미분류</option>
-        {MEMO_CATEGORIES.map((category) => (
-          <option key={category} value={category}>
-            {MEMO_CATEGORY_LABELS[category]}
+        {categories.map((category) => (
+          <option key={category.id} value={category.id}>
+            {category.label}
           </option>
         ))}
       </select>
@@ -179,8 +181,12 @@ function CategorySelector({ activeNote, isActiveNoteBusy, isMutationLocked, setN
   );
 }
 
-function toMemoCategory(value: string): MemoCategory | null {
-  return (MEMO_CATEGORIES as readonly string[]).includes(value) ? (value as MemoCategory) : null;
+function toMemoCategory(value: string, categories: MemoCategoryDefinition[]): MemoCategory | null {
+  if (!value) {
+    return null;
+  }
+
+  return categories.some((category) => category.id === value) ? value : null;
 }
 
 function AiCategorizeButton({ activeNote, categorizingNoteIds, isMutationLocked, isStickyMode, runAiCategorize }: EditorWorkspaceProps) {
@@ -192,7 +198,7 @@ function AiCategorizeButton({ activeNote, categorizingNoteIds, isMutationLocked,
   const disabled = isMutationLocked || isStickyMode || isCategorizing;
 
   return (
-    <button className={`paper-button paper-button-icon${isCategorizing ? " is-loading" : ""}`} type="button" data-testid="ai-categorize-button" aria-label="AI로 카테고리 분류하기" title="AI로 카테고리 분류하기" disabled={disabled} onClick={() => void runAiCategorize(activeNote.id)}>
+    <button className={`paper-button paper-button-icon${isCategorizing ? " is-loading" : ""}`} type="button" data-testid="ai-categorize-button" aria-label="AI로 카테고리 분류하기" title="AI로 카테고리 분류하기" aria-busy={isCategorizing} disabled={disabled} onClick={() => void runAiCategorize(activeNote.id)}>
       <IconTag className="button-icon" />
       <span className="visually-hidden">AI로 카테고리 분류하기</span>
     </button>
@@ -585,14 +591,16 @@ function EditorEmptyState(props: EditorWorkspaceProps) {
   );
 }
 
-function getEditorEmptyTitle({ activeNote, hasQuery, isCollectionEmpty, sidebarView }: EditorWorkspaceProps) {
+function getEditorEmptyTitle({ activeNote, categories, categoryFilter, hasQuery, isCollectionEmpty, sidebarView }: EditorWorkspaceProps) {
   if (isCollectionEmpty) return "메모가 없어요";
+  if (categoryFilter !== "all" && !hasQuery && !activeNote) return `${getCategoryDisplayLabel(categories, categoryFilter)} 메모가 없어요`;
   if (sidebarView === "favorites" && !hasQuery && !activeNote) return "즐겨찾기 메모가 없어요";
   return "선택한 메모가 없어요";
 }
 
-function getEditorEmptyText({ activeNote, hasQuery, isCollectionEmpty, sidebarView }: EditorWorkspaceProps) {
+function getEditorEmptyText({ activeNote, categoryFilter, hasQuery, isCollectionEmpty, sidebarView }: EditorWorkspaceProps) {
   if (isCollectionEmpty) return "새 메모를 만들면 바로 시작할 수 있어요.";
+  if (categoryFilter !== "all" && !hasQuery && !activeNote) return "해당 카테고리로 분류된 메모가 아직 없어요.";
   if (sidebarView === "favorites" && !hasQuery && !activeNote) return "메모 오른쪽 위 별 버튼을 누르면 즐겨찾기만 따로 모아볼 수 있어요.";
   return "왼쪽 목록에서 메모를 선택하거나 새 메모를 만들어 주세요.";
 }

@@ -6,7 +6,10 @@ import {
   MEMO_STORE_FILENAME,
   MEMO_STORE_VERSION,
   cloneMemo,
+  createBuiltinCategoryDefinitions,
+  createCategoryDefinitionFromLabel,
   createTimestampAfter,
+  mergeCategoryDefinitions,
   normalizeMemo,
   parseStorePayload,
   sortMemosByUpdatedAt
@@ -58,9 +61,10 @@ async function readStore(filePath, legacyFilePath) {
       }
 
       return {
-        version: MEMO_STORE_VERSION,
-        memos: []
-      };
+      version: MEMO_STORE_VERSION,
+      memos: [],
+      categories: createBuiltinCategoryDefinitions()
+    };
     }
 
     throw error;
@@ -72,7 +76,8 @@ async function writeStore(filePath, store) {
   const payload = JSON.stringify(
     {
       version: MEMO_STORE_VERSION,
-      memos: sortMemosByUpdatedAt(store.memos)
+      memos: sortMemosByUpdatedAt(store.memos),
+      categories: mergeCategoryDefinitions(createBuiltinCategoryDefinitions(), store.categories ?? [])
     },
     null,
     2
@@ -130,6 +135,7 @@ export function createMemoStore({ userDataPath }) {
         const store = await readStore(filePath, legacyFilePath);
 
         store.memos = [memo, ...store.memos.filter((currentMemo) => currentMemo.id !== memo.id)];
+        store.categories = mergeCategoryDefinitions(store.categories ?? createBuiltinCategoryDefinitions(), [createCategoryFromMemo(memo)].filter(Boolean));
         await writeStore(filePath, store);
 
         return cloneMemo(memo);
@@ -157,6 +163,7 @@ export function createMemoStore({ userDataPath }) {
         });
 
         store.memos = [nextMemo, ...store.memos.filter((memo) => memo.id !== memoId)];
+        store.categories = mergeCategoryDefinitions(store.categories ?? createBuiltinCategoryDefinitions(), [createCategoryFromMemo(nextMemo)].filter(Boolean));
         await writeStore(filePath, store);
 
         return cloneMemo(nextMemo);
@@ -177,6 +184,54 @@ export function createMemoStore({ userDataPath }) {
 
         return true;
       });
+    },
+
+    async listCategories() {
+      return runSerialized(async () => {
+        const store = await readStore(filePath, legacyFilePath);
+        return mergeCategoryDefinitions(store.categories ?? createBuiltinCategoryDefinitions(), store.memos.map(createCategoryFromMemo).filter(Boolean));
+      });
+    },
+
+    async createCategory(input = {}) {
+      return runSerialized(async () => {
+        const store = await readStore(filePath, legacyFilePath);
+        const category = createCategoryDefinitionFromLabel(input.label);
+
+        if (!category) {
+          throw new Error("카테고리 이름을 확인해 주세요.");
+        }
+
+        const categories = mergeCategoryDefinitions(store.categories ?? createBuiltinCategoryDefinitions(), store.memos.map(createCategoryFromMemo).filter(Boolean));
+
+        if (hasCategoryDuplicate(categories, category)) {
+          throw new Error("이미 있는 카테고리입니다.");
+        }
+
+        store.categories = mergeCategoryDefinitions(categories, [category]);
+        await writeStore(filePath, store);
+
+        return category;
+      });
     }
   };
+}
+
+function createCategoryFromMemo(memo) {
+  if (!memo.category) {
+    return null;
+  }
+
+  return {
+    id: memo.category,
+    label: memo.category,
+    builtin: false,
+    createdAt: memo.createdAt,
+    updatedAt: memo.updatedAt
+  };
+}
+
+function hasCategoryDuplicate(categories, candidate) {
+  const normalizedLabel = candidate.label.toLocaleLowerCase("ko-KR");
+  return categories.some((category) => category.id === candidate.id || category.label.toLocaleLowerCase("ko-KR") === normalizedLabel);
 }

@@ -15,7 +15,7 @@ import { createOrganizeOrchestrator } from "./organize/organize-orchestrator.mjs
 import { createMemoStore } from "./store/memo-store.mjs";
 import { createMemoSqliteStore } from "./store/memo-sqlite-store.mjs";
 import { createPromptTemplateStore } from "./store/prompt-template-store.mjs";
-import { MEMO_CATEGORIES } from "@ai-note/shared/memo";
+import { MEMO_CATEGORIES, normalizeMemoCategoryValue } from "@ai-note/shared/memo";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -127,12 +127,29 @@ function normalizeMemoInput(value) {
     return {};
   }
 
-  return {
-    title: typeof value.title === "string" ? value.title : undefined,
-    body: typeof value.body === "string" ? value.body : undefined,
-    favorite: typeof value.favorite === "boolean" ? value.favorite : undefined,
-    category: normalizeMemoCategoryInput(value.category)
-  };
+  const input = {};
+
+  if (typeof value.title === "string") {
+    input.title = value.title;
+  }
+
+  if (typeof value.body === "string") {
+    input.body = value.body;
+  }
+
+  if (typeof value.favorite === "boolean") {
+    input.favorite = value.favorite;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(value, "category")) {
+    const category = normalizeMemoCategoryInput(value.category);
+
+    if (typeof category !== "undefined") {
+      input.category = category;
+    }
+  }
+
+  return input;
 }
 
 function guessMemoCategory(text) {
@@ -162,7 +179,22 @@ function normalizeMemoCategoryInput(value) {
     return null;
   }
 
-  return typeof value === "string" && MEMO_CATEGORIES.includes(value) ? value : undefined;
+  const category = normalizeMemoCategoryValue(value);
+  return category && category !== "all" ? category : undefined;
+}
+
+function normalizeMemoCategoryCreateInput(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const label = normalizeMemoCategoryValue(value.label);
+
+  if (!label || label === "all") {
+    return null;
+  }
+
+  return { label };
 }
 
 function normalizeSearchQuery(value) {
@@ -375,6 +407,18 @@ function registerMemoHandlers(memoStore, memoSearchService, organizer, aiMemoPro
     }
 
     return deleted;
+  });
+
+  ipcMain.handle(memoChannels.listCategories, async () => memoStore.listCategories());
+
+  ipcMain.handle(memoChannels.createCategory, async (_event, input) => {
+    const categoryInput = normalizeMemoCategoryCreateInput(input);
+
+    if (!categoryInput) {
+      throw new Error("카테고리 이름을 확인해 주세요.");
+    }
+
+    return memoStore.createCategory(categoryInput);
   });
 
   ipcMain.handle(memoChannels.search, async (_event, query) => {

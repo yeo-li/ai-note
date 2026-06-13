@@ -5,6 +5,8 @@ export const memoChannels = {
   create: "memo:create",
   update: "memo:update",
   delete: "memo:delete",
+  listCategories: "memo:list-categories",
+  createCategory: "memo:create-category",
   search: "memo:search",
   aiSearch: "memo:ai-search",
   organize: "memo:organize",

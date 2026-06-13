@@ -6,10 +6,13 @@ import type {
 import type {
   CreateMemoRequest,
   CreateMemoResponse,
+  CreateMemoCategoryRequest,
+  CreateMemoCategoryResponse,
   DeleteMemoRequest,
   DeleteMemoResponse,
   GetMemoRequest,
   GetMemoResponse,
+  ListMemoCategoriesResponse,
   ListMemosResponse,
   OrganizeMemoRequest,
   OrganizeMemoResponse,
@@ -53,6 +56,8 @@ type MemoAPI = {
   create(input: CreateMemoRequest["input"]): Promise<CreateMemoResponse["memo"]>;
   update(id: UpdateMemoRequest["memoId"], patch: UpdateMemoRequest["patch"]): Promise<UpdateMemoResponse["memo"]>;
   delete(id: DeleteMemoRequest["memoId"]): Promise<DeleteMemoResponse["deleted"]>;
+  listCategories(): Promise<ListMemoCategoriesResponse["categories"]>;
+  createCategory(input: CreateMemoCategoryRequest["input"]): Promise<CreateMemoCategoryResponse["category"]>;
   search(query: SearchMemosRequest["query"]): Promise<SearchMemosResponse["results"]>;
   aiSearch(query: string): Promise<ContextSearchResult[]>;
   organizeState(): Promise<string[]>;

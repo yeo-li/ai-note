@@ -1,9 +1,10 @@
-import type { Dispatch, KeyboardEvent, MouseEvent, ReactNode, RefObject, SetStateAction } from "react";
-import { MEMO_CATEGORIES, MEMO_CATEGORY_LABELS } from "@ai-note/shared/memo";
-import type { MemoId } from "@ai-note/shared/memo";
+import { useState } from "react";
+import type { Dispatch, FormEvent, KeyboardEvent, MouseEvent, ReactNode, RefObject, SetStateAction } from "react";
+import type { MemoCategory, MemoCategoryDefinition, MemoId } from "@ai-note/shared/memo";
 import { deriveNoteHeadline } from "../note-content";
-import { IconBolt, IconChat, IconPlus } from "./icons";
+import { IconBolt, IconChat, IconCheck, IconChevron, IconClose, IconPlus } from "./icons";
 import { canOpenQuickCaptureWindow, isMacOSPlatform, openQuickCaptureWindow } from "../infrastructure/desktop-window";
+import { getCategoryDisplayLabel } from "../domain/categories";
 import type { Note } from "../domain/note";
 import type { CategoryFilter } from "../hooks/useMemoCategoryController";
 import type { ContextSearchState, SidebarSurface, SidebarView } from "../domain/workspace";
@@ -11,6 +12,8 @@ import type { ContextSearchState, SidebarSurface, SidebarView } from "../domain/
 type SidebarProps = {
   activeNote: Note | null;
   activeSidebarSurface: SidebarSurface;
+  categories: MemoCategoryDefinition[];
+  categoryCounts: Record<MemoCategory, number>;
   categoryFilter: CategoryFilter;
   contextSearch: ContextSearchState;
   filteredNotes: Note[];
@@ -32,6 +35,7 @@ type SidebarProps = {
   storageStatusSummary: string;
   beginDeleteNote: (noteId?: MemoId) => void;
   closeContextSearchPanel: () => void;
+  createCategory: (label: string) => Promise<MemoCategoryDefinition | null>;
   handleCreateNote: () => Promise<void>;
   handleSearch: (nextQuery: string) => void;
   openNoteFromContextSearch: (noteId: MemoId) => void;
@@ -56,12 +60,14 @@ export function Sidebar(props: SidebarProps) {
 }
 
 function SidebarHead(props: SidebarProps) {
+  const [isCategoryAccordionOpen, setIsCategoryAccordionOpen] = useState(false);
+
   return (
     <div className="sidebar-head" data-testid="app-brand-mark">
       <SidebarActions {...props} />
       <SidebarSearch {...props} />
-      <SidebarNav {...props} />
-      <SidebarCategoryFilter {...props} />
+      <SidebarNav {...props} isCategoryAccordionOpen={isCategoryAccordionOpen} setIsCategoryAccordionOpen={setIsCategoryAccordionOpen} />
+      <SidebarCategoryAccordion {...props} isCategoryAccordionOpen={isCategoryAccordionOpen} setIsCategoryAccordionOpen={setIsCategoryAccordionOpen} />
     </div>
   );
 }
@@ -122,43 +128,160 @@ function closeSearchOnEscape(event: KeyboardEvent<HTMLInputElement>, searchInput
   searchInputRef.current?.blur();
 }
 
-function SidebarNav({ isComposeScreenOpen, sidebarView, switchSidebarView }: SidebarProps) {
+function SidebarNav({
+  categoryFilter,
+  isCategoryAccordionOpen,
+  isComposeScreenOpen,
+  setCategoryFilter,
+  setIsCategoryAccordionOpen,
+  sidebarView,
+  switchSidebarView
+}: SidebarProps & CategoryAccordionState) {
   return (
     <nav className="sidebar-nav" aria-label="사이드바 탐색">
-      <SidebarNavButton active={sidebarView === "all"} disabled={isComposeScreenOpen} testId="sidebar-all-view-button" onClick={() => switchSidebarView("all")}>
+      <SidebarNavButton active={sidebarView === "all" && categoryFilter === "all"} disabled={isComposeScreenOpen} testId="sidebar-all-view-button" onClick={() => selectPrimaryView("all", { setCategoryFilter, setIsCategoryAccordionOpen, switchSidebarView })}>
         <span>전체 메모</span>
       </SidebarNavButton>
-      <SidebarNavButton active={sidebarView === "favorites"} disabled={isComposeScreenOpen} testId="sidebar-favorites-view-button" onClick={() => switchSidebarView("favorites")}>
+      <SidebarNavButton active={sidebarView === "favorites" && categoryFilter === "all"} disabled={isComposeScreenOpen} testId="sidebar-favorites-view-button" onClick={() => selectPrimaryView("favorites", { setCategoryFilter, setIsCategoryAccordionOpen, switchSidebarView })}>
         <span>즐겨찾기</span>
+      </SidebarNavButton>
+      <SidebarNavButton active={categoryFilter !== "all" || isCategoryAccordionOpen} disabled={isComposeScreenOpen} testId="sidebar-category-view-button" ariaControls="sidebar-category-accordion" ariaExpanded={isCategoryAccordionOpen} onClick={() => toggleCategoryAccordion({ setIsCategoryAccordionOpen, sidebarView, switchSidebarView })}>
+        <span className="sidebar-nav-item__content">
+          <span>카테고리</span>
+          <IconChevron className="sidebar-nav-item__chevron" open={isCategoryAccordionOpen} />
+        </span>
       </SidebarNavButton>
     </nav>
   );
 }
 
-function SidebarNavButton({ active, children, disabled, onClick, testId }: { active: boolean; children: ReactNode; disabled: boolean; onClick: () => void; testId: string }) {
+function SidebarNavButton({ active, ariaControls, ariaExpanded, children, disabled, onClick, testId }: { active: boolean; ariaControls?: string; ariaExpanded?: boolean; children: ReactNode; disabled: boolean; onClick: () => void; testId: string }) {
   return (
-    <button className={`sidebar-nav-item${active ? " is-active" : ""}`} type="button" data-testid={testId} disabled={disabled} onClick={onClick}>
+    <button className={`sidebar-nav-item${active ? " is-active" : ""}`} type="button" data-testid={testId} disabled={disabled} aria-controls={ariaControls} aria-expanded={ariaExpanded} onClick={onClick}>
       {children}
     </button>
   );
 }
 
-function SidebarCategoryFilter({ categoryFilter, isComposeScreenOpen, setCategoryFilter }: SidebarProps) {
+type CategoryAccordionState = {
+  isCategoryAccordionOpen: boolean;
+  setIsCategoryAccordionOpen: Dispatch<SetStateAction<boolean>>;
+};
+
+function selectPrimaryView(nextView: SidebarView, { setCategoryFilter, setIsCategoryAccordionOpen, switchSidebarView }: Pick<SidebarProps, "setCategoryFilter" | "switchSidebarView"> & Pick<CategoryAccordionState, "setIsCategoryAccordionOpen">) {
+  setCategoryFilter("all");
+  setIsCategoryAccordionOpen(false);
+  switchSidebarView(nextView);
+}
+
+function toggleCategoryAccordion({ setIsCategoryAccordionOpen, sidebarView, switchSidebarView }: Pick<SidebarProps, "sidebarView" | "switchSidebarView"> & Pick<CategoryAccordionState, "setIsCategoryAccordionOpen">) {
+  if (sidebarView !== "all") {
+    switchSidebarView("all");
+  }
+
+  setIsCategoryAccordionOpen((current) => !current);
+}
+
+function SidebarCategoryAccordion(props: SidebarProps & CategoryAccordionState) {
   return (
-    <div className="sidebar-category-filter" role="group" aria-label="카테고리 필터">
-      <CategoryFilterChip active={categoryFilter === "all"} disabled={isComposeScreenOpen} label="전체" onClick={() => setCategoryFilter("all")} testId="category-filter-all" />
-      {MEMO_CATEGORIES.map((category) => (
-        <CategoryFilterChip key={category} active={categoryFilter === category} disabled={isComposeScreenOpen} label={MEMO_CATEGORY_LABELS[category]} onClick={() => setCategoryFilter(category)} testId={`category-filter-${category}`} />
+    <div id="sidebar-category-accordion" className={`sidebar-category-accordion${props.isCategoryAccordionOpen ? " is-open" : ""}`} role="region" aria-label="카테고리 필터" aria-hidden={!props.isCategoryAccordionOpen}>
+      <div className="sidebar-category-accordion__inner">
+        {props.isCategoryAccordionOpen ? <SidebarCategoryFilter {...props} /> : null}
+      </div>
+    </div>
+  );
+}
+
+function SidebarCategoryFilter({ categories, categoryCounts, categoryFilter, createCategory, isComposeScreenOpen, isMutationLocked, setCategoryFilter }: SidebarProps) {
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [draftCategoryName, setDraftCategoryName] = useState("");
+  const [isSavingCategory, setIsSavingCategory] = useState(false);
+
+  async function submitCategory(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (isSavingCategory) {
+      return;
+    }
+
+    setIsSavingCategory(true);
+    const createdCategory = await createCategory(draftCategoryName);
+    setIsSavingCategory(false);
+
+    if (!createdCategory) {
+      return;
+    }
+
+    setDraftCategoryName("");
+    setIsAddingCategory(false);
+  }
+
+  return (
+    <div className="sidebar-category-filter" role="group" aria-label="카테고리 선택">
+      <div className="sidebar-category-filter__actions">
+        <button className="category-add-button" type="button" data-testid="category-add-button" aria-label="카테고리 추가" title="카테고리 추가" disabled={isComposeScreenOpen || isMutationLocked || isSavingCategory} onClick={() => setIsAddingCategory(true)}>
+          <IconPlus className="category-add-button__icon" />
+        </button>
+      </div>
+      {isAddingCategory ? (
+        <form className="category-create-form" data-testid="category-create-form" onSubmit={submitCategory}>
+          <input className="category-create-form__input" data-testid="category-create-input" type="text" value={draftCategoryName} maxLength={32} autoFocus placeholder="카테고리 이름" disabled={isSavingCategory} onChange={(event) => setDraftCategoryName(event.target.value)} onKeyDown={(event) => closeCategoryCreateFormOnEscape(event, { setDraftCategoryName, setIsAddingCategory })} />
+          <button className="category-create-form__button" type="submit" data-testid="category-create-submit-button" aria-label="저장" title="저장" disabled={isSavingCategory || draftCategoryName.trim().length === 0}>
+            <IconCheck className="category-create-form__icon" />
+          </button>
+          <button className="category-create-form__button" type="button" aria-label="취소" title="취소" disabled={isSavingCategory} onClick={() => cancelCategoryCreate({ setDraftCategoryName, setIsAddingCategory })}>
+            <IconClose className="category-create-form__icon" />
+          </button>
+        </form>
+      ) : null}
+      {categories.map((category) => (
+        <CategoryAccordionItem key={category.id} active={categoryFilter === category.id} category={category} count={categoryCounts[category.id] ?? 0} disabled={isComposeScreenOpen} onClick={() => selectCategoryFilter(category.id, { setCategoryFilter })} />
       ))}
     </div>
   );
 }
 
-function CategoryFilterChip({ active, disabled, label, onClick, testId }: { active: boolean; disabled: boolean; label: string; onClick: () => void; testId: string }) {
+function closeCategoryCreateFormOnEscape(event: KeyboardEvent<HTMLInputElement>, params: Pick<CategoryCreateFormActions, "setDraftCategoryName" | "setIsAddingCategory">) {
+  if (event.key !== "Escape") {
+    return;
+  }
+
+  event.preventDefault();
+  cancelCategoryCreate(params);
+}
+
+type CategoryCreateFormActions = {
+  setDraftCategoryName: Dispatch<SetStateAction<string>>;
+  setIsAddingCategory: Dispatch<SetStateAction<boolean>>;
+};
+
+function cancelCategoryCreate({ setDraftCategoryName, setIsAddingCategory }: CategoryCreateFormActions) {
+  setDraftCategoryName("");
+  setIsAddingCategory(false);
+}
+
+function selectCategoryFilter(category: MemoCategory, { setCategoryFilter }: Pick<SidebarProps, "setCategoryFilter">) {
+  setCategoryFilter(category);
+}
+
+function CategoryAccordionItem({ active, category, count, disabled, onClick }: { active: boolean; category: MemoCategoryDefinition; count: number; disabled: boolean; onClick: () => void }) {
+  const panelId = `category-filter-panel-${category.id}`;
+
   return (
-    <button className={`category-filter-chip${active ? " is-active" : ""}`} type="button" data-testid={testId} disabled={disabled} onClick={onClick}>
-      {label}
-    </button>
+    <div className={`category-accordion-item${active ? " is-active" : ""}`}>
+      <button className="category-filter-chip" type="button" data-testid={`category-filter-${category.id}`} disabled={disabled} aria-expanded={active} aria-controls={panelId} aria-pressed={active} onClick={onClick}>
+        <span className="category-filter-chip__label">{category.label}</span>
+        <span className="category-filter-chip__meta">
+          <span className="category-filter-chip__count">{count}</span>
+          <IconChevron className="category-filter-chip__chevron" open={active} />
+        </span>
+      </button>
+      {active ? (
+        <div className="category-filter-panel" id={panelId}>
+          <span>메모 {count}개</span>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -243,10 +366,12 @@ function NotesSurface(props: SidebarProps) {
 }
 
 function SidebarSectionHeading(props: SidebarProps) {
+  const sectionTitle = getSidebarSectionTitle(props);
+
   return (
     <div className="sidebar-section-heading">
       <span className="sidebar-section-heading__label">
-        <span>{props.sidebarView === "favorites" ? "즐겨찾기" : "최근"}</span>
+        <span>{sectionTitle}</span>
         <span className="sidebar-section-heading__count">{props.sidebarCountLabel}</span>
       </span>
       <SidebarCreateButton {...props} />
@@ -292,7 +417,7 @@ function NoteListItem(props: SidebarProps & { note: Note }) {
           <strong>{noteLabel}</strong>
           <span className="note-list-meta">
             <span className="note-list-date">{props.note.dateLabel === "이제" ? props.note.updatedAt : props.note.dateLabel}</span>
-            {props.note.category ? <span className="note-category-badge">{MEMO_CATEGORY_LABELS[props.note.category]}</span> : null}
+            {props.note.category ? <span className="note-category-badge">{getCategoryDisplayLabel(props.categories, props.note.category)}</span> : null}
           </span>
         </span>
       </button>
@@ -340,14 +465,25 @@ function NotesEmptyState(props: SidebarProps) {
   );
 }
 
-function getSidebarEmptyTitle({ hasQuery, isCollectionEmpty, sidebarView }: SidebarProps) {
+function getSidebarSectionTitle(props: SidebarProps) {
+  const { categories, categoryFilter, sidebarView } = props;
+
+  if (categoryFilter !== "all") return getCategoryDisplayLabel(categories, categoryFilter);
+  return sidebarView === "favorites" ? "즐겨찾기" : "최근";
+}
+
+function getSidebarEmptyTitle(props: SidebarProps) {
+  const { categories, categoryFilter, hasQuery, isCollectionEmpty, sidebarView } = props;
+
   if (isCollectionEmpty) return "메모가 없어요";
+  if (categoryFilter !== "all" && !hasQuery) return `${getCategoryDisplayLabel(categories, categoryFilter)} 메모가 없어요`;
   if (sidebarView === "favorites" && !hasQuery) return "즐겨찾기가 없어요";
   return "검색 결과가 없어요";
 }
 
-function getSidebarEmptyText({ hasQuery, isCollectionEmpty, sidebarView }: SidebarProps) {
+function getSidebarEmptyText({ categoryFilter, hasQuery, isCollectionEmpty, sidebarView }: SidebarProps) {
   if (isCollectionEmpty) return "새 메모를 만들면 바로 목록에 나타나요.";
+  if (categoryFilter !== "all" && !hasQuery) return "해당 카테고리로 분류된 메모가 아직 없어요.";
   if (sidebarView === "favorites" && !hasQuery) return "메모 오른쪽 위 별 버튼을 누르면 즐겨찾기 목록에 모아볼 수 있어요.";
   return "다른 검색어를 입력하거나 검색을 해제해 주세요.";
 }

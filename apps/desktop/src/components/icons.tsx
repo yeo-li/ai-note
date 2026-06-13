@@ -105,3 +105,11 @@ export function IconSearch({ className }: IconProps) {
     </svg>
   );
 }
+
+export function IconChevron({ className, open }: IconProps & { open: boolean }) {
+  return (
+    <svg className={className} {...BASE_PROPS}>
+      {open ? <path d="M7 14h10l-5-6Z" fill="currentColor" stroke="none" /> : <path d="M7 10h10l-5 6Z" fill="currentColor" stroke="none" />}
+    </svg>
+  );
+}

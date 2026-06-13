@@ -152,7 +152,11 @@ function resolveFavoriteSelectedNoteId(params: { scopedNotes: Note[]; selectedNo
   return params.scopedNotes.some((note) => note.id === params.selectedNoteId) ? params.selectedNoteId : params.scopedNotes[0].id;
 }
 
-function resolveAllSelectedNoteId(params: { notes: Note[]; selectedNote: Note | null | undefined; selectedNoteId: string }) {
+function resolveAllSelectedNoteId(params: { notes: Note[]; scopedNotes: Note[]; selectedNote: Note | null | undefined; selectedNoteId: string }) {
+  if (params.scopedNotes.length > 0 && !params.scopedNotes.some((note) => note.id === params.selectedNoteId)) {
+    return params.scopedNotes[0].id;
+  }
+
   return params.selectedNote ? params.selectedNoteId : params.notes[0].id;
 }
 
@@ -188,8 +192,13 @@ function getDeleteIndexes(params: DeleteSelectionParams): DeleteIndexes | null {
 }
 
 function getVisibleNotesAfterDelete(params: DeleteSelectionParams, nextNotes: Note[]) {
-  const scopedNextNotes = nextNotes.filter((note) => (params.sidebarView === "favorites" ? note.favorite : true));
-  return params.hasQuery ? scopedNextNotes.filter((note) => matchesQuery(note, params.query)) : scopedNextNotes;
+  const nextVisibleNotes = params.currentVisibleNotes.filter((note) => note.id !== params.deleteTargetNoteId && nextNotes.some((nextNote) => nextNote.id === note.id));
+
+  if (params.hasQuery || params.sidebarView === "favorites" || params.currentVisibleNotes.length !== params.notes.length) {
+    return nextVisibleNotes;
+  }
+
+  return nextNotes;
 }
 
 function getFallbackSelectedNote(nextNotes: Note[], visibleNotes: Note[], indexes: DeleteIndexes) {

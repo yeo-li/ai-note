@@ -77,7 +77,7 @@ function useNoteMenuVisibility(params: UseDeleteNoteControllerParams) {
 function shouldCloseMissingNoteMenu(params: UseDeleteNoteControllerParams) {
   if (!params.noteMenuId) return false;
   if (!params.notes.some((note) => note.id === params.noteMenuId)) return true;
-  return (params.hasQuery || params.sidebarView === "favorites") && !params.filteredNotes.some((note) => note.id === params.noteMenuId);
+  return !params.filteredNotes.some((note) => note.id === params.noteMenuId);
 }
 
 function useNoteMenuOutsideClose(noteMenuId: MemoId | null, setNoteMenuId: Dispatch<SetStateAction<MemoId | null>>) {
@@ -196,7 +196,7 @@ function getNextDeleteSelection(deleteTargetNote: Note, params: UseDeleteNoteCon
 
 function getCurrentVisibleNotes(params: UseDeleteNoteControllerParams) {
   if (params.hasQuery) return params.filteredNotes;
-  return params.sidebarView === "favorites" ? params.scopedNotes : params.notes;
+  return params.scopedNotes;
 }
 
 function applyDeletedNote(

@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { MemoCreateInput, MemoId } from "@ai-note/shared/memo";
+import type { MemoCategory, MemoCreateInput, MemoId } from "@ai-note/shared/memo";
 import { buildMemoTitleFromBody } from "../note-content";
 import {
   createNote,
@@ -22,6 +22,7 @@ import {
 
 type NoteMutationParams = {
   activeNote: Note | null;
+  categoryFilter?: MemoCategory | "all";
   hasQuery: boolean;
   isMutationLocked: boolean;
   setDeleteIntentId: Dispatch<SetStateAction<MemoId | null>>;
@@ -152,7 +153,7 @@ async function createAndSelectNote(params: NoteMutationParams) {
     return;
   }
 
-  const nextNote = await createPersistedNote("새 메모를 만들지 못했어요.", params.setStatusMessage);
+  const nextNote = await createPersistedNote("새 메모를 만들지 못했어요.", params.setStatusMessage, params.categoryFilter);
   if (!nextNote) return;
   insertNote(nextNote, params);
   params.setSelectedNoteId(nextNote.id);
@@ -166,7 +167,7 @@ async function createStickyNoteWindow(params: NoteMutationParams) {
     return;
   }
 
-  const nextNote = await createPersistedNote("새 스티커 메모를 만들지 못했어요.", params.setStatusMessage);
+  const nextNote = await createPersistedNote("새 스티커 메모를 만들지 못했어요.", params.setStatusMessage, params.categoryFilter);
   if (!nextNote) return;
   insertNote(nextNote, params);
   await openCreatedStickyNote(nextNote.id, params.setStatusMessage);
@@ -188,8 +189,8 @@ function canCreateStickyNote(params: NoteMutationParams) {
   return false;
 }
 
-async function createPersistedNote(errorMessage: string, setStatusMessage: (message: string) => void) {
-  let nextNote = createNote();
+async function createPersistedNote(errorMessage: string, setStatusMessage: (message: string) => void, categoryFilter?: MemoCategory | "all") {
+  let nextNote = createNoteInCurrentCategory(categoryFilter);
 
   if (!isMemoRepositoryAvailable()) {
     return nextNote;
@@ -207,7 +208,15 @@ async function createPersistedNote(errorMessage: string, setStatusMessage: (mess
 function toCreateInput(note: Note): MemoCreateInput {
   return {
     title: buildMemoTitleFromBody(note.body),
-    body: note.body
+    body: note.body,
+    category: note.category
+  };
+}
+
+function createNoteInCurrentCategory(categoryFilter?: MemoCategory | "all") {
+  return {
+    ...createNote(),
+    category: categoryFilter && categoryFilter !== "all" ? categoryFilter : null
   };
 }
 

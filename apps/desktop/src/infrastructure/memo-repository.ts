@@ -1,5 +1,7 @@
 import type {
   Memo,
+  MemoCategoryCreateInput,
+  MemoCategoryDefinition,
   MemoChangeEvent,
   MemoCreateInput,
   MemoId,
@@ -75,6 +77,22 @@ export async function deleteMemo(memoId: MemoId): Promise<boolean> {
   }
 
   return window.memoAPI.delete(memoId);
+}
+
+export async function listMemoCategories(): Promise<MemoCategoryDefinition[]> {
+  if (!window.memoAPI) {
+    throw new Error("memoAPI 브리지를 찾지 못했어요.");
+  }
+
+  return window.memoAPI.listCategories();
+}
+
+export async function createMemoCategory(input: MemoCategoryCreateInput): Promise<MemoCategoryDefinition> {
+  if (!window.memoAPI) {
+    throw new Error("memoAPI 브리지를 찾지 못했어요.");
+  }
+
+  return window.memoAPI.createCategory(input);
 }
 
 export async function searchMemosByContext(query: string): Promise<ContextSearchResult[]> {

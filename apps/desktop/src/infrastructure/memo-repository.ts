@@ -125,3 +125,28 @@ export function subscribeToOrganizeState(listener: (event: { memoId: MemoId; bus
 
   return window.memoAPI.onDidOrganizeState(listener);
 }
+
+export async function getCategorizingMemoIds(): Promise<MemoId[]> {
+  if (!window.memoAPI || typeof window.memoAPI.categorizeState !== "function") {
+    return [];
+  }
+
+  const memoIds = await window.memoAPI.categorizeState();
+  return Array.isArray(memoIds) ? memoIds : [];
+}
+
+export async function categorizeMemo(memoId: MemoId): Promise<Memo | null> {
+  if (!window.memoAPI) {
+    throw new Error("memoAPI 브리지를 찾지 못했어요.");
+  }
+
+  return window.memoAPI.categorize(memoId);
+}
+
+export function subscribeToCategorizeState(listener: (event: { memoId: MemoId; busy: boolean }) => void) {
+  if (!window.memoAPI?.onDidCategorizeState) {
+    return undefined;
+  }
+
+  return window.memoAPI.onDidCategorizeState(listener);
+}

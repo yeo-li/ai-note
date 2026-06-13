@@ -75,8 +75,11 @@ type MemoAPI = {
         relatedCount: number;
       }
   >;
+  categorizeState(): Promise<string[]>;
+  categorize(memoId: string): Promise<Memo | null>;
   onDidChange(listener: (event: MemoChangeEvent) => void): () => void;
   onDidOrganizeState(listener: (event: { memoId: string; busy: boolean }) => void): () => void;
+  onDidCategorizeState(listener: (event: { memoId: string; busy: boolean }) => void): () => void;
 };
 
 type PromptTemplateAPI = {

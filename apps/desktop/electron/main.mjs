@@ -15,6 +15,7 @@ import { createOrganizeOrchestrator } from "./organize/organize-orchestrator.mjs
 import { createMemoStore } from "./store/memo-store.mjs";
 import { createMemoSqliteStore } from "./store/memo-sqlite-store.mjs";
 import { createPromptTemplateStore } from "./store/prompt-template-store.mjs";
+import { MEMO_CATEGORIES } from "@ai-note/shared/memo";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -50,10 +51,12 @@ const isPlaywrightE2E = process.env.PLAYWRIGHT_E2E === "1";
 const userDataPathOverride = process.env.AI_NOTE_USER_DATA_PATH;
 const memoEventChannels = {
   changed: "memo:changed",
-  organizeState: "memo:organize-state-changed"
+  organizeState: "memo:organize-state-changed",
+  categorizeState: "memo:categorize-state-changed"
 };
 const organizingMemoIds = new Set();
 const composingMemoIds = new Set();
+const categorizingMemoIds = new Set();
 
 if (userDataPathOverride) {
   app.setPath("userData", userDataPathOverride);
@@ -127,8 +130,39 @@ function normalizeMemoInput(value) {
   return {
     title: typeof value.title === "string" ? value.title : undefined,
     body: typeof value.body === "string" ? value.body : undefined,
-    favorite: typeof value.favorite === "boolean" ? value.favorite : undefined
+    favorite: typeof value.favorite === "boolean" ? value.favorite : undefined,
+    category: normalizeMemoCategoryInput(value.category)
   };
+}
+
+function guessMemoCategory(text) {
+  const normalizedText = text.toLowerCase();
+
+  if (/(todo|할 ?일|해야|마감|체크리스트)/.test(normalizedText)) {
+    return "task";
+  }
+
+  if (/(아이디어|구상|기획|brainstorm|idea)/.test(normalizedText)) {
+    return "idea";
+  }
+
+  if (/(오늘|회고|일기|느낀|journal)/.test(normalizedText)) {
+    return "journal";
+  }
+
+  if (/(참고|링크|reference|자료|정보)/.test(normalizedText)) {
+    return "reference";
+  }
+
+  return "other";
+}
+
+function normalizeMemoCategoryInput(value) {
+  if (value === null) {
+    return null;
+  }
+
+  return typeof value === "string" && MEMO_CATEGORIES.includes(value) ? value : undefined;
 }
 
 function normalizeSearchQuery(value) {
@@ -249,6 +283,22 @@ function broadcastOrganizeStateChange(changeEvent) {
   }
 }
 
+function broadcastCategorizeStateChange(changeEvent) {
+  for (const browserWindow of BrowserWindow.getAllWindows()) {
+    if (browserWindow.isDestroyed()) {
+      continue;
+    }
+
+    const { webContents } = browserWindow;
+
+    if (webContents.isDestroyed()) {
+      continue;
+    }
+
+    webContents.send(memoEventChannels.categorizeState, changeEvent);
+  }
+}
+
 function registerMemoHandlers(memoStore, memoSearchService, organizer, aiMemoProvider, memoStoreContext, contextSearchService, composeService) {
   ipcMain.handle(memoChannels.health, async () => {
     const baseHealth = {
@@ -354,6 +404,42 @@ function registerMemoHandlers(memoStore, memoSearchService, organizer, aiMemoPro
     } finally {
       organizingMemoIds.delete(organizeInput.memoId);
       broadcastOrganizeStateChange({ memoId: organizeInput.memoId, busy: false });
+    }
+  });
+
+  ipcMain.handle(memoChannels.categorizeState, async () => Array.from(categorizingMemoIds));
+
+  ipcMain.handle(memoChannels.categorize, async (event, id) => {
+    const memoId = normalizeMemoId(id);
+
+    if (!memoId) {
+      throw new Error("잘못된 분류 요청입니다.");
+    }
+
+    const memo = await memoStore.get(memoId);
+
+    if (!memo) {
+      throw new Error("메모를 찾지 못했어요.");
+    }
+
+    categorizingMemoIds.add(memoId);
+    broadcastCategorizeStateChange({ memoId, busy: true });
+
+    try {
+      const result = await aiMemoProvider.categorizeMemo({ title: memo.title, body: memo.body });
+      const updatedMemo = await memoStore.update(memoId, { category: result.category });
+
+      if (updatedMemo) {
+        broadcastMemoChange(event, {
+          type: "updated",
+          memo: updatedMemo
+        });
+      }
+
+      return updatedMemo;
+    } finally {
+      categorizingMemoIds.delete(memoId);
+      broadcastCategorizeStateChange({ memoId, busy: false });
     }
   });
 
@@ -702,6 +788,9 @@ app.whenReady().then(() => {
             ].join("\n"),
             sourceMemoIds: selectedMemos.map((memo) => memo.id)
           };
+        },
+        async categorizeMemo({ title, body }) {
+          return { category: guessMemoCategory(`${title} ${body}`) };
         }
       }
     : createAiMemoProvider();

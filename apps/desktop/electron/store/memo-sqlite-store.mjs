@@ -42,12 +42,16 @@ function ensureSchema(db) {
       title TEXT NOT NULL,
       body TEXT NOT NULL,
       favorite INTEGER NOT NULL DEFAULT 0,
+      category TEXT DEFAULT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
 
     CREATE INDEX IF NOT EXISTS idx_memos_updated_at
       ON memos(updated_at DESC, created_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_memos_category
+      ON memos(category);
   `);
 
   db.prepare(
@@ -61,9 +65,15 @@ function ensureSchema(db) {
 
   const memoColumns = db.prepare("PRAGMA table_info(memos)").all();
   const hasFavoriteColumn = memoColumns.some((column) => column.name === "favorite");
+  const hasCategoryColumn = memoColumns.some((column) => column.name === "category");
 
   if (!hasFavoriteColumn) {
     db.exec("ALTER TABLE memos ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0;");
+  }
+
+  if (!hasCategoryColumn) {
+    db.exec("ALTER TABLE memos ADD COLUMN category TEXT DEFAULT NULL;");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_memos_category ON memos(category);");
   }
 }
 
@@ -77,6 +87,7 @@ function rowToMemo(row) {
     title: row.title,
     body: row.body,
     favorite: row.favorite === 1,
+    category: row.category,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   });
@@ -123,8 +134,8 @@ function migrateLegacyStoreIfNeeded(db, userDataPath) {
 
   const insertMemoStatement = db.prepare(
     `
-      INSERT OR REPLACE INTO memos (id, title, body, favorite, created_at, updated_at)
-      VALUES (@id, @title, @body, @favorite, @createdAt, @updatedAt)
+      INSERT OR REPLACE INTO memos (id, title, body, favorite, category, created_at, updated_at)
+      VALUES (@id, @title, @body, @favorite, @category, @createdAt, @updatedAt)
     `
   );
   const upsertMetadataStatement = db.prepare(
@@ -142,6 +153,7 @@ function migrateLegacyStoreIfNeeded(db, userDataPath) {
         title: normalized.title,
         body: normalized.body,
         favorite: normalized.favorite ? 1 : 0,
+        category: normalized.category,
         createdAt: normalized.createdAt,
         updatedAt: normalized.updatedAt
       });
@@ -164,7 +176,7 @@ function createStatements(db) {
     list: db.prepare(
       `
         SELECT id, title, body, created_at, updated_at
-               , favorite
+               , favorite, category
         FROM memos
         ORDER BY updated_at DESC, created_at DESC
       `
@@ -172,7 +184,7 @@ function createStatements(db) {
     get: db.prepare(
       `
         SELECT id, title, body, created_at, updated_at
-               , favorite
+               , favorite, category
         FROM memos
         WHERE id = @id
         LIMIT 1
@@ -180,8 +192,8 @@ function createStatements(db) {
     ),
     insert: db.prepare(
       `
-        INSERT INTO memos (id, title, body, favorite, created_at, updated_at)
-        VALUES (@id, @title, @body, @favorite, @createdAt, @updatedAt)
+        INSERT INTO memos (id, title, body, favorite, category, created_at, updated_at)
+        VALUES (@id, @title, @body, @favorite, @category, @createdAt, @updatedAt)
       `
     ),
     update: db.prepare(
@@ -190,6 +202,7 @@ function createStatements(db) {
         SET title = @title,
             body = @body,
             favorite = @favorite,
+            category = @category,
             updated_at = @updatedAt
         WHERE id = @id
       `
@@ -261,6 +274,7 @@ export function createMemoSqliteStore({ userDataPath, dbPath } = {}) {
           title: input.title ?? "",
           body: input.body ?? "",
           favorite: input.favorite ?? false,
+          category: input.category ?? null,
           createdAt: now,
           updatedAt: now
         });
@@ -270,6 +284,7 @@ export function createMemoSqliteStore({ userDataPath, dbPath } = {}) {
           title: memo.title,
           body: memo.body,
           favorite: memo.favorite ? 1 : 0,
+          category: memo.category,
           createdAt: memo.createdAt,
           updatedAt: memo.updatedAt
         });
@@ -294,6 +309,7 @@ export function createMemoSqliteStore({ userDataPath, dbPath } = {}) {
           title: updates.title ?? currentMemo.title,
           body: updates.body ?? currentMemo.body,
           favorite: typeof updates.favorite === "boolean" ? updates.favorite : currentMemo.favorite,
+          category: typeof updates.category !== "undefined" ? updates.category : currentMemo.category,
           updatedAt: shouldRefreshTimestamp ? createTimestampAfter([currentMemo.updatedAt, latestUpdatedAt]) : currentMemo.updatedAt
         });
 
@@ -302,6 +318,7 @@ export function createMemoSqliteStore({ userDataPath, dbPath } = {}) {
           title: nextMemo.title,
           body: nextMemo.body,
           favorite: nextMemo.favorite ? 1 : 0,
+          category: nextMemo.category,
           updatedAt: nextMemo.updatedAt
         });
 

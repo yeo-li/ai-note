@@ -1,10 +1,17 @@
 export type MemoId = string;
 
+export type MemoCategory = "idea" | "task" | "journal" | "reference" | "other";
+
+export const MEMO_CATEGORIES: readonly MemoCategory[];
+
+export const MEMO_CATEGORY_LABELS: Record<MemoCategory, string>;
+
 export type Memo = {
   id: MemoId;
   title: string;
   body: string;
   favorite: boolean;
+  category: MemoCategory | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -26,12 +33,14 @@ export type MemoChangeEvent =
 export type MemoCreateInput = {
   title?: string;
   body?: string;
+  category?: MemoCategory | null;
 };
 
 export type MemoUpdateInput = {
   title?: string;
   body?: string;
   favorite?: boolean;
+  category?: MemoCategory | null;
 };
 
 export type MemoSearchResult = {

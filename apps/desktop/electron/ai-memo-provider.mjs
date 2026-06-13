@@ -1,5 +1,6 @@
 import { createJsonApiClient, defaultTimeoutMs } from "./ai-api-client.mjs";
 import { OrganizeProviderError } from "./organize/organize-provider.mjs";
+import { MEMO_CATEGORIES, MEMO_CATEGORY_LABELS } from "@ai-note/shared/memo";
 
 function buildSearchInstruction({ query, memos }) {
   return [
@@ -84,6 +85,35 @@ function buildComposeInstruction({ prompt, memos, currentDate = formatLocalDate(
   ].join("\n");
 }
 
+function buildCategorizeInstruction({ title, body }) {
+  const categoryDescriptions = MEMO_CATEGORIES.map((category) => `- ${category}: ${MEMO_CATEGORY_LABELS[category]}`).join("\n");
+
+  return [
+    "You are an AI memo categorizer for a desktop note app.",
+    "Read the memo and choose the single category that best fits its content.",
+    "Return ONLY JSON matching the schema.",
+    "Available categories:",
+    categoryDescriptions,
+    "<memo>",
+    JSON.stringify({ title, body }),
+    "</memo>"
+  ].join("\n");
+}
+
+function buildCategorizeSchema() {
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["category"],
+    properties: {
+      category: {
+        type: "string",
+        enum: MEMO_CATEGORIES
+      }
+    }
+  };
+}
+
 function buildComposeSchema() {
   return {
     type: "object",
@@ -149,6 +179,21 @@ export function createAiMemoProvider({ apiClient, apiKey, apiUrl, model, timeout
         body: String(parsed.body),
         sourceMemoIds: Array.isArray(parsed.sourceMemoIds) ? parsed.sourceMemoIds.map(String) : []
       };
+    },
+
+    async categorizeMemo({ title, body }) {
+      const parsed = await client.requestJson({
+        prompt: buildCategorizeInstruction({ title, body }),
+        schema: buildCategorizeSchema(),
+        schemaName: "memo_categorize_result",
+        parseFailureMessage: "AI 메모 분류 응답을 해석하지 못했어요."
+      });
+
+      if (!MEMO_CATEGORIES.includes(parsed?.category)) {
+        throw new OrganizeProviderError("API_PARSE_FAILED", "AI 메모 분류 응답을 해석하지 못했어요.");
+      }
+
+      return { category: parsed.category };
     }
   };
 }

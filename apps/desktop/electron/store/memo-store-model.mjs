@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { MEMO_CATEGORIES } from "@ai-note/shared/memo";
 
 export const MEMO_STORE_VERSION = 1;
 export const MEMO_STORE_FILENAME = "memos.json";
@@ -38,12 +39,17 @@ function normalizeFavorite(value) {
   return value === true;
 }
 
+export function normalizeCategory(value) {
+  return typeof value === "string" && MEMO_CATEGORIES.includes(value) ? value : null;
+}
+
 export function normalizeMemo(memo) {
   return {
     id: typeof memo.id === "string" && memo.id.length > 0 ? memo.id : randomUUID(),
     title: normalizeTitle(memo.title),
     body: normalizeBody(memo.body),
     favorite: normalizeFavorite(memo.favorite),
+    category: normalizeCategory(memo.category),
     createdAt: normalizeTimestamp(memo.createdAt),
     updatedAt: normalizeTimestamp(memo.updatedAt)
   };
@@ -55,6 +61,7 @@ export function cloneMemo(memo) {
     title: memo.title,
     body: memo.body,
     favorite: memo.favorite,
+    category: memo.category,
     createdAt: memo.createdAt,
     updatedAt: memo.updatedAt
   };

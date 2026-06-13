@@ -1,5 +1,7 @@
 import type { Dispatch, FormEvent, KeyboardEvent, RefObject, SetStateAction } from "react";
-import { IconPin, IconSearch, IconSidebarPanel, IconSparkles, IconStar } from "./icons";
+import { MEMO_CATEGORIES, MEMO_CATEGORY_LABELS } from "@ai-note/shared/memo";
+import type { MemoCategory, MemoId } from "@ai-note/shared/memo";
+import { IconPin, IconSearch, IconSidebarPanel, IconSparkles, IconStar, IconTag } from "./icons";
 import type { PromptTemplate } from "../shared/prompt-template-bridge";
 import type { DiffSegment } from "../domain/diff";
 import type { FindMatch, Note } from "../domain/note";
@@ -15,6 +17,7 @@ type EditorWorkspaceProps = {
   activeNote: Note | null;
   activeTransformFeedback: EditorFeedback | null;
   aiPromptInputRef: RefObject<HTMLInputElement>;
+  categorizingNoteIds: Record<MemoId, boolean>;
   committedFindQuery: string;
   emptyCreateButtonRef: RefObject<HTMLButtonElement>;
   findInputRef: RefObject<HTMLInputElement>;
@@ -59,8 +62,10 @@ type EditorWorkspaceProps = {
   persistPromptTemplate: () => Promise<void>;
   removePromptTemplate: (templateId: string) => Promise<void>;
   restoreOriginal: () => void;
+  runAiCategorize: (noteId: MemoId) => Promise<void>;
   searchFind: (direction: 1 | -1) => void;
   setFindQuery: Dispatch<SetStateAction<string>>;
+  setNoteCategory: (noteId: MemoId, category: MemoCategory | null) => Promise<void>;
   setPromptTemplateEditor: Dispatch<SetStateAction<PromptTemplateEditorState>>;
   startTransformPreview: () => Promise<void>;
   toggleFavorite: (noteId: string) => void;
@@ -111,6 +116,8 @@ function EditorToolbar(props: EditorWorkspaceProps) {
           <SidebarToggleButton {...props} />
         </div>
         <div className="paper-toolbar-editor__group paper-toolbar-editor__group--right">
+          <CategorySelector {...props} />
+          <AiCategorizeButton {...props} />
           <OpenStickyButton {...props} />
           <FavoriteButton {...props} />
           <OrganizeButton {...props} />
@@ -148,6 +155,46 @@ function FavoriteButton({ activeNote, isActiveNoteBusy, toggleFavorite }: Editor
     <button className={`paper-button paper-button-icon editor-favorite-button${activeNote.favorite ? " is-favorite" : ""}`} type="button" data-testid="selected-note-favorite-button" aria-label={activeNote.favorite ? "즐겨찾기를 해제해요" : "즐겨찾기에 추가해요"} aria-pressed={activeNote.favorite} disabled={isActiveNoteBusy} onClick={() => toggleFavorite(activeNote.id)}>
       <IconStar filled={activeNote.favorite} className="button-icon" />
       <span className="visually-hidden">{activeNote.favorite ? "즐겨찾기를 해제해요" : "즐겨찾기에 추가해요"}</span>
+    </button>
+  );
+}
+
+function CategorySelector({ activeNote, isActiveNoteBusy, isMutationLocked, setNoteCategory }: EditorWorkspaceProps) {
+  if (!activeNote) {
+    return null;
+  }
+
+  return (
+    <label className="editor-category-select">
+      <span className="visually-hidden">메모 카테고리</span>
+      <select data-testid="note-category-select" value={activeNote.category ?? ""} disabled={isMutationLocked || isActiveNoteBusy} onChange={(event) => void setNoteCategory(activeNote.id, toMemoCategory(event.target.value))}>
+        <option value="">미분류</option>
+        {MEMO_CATEGORIES.map((category) => (
+          <option key={category} value={category}>
+            {MEMO_CATEGORY_LABELS[category]}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function toMemoCategory(value: string): MemoCategory | null {
+  return (MEMO_CATEGORIES as readonly string[]).includes(value) ? (value as MemoCategory) : null;
+}
+
+function AiCategorizeButton({ activeNote, categorizingNoteIds, isMutationLocked, isStickyMode, runAiCategorize }: EditorWorkspaceProps) {
+  if (!activeNote) {
+    return null;
+  }
+
+  const isCategorizing = Boolean(categorizingNoteIds[activeNote.id]);
+  const disabled = isMutationLocked || isStickyMode || isCategorizing;
+
+  return (
+    <button className={`paper-button paper-button-icon${isCategorizing ? " is-loading" : ""}`} type="button" data-testid="ai-categorize-button" aria-label="AI로 카테고리 분류하기" title="AI로 카테고리 분류하기" disabled={disabled} onClick={() => void runAiCategorize(activeNote.id)}>
+      <IconTag className="button-icon" />
+      <span className="visually-hidden">AI로 카테고리 분류하기</span>
     </button>
   );
 }

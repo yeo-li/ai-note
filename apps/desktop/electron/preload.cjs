@@ -12,11 +12,14 @@ const memoChannels = {
   search: "memo:search",
   aiSearch: "memo:ai-search",
   organize: "memo:organize",
-  compose: "memo:compose"
+  compose: "memo:compose",
+  categorize: "memo:categorize",
+  categorizeState: "memo:categorize-state"
 };
 const memoEventChannels = {
   changed: "memo:changed",
-  organizeState: "memo:organize-state-changed"
+  organizeState: "memo:organize-state-changed",
+  categorizeState: "memo:categorize-state-changed"
 };
 const promptTemplateChannels = {
   list: "prompt-template:list",
@@ -67,6 +70,12 @@ const memoAPI = {
   compose(input) {
     return ipcRenderer.invoke(memoChannels.compose, input);
   },
+  categorizeState() {
+    return ipcRenderer.invoke(memoChannels.categorizeState);
+  },
+  categorize(memoId) {
+    return ipcRenderer.invoke(memoChannels.categorize, memoId);
+  },
   onDidChange(listener) {
     if (typeof listener !== "function") {
       return () => {};
@@ -95,6 +104,21 @@ const memoAPI = {
 
     return () => {
       ipcRenderer.off(memoEventChannels.organizeState, wrappedListener);
+    };
+  },
+  onDidCategorizeState(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+
+    const wrappedListener = (_event, changeEvent) => {
+      listener(changeEvent);
+    };
+
+    ipcRenderer.on(memoEventChannels.categorizeState, wrappedListener);
+
+    return () => {
+      ipcRenderer.off(memoEventChannels.categorizeState, wrappedListener);
     };
   }
 };

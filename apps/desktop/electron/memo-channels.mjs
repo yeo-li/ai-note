@@ -8,5 +8,7 @@ export const memoChannels = {
   search: "memo:search",
   aiSearch: "memo:ai-search",
   organize: "memo:organize",
-  organizeState: "memo:organize-state"
+  organizeState: "memo:organize-state",
+  categorize: "memo:categorize",
+  categorizeState: "memo:categorize-state"
 };

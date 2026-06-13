@@ -68,5 +68,6 @@ export const initialNotes: Note[] = [
 ].map((note): Note => ({
   ...note,
   mode: note.mode as TransformMode,
-  favorite: false
+  favorite: false,
+  category: null
 }));

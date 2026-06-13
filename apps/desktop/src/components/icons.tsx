@@ -64,6 +64,15 @@ export function IconSparkles({ className }: IconProps) {
   );
 }
 
+export function IconTag({ className }: IconProps) {
+  return (
+    <svg className={className} {...BASE_PROPS}>
+      <path d="M11.5 4h6a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-.44 1.06l-7 7a1.5 1.5 0 0 1-2.12 0l-5.5-5.5a1.5 1.5 0 0 1 0-2.12l7-7A1.5 1.5 0 0 1 11.5 4Z" strokeLinejoin="round" />
+      <circle cx="15.5" cy="8.5" r="1.25" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function IconClose({ className }: IconProps) {
   return (
     <svg className={className} {...BASE_PROPS}>

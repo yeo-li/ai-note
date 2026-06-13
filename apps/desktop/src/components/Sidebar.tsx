@@ -1,14 +1,17 @@
 import type { Dispatch, KeyboardEvent, MouseEvent, ReactNode, RefObject, SetStateAction } from "react";
+import { MEMO_CATEGORIES, MEMO_CATEGORY_LABELS } from "@ai-note/shared/memo";
 import type { MemoId } from "@ai-note/shared/memo";
 import { deriveNoteHeadline } from "../note-content";
 import { IconBolt, IconChat, IconPlus } from "./icons";
 import { canOpenQuickCaptureWindow, isMacOSPlatform, openQuickCaptureWindow } from "../infrastructure/desktop-window";
 import type { Note } from "../domain/note";
+import type { CategoryFilter } from "../hooks/useMemoCategoryController";
 import type { ContextSearchState, SidebarSurface, SidebarView } from "../domain/workspace";
 
 type SidebarProps = {
   activeNote: Note | null;
   activeSidebarSurface: SidebarSurface;
+  categoryFilter: CategoryFilter;
   contextSearch: ContextSearchState;
   filteredNotes: Note[];
   hasQuery: boolean;
@@ -33,6 +36,7 @@ type SidebarProps = {
   handleSearch: (nextQuery: string) => void;
   openNoteFromContextSearch: (noteId: MemoId) => void;
   runContextSearch: () => Promise<void>;
+  setCategoryFilter: Dispatch<SetStateAction<CategoryFilter>>;
   setDeleteIntentId: Dispatch<SetStateAction<MemoId | null>>;
   setNoteMenuId: Dispatch<SetStateAction<MemoId | null>>;
   setSelectedNoteId: Dispatch<SetStateAction<MemoId | "">>;
@@ -57,6 +61,7 @@ function SidebarHead(props: SidebarProps) {
       <SidebarActions {...props} />
       <SidebarSearch {...props} />
       <SidebarNav {...props} />
+      <SidebarCategoryFilter {...props} />
     </div>
   );
 }
@@ -134,6 +139,25 @@ function SidebarNavButton({ active, children, disabled, onClick, testId }: { act
   return (
     <button className={`sidebar-nav-item${active ? " is-active" : ""}`} type="button" data-testid={testId} disabled={disabled} onClick={onClick}>
       {children}
+    </button>
+  );
+}
+
+function SidebarCategoryFilter({ categoryFilter, isComposeScreenOpen, setCategoryFilter }: SidebarProps) {
+  return (
+    <div className="sidebar-category-filter" role="group" aria-label="카테고리 필터">
+      <CategoryFilterChip active={categoryFilter === "all"} disabled={isComposeScreenOpen} label="전체" onClick={() => setCategoryFilter("all")} testId="category-filter-all" />
+      {MEMO_CATEGORIES.map((category) => (
+        <CategoryFilterChip key={category} active={categoryFilter === category} disabled={isComposeScreenOpen} label={MEMO_CATEGORY_LABELS[category]} onClick={() => setCategoryFilter(category)} testId={`category-filter-${category}`} />
+      ))}
+    </div>
+  );
+}
+
+function CategoryFilterChip({ active, disabled, label, onClick, testId }: { active: boolean; disabled: boolean; label: string; onClick: () => void; testId: string }) {
+  return (
+    <button className={`category-filter-chip${active ? " is-active" : ""}`} type="button" data-testid={testId} disabled={disabled} onClick={onClick}>
+      {label}
     </button>
   );
 }
@@ -266,7 +290,10 @@ function NoteListItem(props: SidebarProps & { note: Note }) {
       <button className="note-list-item-button" data-testid={`note-list-item-${props.note.id}`} type="button" disabled={props.isComposeScreenOpen} aria-current={isSelected ? "true" : undefined} aria-label={`${noteLabel} 메모`} aria-expanded={isNoteMenuOpen} aria-controls={isNoteMenuOpen ? noteMenuIdValue : undefined} onClick={() => selectNote(props.note.id, props)}>
         <span className="note-list-copy">
           <strong>{noteLabel}</strong>
-          <span className="note-list-date">{props.note.dateLabel === "이제" ? props.note.updatedAt : props.note.dateLabel}</span>
+          <span className="note-list-meta">
+            <span className="note-list-date">{props.note.dateLabel === "이제" ? props.note.updatedAt : props.note.dateLabel}</span>
+            {props.note.category ? <span className="note-category-badge">{MEMO_CATEGORY_LABELS[props.note.category]}</span> : null}
+          </span>
         </span>
       </button>
       {isNoteMenuOpen ? <NoteMenu noteId={props.note.id} noteMenuIdValue={noteMenuIdValue} {...props} /> : null}

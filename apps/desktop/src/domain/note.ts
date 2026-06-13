@@ -1,4 +1,4 @@
-import type { Memo, MemoId, MemoUpdateInput } from "@ai-note/shared/memo";
+import type { Memo, MemoCategory, MemoId, MemoUpdateInput } from "@ai-note/shared/memo";
 import { buildMemoTitleFromBody } from "../note-content";
 
 export type TransformMode = "default" | "organized";
@@ -7,6 +7,7 @@ export type Note = {
   id: MemoId;
   body: string;
   favorite: boolean;
+  category: MemoCategory | null;
   updatedAt: string;
   dateLabel: string;
   mode: TransformMode;
@@ -52,6 +53,7 @@ export function createNote(): Note {
     id: `note-${Date.now()}`,
     body: "",
     favorite: false,
+    category: null,
     mode: "default",
     ...nowStamp()
   };
@@ -85,6 +87,7 @@ export function toNoteFromMemo(memo: Memo, mode: TransformMode = "default"): Not
     id: memo.id,
     body: memo.body,
     favorite: memo.favorite ?? false,
+    category: memo.category ?? null,
     updatedAt: formatUpdatedAtFromIso(memo.updatedAt),
     dateLabel: formatDateLabelFromIso(memo.updatedAt),
     mode
@@ -99,6 +102,7 @@ export function upsertSyncedNote(currentNotes: Note[], memo: Memo) {
         ...existingNote,
         body: incomingNote.body,
         favorite: incomingNote.favorite,
+        category: incomingNote.category,
         updatedAt: incomingNote.updatedAt,
         dateLabel: incomingNote.dateLabel
       }
@@ -122,6 +126,10 @@ export function toMemoUpdateInput(update: Partial<Note>): MemoUpdateInput {
 
   if (typeof update.favorite === "boolean") {
     patch.favorite = update.favorite;
+  }
+
+  if (typeof update.category !== "undefined") {
+    patch.category = update.category;
   }
 
   return patch;

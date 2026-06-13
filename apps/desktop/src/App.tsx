@@ -18,6 +18,7 @@ import { useComposeController } from "./hooks/useComposeController";
 import { useContextSearchController } from "./hooks/useContextSearchController";
 import { useDeleteNoteController } from "./hooks/useDeleteNoteController";
 import { useFindController } from "./hooks/useFindController";
+import { useMemoCategoryController } from "./hooks/useMemoCategoryController";
 import { useMemoSyncEffects } from "./hooks/useMemoSyncEffects";
 import { patchActiveNoteWithPersistence, useNoteMutationActions } from "./hooks/useNoteMutationActions";
 import { useNotesBootstrap } from "./hooks/useNotesBootstrap";
@@ -138,10 +139,27 @@ function App() {
     closeFindBar
   });
 
+  const {
+    categorizingNoteIds,
+    categoryFilter,
+    setCategoryFilter,
+    setNoteCategory,
+    runAiCategorize
+  } = useMemoCategoryController({
+    isMutationLocked,
+    setNotes,
+    setStatusMessage
+  });
+
   const hasQuery = sidebarSearchMode === "keyword" && query.trim().length > 0;
   const scopedNotes = useMemo(
-    () => notes.filter((note) => (sidebarView === "favorites" ? note.favorite : true)),
-    [notes, sidebarView]
+    () =>
+      notes.filter((note) => {
+        if (sidebarView === "favorites" && !note.favorite) return false;
+        if (categoryFilter !== "all" && note.category !== categoryFilter) return false;
+        return true;
+      }),
+    [notes, sidebarView, categoryFilter]
   );
   const filteredNotes = useMemo(
     () => scopedNotes.filter((note) => matchesQuery(note, query)),
@@ -525,6 +543,7 @@ function App() {
           <Sidebar
             activeNote={activeNote}
             activeSidebarSurface={activeSidebarSurface}
+            categoryFilter={categoryFilter}
             contextSearch={contextSearch}
             filteredNotes={filteredNotes}
             hasQuery={hasQuery}
@@ -549,6 +568,7 @@ function App() {
             handleSearch={handleSearch}
             openNoteFromContextSearch={openNoteFromContextSearch}
             runContextSearch={runContextSearch}
+            setCategoryFilter={setCategoryFilter}
             setDeleteIntentId={setDeleteIntentId}
             setNoteMenuId={setNoteMenuId}
             setSelectedNoteId={setSelectedNoteId}
@@ -599,6 +619,7 @@ function App() {
                 activeNote={activeNote}
                 activeTransformFeedback={activeTransformFeedback}
                 aiPromptInputRef={aiPromptInputRef}
+                categorizingNoteIds={categorizingNoteIds}
                 emptyCreateButtonRef={emptyCreateButtonRef}
                 committedFindQuery={committedFindQuery}
                 findInputRef={findInputRef}
@@ -643,8 +664,10 @@ function App() {
                 persistPromptTemplate={persistPromptTemplate}
                 removePromptTemplate={removePromptTemplate}
                 restoreOriginal={restoreOriginal}
+                runAiCategorize={runAiCategorize}
                 searchFind={searchFind}
                 setFindQuery={setFindQuery}
+                setNoteCategory={setNoteCategory}
                 setPromptTemplateEditor={setPromptTemplateEditor}
                 startTransformPreview={startTransformPreview}
                 toggleFavorite={toggleFavorite}

@@ -5,6 +5,7 @@ export type MemoCategory = string;
 export type MemoCategoryDefinition = {
   id: MemoCategory;
   label: string;
+  description: string;
   builtin: boolean;
   createdAt: string;
   updatedAt: string;
@@ -15,6 +16,8 @@ export const MEMO_CATEGORIES: readonly MemoCategory[];
 export const MEMO_CATEGORY_LABELS: Record<string, string>;
 
 export function normalizeMemoCategoryValue(value: unknown): MemoCategory | null;
+
+export function normalizeMemoCategoryDescription(value: unknown): string;
 
 export function getMemoCategoryLabel(category: MemoCategory | null | undefined): string;
 
@@ -50,6 +53,12 @@ export type MemoCreateInput = {
 
 export type MemoCategoryCreateInput = {
   label: string;
+  description?: string;
+};
+
+export type MemoCategoryUpdateInput = {
+  label?: string;
+  description?: string;
 };
 
 export type MemoUpdateInput = {

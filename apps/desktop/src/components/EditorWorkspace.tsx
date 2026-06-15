@@ -195,7 +195,7 @@ function AiCategorizeButton({ activeNote, categorizingNoteIds, isMutationLocked,
   }
 
   const isCategorizing = Boolean(categorizingNoteIds[activeNote.id]);
-  const disabled = isMutationLocked || isStickyMode || isCategorizing;
+  const disabled = isMutationLocked || isStickyMode || isCategorizing || activeNote.body.trim().length === 0;
 
   return (
     <button className={`paper-button paper-button-icon${isCategorizing ? " is-loading" : ""}`} type="button" data-testid="ai-categorize-button" aria-label="AI로 카테고리 분류하기" title="AI로 카테고리 분류하기" aria-busy={isCategorizing} disabled={disabled} onClick={() => void runAiCategorize(activeNote.id)}>

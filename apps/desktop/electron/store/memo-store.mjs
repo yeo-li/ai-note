@@ -10,6 +10,7 @@ import {
   createCategoryDefinitionFromLabel,
   createTimestampAfter,
   mergeCategoryDefinitions,
+  normalizeCategoryUpdateInput,
   normalizeMemo,
   parseStorePayload,
   sortMemosByUpdatedAt
@@ -73,11 +74,12 @@ async function readStore(filePath, legacyFilePath) {
 
 async function writeStore(filePath, store) {
   const tempPath = `${filePath}.tmp`;
+  const categories = store.categories && store.categories.length > 0 ? store.categories : createBuiltinCategoryDefinitions();
   const payload = JSON.stringify(
     {
       version: MEMO_STORE_VERSION,
       memos: sortMemosByUpdatedAt(store.memos),
-      categories: mergeCategoryDefinitions(createBuiltinCategoryDefinitions(), store.categories ?? [])
+      categories: mergeCategoryDefinitions(categories)
     },
     null,
     2
@@ -196,7 +198,7 @@ export function createMemoStore({ userDataPath }) {
     async createCategory(input = {}) {
       return runSerialized(async () => {
         const store = await readStore(filePath, legacyFilePath);
-        const category = createCategoryDefinitionFromLabel(input.label);
+        const category = createCategoryDefinitionFromLabel(input.label, { description: input.description });
 
         if (!category) {
           throw new Error("카테고리 이름을 확인해 주세요.");
@@ -213,6 +215,58 @@ export function createMemoStore({ userDataPath }) {
 
         return category;
       });
+    },
+
+    async updateCategory(categoryId, patch = {}) {
+      return runSerialized(async () => {
+        const store = await readStore(filePath, legacyFilePath);
+        const categories = mergeCategoryDefinitions(store.categories ?? createBuiltinCategoryDefinitions(), store.memos.map(createCategoryFromMemo).filter(Boolean));
+        const currentCategory = categories.find((category) => category.id === categoryId);
+
+        if (!currentCategory) {
+          throw new Error("카테고리를 찾지 못했어요.");
+        }
+
+        const updatedCategory = {
+          ...currentCategory,
+          ...normalizeCategoryUpdateInput(patch),
+          updatedAt: new Date().toISOString()
+        };
+
+        store.categories = mergeCategoryDefinitions([updatedCategory], categories.filter((category) => category.id !== categoryId));
+        await writeStore(filePath, store);
+
+        return updatedCategory;
+      });
+    },
+
+    async deleteCategory(categoryId) {
+      return runSerialized(async () => {
+        const store = await readStore(filePath, legacyFilePath);
+        const categories = mergeCategoryDefinitions(store.categories ?? createBuiltinCategoryDefinitions(), store.memos.map(createCategoryFromMemo).filter(Boolean));
+        const currentCategory = categories.find((category) => category.id === categoryId);
+
+        if (!currentCategory) {
+          return { category: null, updatedMemos: [] };
+        }
+
+        const updatedMemos = [];
+
+        store.memos = store.memos.map((memo) => {
+          if (memo.category !== categoryId) {
+            return memo;
+          }
+
+          const nextMemo = { ...memo, category: null };
+          updatedMemos.push(cloneMemo(nextMemo));
+          return nextMemo;
+        });
+
+        store.categories = categories.filter((category) => category.id !== categoryId);
+        await writeStore(filePath, store);
+
+        return { category: currentCategory, updatedMemos };
+      });
     }
   };
 }
@@ -225,6 +279,7 @@ function createCategoryFromMemo(memo) {
   return {
     id: memo.category,
     label: memo.category,
+    description: "",
     builtin: false,
     createdAt: memo.createdAt,
     updatedAt: memo.updatedAt

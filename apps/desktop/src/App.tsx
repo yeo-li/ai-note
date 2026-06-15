@@ -144,10 +144,14 @@ function App() {
     categorizingNoteIds,
     categories,
     categoryFilter,
+    isCategorizingAll,
     createCategory,
+    updateCategory,
+    deleteCategory,
     setCategoryFilter,
     setNoteCategory,
-    runAiCategorize
+    runAiCategorize,
+    runCategorizeAllUncategorized
   } = useMemoCategoryController({
     isMutationLocked,
     notes,
@@ -570,9 +574,12 @@ function App() {
             categoryFilter={categoryFilter}
             contextSearch={contextSearch}
             createCategory={createCategory}
+            deleteCategory={deleteCategory}
+            updateCategory={updateCategory}
             filteredNotes={filteredNotes}
             hasQuery={hasQuery}
             isAiChatOpen={isAiChatOpen}
+            isCategorizingAll={isCategorizingAll}
             isCollectionEmpty={isCollectionEmpty}
             isComposeScreenOpen={isComposeScreenOpen}
             isMutationLocked={isMutationLocked}
@@ -592,6 +599,7 @@ function App() {
             handleCreateNote={handleCreateNote}
             handleSearch={handleSearch}
             openNoteFromContextSearch={openNoteFromContextSearch}
+            runCategorizeAllUncategorized={runCategorizeAllUncategorized}
             runContextSearch={runContextSearch}
             setCategoryFilter={setCategoryFilter}
             setDeleteIntentId={setDeleteIntentId}

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { MEMO_CATEGORIES, MEMO_CATEGORY_LABELS, normalizeMemoCategoryValue } from "@ai-note/shared/memo";
+import { MEMO_CATEGORIES, MEMO_CATEGORY_LABELS, normalizeMemoCategoryDescription, normalizeMemoCategoryValue } from "@ai-note/shared/memo";
 
 export const MEMO_STORE_VERSION = 1;
 export const MEMO_STORE_FILENAME = "memos.json";
@@ -78,6 +78,7 @@ export function createBuiltinCategoryDefinitions() {
   return MEMO_CATEGORIES.map((category) => ({
     id: category,
     label: MEMO_CATEGORY_LABELS[category] ?? category,
+    description: "",
     builtin: true,
     createdAt: DEFAULT_CATEGORY_TIMESTAMP,
     updatedAt: DEFAULT_CATEGORY_TIMESTAMP
@@ -95,13 +96,14 @@ export function normalizeCategoryDefinition(input = {}) {
   return {
     id,
     label: label ?? id,
+    description: normalizeMemoCategoryDescription(input.description),
     builtin: input.builtin === true,
     createdAt: normalizeTimestamp(input.createdAt),
     updatedAt: normalizeTimestamp(input.updatedAt)
   };
 }
 
-export function createCategoryDefinitionFromLabel(label, { builtin = false, now = new Date().toISOString() } = {}) {
+export function createCategoryDefinitionFromLabel(label, { description = "", builtin = false, now = new Date().toISOString() } = {}) {
   const normalizedLabel = normalizeCategoryLabel(label);
 
   if (!normalizedLabel || RESERVED_CATEGORY_IDS.has(normalizedLabel)) {
@@ -111,6 +113,7 @@ export function createCategoryDefinitionFromLabel(label, { builtin = false, now 
   return {
     id: normalizedLabel,
     label: normalizedLabel,
+    description: normalizeMemoCategoryDescription(description),
     builtin,
     createdAt: now,
     updatedAt: now
@@ -137,6 +140,7 @@ function createCategoryDefinitionFromMemoCategory(category) {
   return {
     id,
     label: MEMO_CATEGORY_LABELS[id] ?? id,
+    description: "",
     builtin: MEMO_CATEGORIES.includes(id),
     createdAt: DEFAULT_CATEGORY_TIMESTAMP,
     updatedAt: DEFAULT_CATEGORY_TIMESTAMP
@@ -163,6 +167,24 @@ export function mergeCategoryDefinitions(...categoryGroups) {
   }
 
   return Array.from(categoriesById.values()).sort(compareCategoryDefinitions);
+}
+
+export function normalizeCategoryUpdateInput(value = {}) {
+  const patch = {};
+
+  if (typeof value.label === "string") {
+    const label = normalizeCategoryLabel(value.label);
+
+    if (label) {
+      patch.label = label;
+    }
+  }
+
+  if (typeof value.description === "string") {
+    patch.description = normalizeMemoCategoryDescription(value.description);
+  }
+
+  return patch;
 }
 
 function compareCategoryDefinitions(left, right) {
@@ -196,25 +218,23 @@ export function parseStorePayload(parsed) {
       : [];
   const memoCategories = memos.map((memo) => createCategoryDefinitionFromMemoCategory(memo.category)).filter(Boolean);
 
-  if (Array.isArray(payload.memos)) {
+  if (!Array.isArray(payload.memos) && !Array.isArray(payload.notes)) {
     return {
       version: MEMO_STORE_VERSION,
-      memos,
-      categories: mergeCategoryDefinitions(createBuiltinCategoryDefinitions(), normalizeCategoryDefinitions(payload.categories), memoCategories)
+      memos: [],
+      categories: createBuiltinCategoryDefinitions()
     };
   }
 
-  if (Array.isArray(payload.notes)) {
-    return {
-      version: MEMO_STORE_VERSION,
-      memos,
-      categories: mergeCategoryDefinitions(createBuiltinCategoryDefinitions(), normalizeCategoryDefinitions(payload.categories), memoCategories)
-    };
-  }
+  // payload.categories가 한 번이라도 저장된 적이 있다면 사용자가 기본 카테고리를 수정/삭제한
+  // 결과를 그대로 신뢰한다. 처음 마이그레이션되는 구버전 저장소에만 기본 카테고리를 채워준다.
+  const categories = Array.isArray(payload.categories)
+    ? mergeCategoryDefinitions(normalizeCategoryDefinitions(payload.categories), memoCategories)
+    : mergeCategoryDefinitions(createBuiltinCategoryDefinitions(), memoCategories);
 
   return {
     version: MEMO_STORE_VERSION,
-    memos: [],
-    categories: createBuiltinCategoryDefinitions()
+    memos,
+    categories
   };
 }

@@ -106,6 +106,31 @@ export function IconSearch({ className }: IconProps) {
   );
 }
 
+export function IconPencil({ className }: IconProps) {
+  return (
+    <svg className={className} {...BASE_PROPS}>
+      <path d="M4 19.5 4.6 16.2 15.4 5.4a1.5 1.5 0 0 1 2.12 0l.78.78a1.5 1.5 0 0 1 0 2.12L7.5 19l-3.5.5Z" strokeLinejoin="round" />
+      <path d="M13.5 7.5 16.5 10.5" />
+    </svg>
+  );
+}
+
+export function IconTrash({ className }: IconProps) {
+  return (
+    <svg className={className} {...BASE_PROPS}>
+      <path d="M5 7h14M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6.5 7l1 12a1.5 1.5 0 0 0 1.5 1.4h6a1.5 1.5 0 0 0 1.5-1.4l1-12" />
+    </svg>
+  );
+}
+
+export function IconFolder({ className }: IconProps) {
+  return (
+    <svg className={className} {...BASE_PROPS}>
+      <path d="M4 7a1.5 1.5 0 0 1 1.5-1.5h4.1l1.7 2H18.5A1.5 1.5 0 0 1 20 9v8a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17Z" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export function IconChevron({ className, open }: IconProps & { open: boolean }) {
   return (
     <svg className={className} {...BASE_PROPS}>

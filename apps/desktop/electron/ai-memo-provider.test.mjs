@@ -39,7 +39,7 @@ test("ai memo provider composes memo from api client", async () => {
       assert.match(prompt, /새 메모/);
       assert.match(prompt, /Do not force a fixed template/);
       assert.match(prompt, /Current local date: 2026-05-21/);
-      assert.match(prompt, /Remove or exclude tasks whose explicit due date is before the current local date/);
+      assert.match(prompt, /You MUST exclude a memo whose resolved date or period ends before the current local date/);
       assert.doesNotMatch(prompt, /body must visibly contain these section headings/);
       return {
         decision: "compose",

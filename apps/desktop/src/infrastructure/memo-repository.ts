@@ -1,7 +1,9 @@
 import type {
   Memo,
+  MemoCategory,
   MemoCategoryCreateInput,
   MemoCategoryDefinition,
+  MemoCategoryUpdateInput,
   MemoChangeEvent,
   MemoCreateInput,
   MemoId,
@@ -95,6 +97,30 @@ export async function createMemoCategory(input: MemoCategoryCreateInput): Promis
   return window.memoAPI.createCategory(input);
 }
 
+export async function updateMemoCategory(categoryId: MemoCategory, patch: MemoCategoryUpdateInput): Promise<MemoCategoryDefinition> {
+  if (!window.memoAPI) {
+    throw new Error("memoAPI 브리지를 찾지 못했어요.");
+  }
+
+  return window.memoAPI.updateCategory(categoryId, patch);
+}
+
+export async function deleteMemoCategory(categoryId: MemoCategory): Promise<MemoCategoryDefinition | null> {
+  if (!window.memoAPI) {
+    throw new Error("memoAPI 브리지를 찾지 못했어요.");
+  }
+
+  return window.memoAPI.deleteCategory(categoryId);
+}
+
+export function subscribeToCategoriesChange(listener: (categories: MemoCategoryDefinition[]) => void) {
+  if (!window.memoAPI?.onDidCategoriesChange) {
+    return undefined;
+  }
+
+  return window.memoAPI.onDidCategoriesChange(listener);
+}
+
 export async function searchMemosByContext(query: string): Promise<ContextSearchResult[]> {
   if (!window.memoAPI) {
     throw new Error("memoAPI 브리지를 찾지 못했어요.");
@@ -167,4 +193,28 @@ export function subscribeToCategorizeState(listener: (event: { memoId: MemoId; b
   }
 
   return window.memoAPI.onDidCategorizeState(listener);
+}
+
+export async function getCategorizeAllState(): Promise<boolean> {
+  if (!window.memoAPI || typeof window.memoAPI.categorizeAllState !== "function") {
+    return false;
+  }
+
+  return window.memoAPI.categorizeAllState();
+}
+
+export async function categorizeAllMemos(): Promise<{ processed: number; updated: number; memos: Memo[] }> {
+  if (!window.memoAPI) {
+    throw new Error("memoAPI 브리지를 찾지 못했어요.");
+  }
+
+  return window.memoAPI.categorizeAll();
+}
+
+export function subscribeToCategorizeAllState(listener: (busy: boolean) => void) {
+  if (!window.memoAPI?.onDidCategorizeAllState) {
+    return undefined;
+  }
+
+  return window.memoAPI.onDidCategorizeAllState(listener);
 }

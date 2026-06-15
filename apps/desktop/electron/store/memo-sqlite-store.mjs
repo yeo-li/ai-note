@@ -12,6 +12,7 @@ import {
   createCategoryDefinitionFromLabel,
   createTimestampAfter,
   mergeCategoryDefinitions,
+  normalizeCategoryUpdateInput,
   normalizeMemo,
   parseStorePayload,
   sortMemosByUpdatedAt
@@ -44,6 +45,7 @@ function ensureSchema(db) {
     CREATE TABLE IF NOT EXISTS memo_categories (
       id TEXT PRIMARY KEY,
       label TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
       builtin INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -84,6 +86,13 @@ function ensureSchema(db) {
     db.exec("ALTER TABLE memos ADD COLUMN category TEXT DEFAULT NULL;");
   }
 
+  const categoryColumns = db.prepare("PRAGMA table_info(memo_categories)").all();
+  const hasDescriptionColumn = categoryColumns.some((column) => column.name === "description");
+
+  if (!hasDescriptionColumn) {
+    db.exec("ALTER TABLE memo_categories ADD COLUMN description TEXT NOT NULL DEFAULT '';");
+  }
+
   db.exec("CREATE INDEX IF NOT EXISTS idx_memos_category ON memos(category);");
   seedBuiltinCategories(db);
 }
@@ -112,6 +121,7 @@ function rowToCategory(row) {
   return {
     id: row.id,
     label: row.label,
+    description: row.description ?? "",
     builtin: row.builtin === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -119,14 +129,22 @@ function rowToCategory(row) {
 }
 
 function seedBuiltinCategories(db) {
+  // memo_categories가 비어 있을 때만(최초 실행) 기본 카테고리를 채운다.
+  // 그렇지 않으면 사용자가 기본 카테고리를 수정/삭제한 결과가 재실행 시마다 되돌아온다.
+  const existingCount = db.prepare("SELECT COUNT(*) AS count FROM memo_categories").get().count;
+
+  if (existingCount > 0) {
+    return;
+  }
+
   const upsertCategoryStatement = createCategoryUpsertStatement(db);
-  const upsertBuiltins = db.transaction((categories) => {
+  const insertBuiltins = db.transaction((categories) => {
     for (const category of categories) {
       upsertCategoryStatement.run(toCategoryRow(category));
     }
   });
 
-  upsertBuiltins(createBuiltinCategoryDefinitions());
+  insertBuiltins(createBuiltinCategoryDefinitions());
 }
 
 function readLegacyStoreSync(userDataPath) {
@@ -173,8 +191,8 @@ function createMemoInsertStatement(db) {
 function createCategoryUpsertStatement(db) {
   return db.prepare(
     `
-      INSERT INTO memo_categories (id, label, builtin, created_at, updated_at)
-      VALUES (@id, @label, @builtin, @createdAt, @updatedAt)
+      INSERT INTO memo_categories (id, label, description, builtin, created_at, updated_at)
+      VALUES (@id, @label, @description, @builtin, @createdAt, @updatedAt)
       ON CONFLICT(id) DO UPDATE SET
         label = excluded.label,
         builtin = CASE WHEN memo_categories.builtin = 1 THEN 1 ELSE excluded.builtin END,
@@ -203,6 +221,7 @@ function toCategoryRow(category) {
   return {
     id: category.id,
     label: category.label,
+    description: category.description ?? "",
     builtin: category.builtin ? 1 : 0,
     createdAt: category.createdAt,
     updatedAt: category.updatedAt
@@ -217,6 +236,7 @@ function createCategoryFromMemo(memo) {
   return {
     id: memo.category,
     label: memo.category,
+    description: "",
     builtin: false,
     createdAt: memo.createdAt,
     updatedAt: memo.updatedAt
@@ -452,9 +472,17 @@ function createStatements(db) {
     ),
     listCategories: db.prepare(
       `
-        SELECT id, label, builtin, created_at, updated_at
+        SELECT id, label, description, builtin, created_at, updated_at
         FROM memo_categories
         ORDER BY builtin DESC, label ASC
+      `
+    ),
+    getCategory: db.prepare(
+      `
+        SELECT id, label, description, builtin, created_at, updated_at
+        FROM memo_categories
+        WHERE id = @id
+        LIMIT 1
       `
     ),
     listMemoCategories: db.prepare(
@@ -467,8 +495,38 @@ function createStatements(db) {
     ),
     insertCategory: db.prepare(
       `
-        INSERT INTO memo_categories (id, label, builtin, created_at, updated_at)
-        VALUES (@id, @label, @builtin, @createdAt, @updatedAt)
+        INSERT INTO memo_categories (id, label, description, builtin, created_at, updated_at)
+        VALUES (@id, @label, @description, @builtin, @createdAt, @updatedAt)
+      `
+    ),
+    updateCategory: db.prepare(
+      `
+        UPDATE memo_categories
+        SET label = @label,
+            description = @description,
+            updated_at = @updatedAt
+        WHERE id = @id
+      `
+    ),
+    deleteCategory: db.prepare(
+      `
+        DELETE FROM memo_categories
+        WHERE id = @id
+      `
+    ),
+    unassignMemoCategory: db.prepare(
+      `
+        UPDATE memos
+        SET category = NULL
+        WHERE category = @category
+      `
+    ),
+    listMemosByCategory: db.prepare(
+      `
+        SELECT id, title, body, created_at, updated_at
+               , favorite, category
+        FROM memos
+        WHERE category = @category
       `
     )
   };
@@ -486,7 +544,8 @@ function listCategoryDefinitions(statements) {
       updatedAt: DEFAULT_CATEGORY_TIMESTAMP
     }));
 
-  return mergeCategoryDefinitions(createBuiltinCategoryDefinitions(), storedCategories, memoCategories);
+  const categories = mergeCategoryDefinitions(storedCategories, memoCategories);
+  return categories.length > 0 ? categories : createBuiltinCategoryDefinitions();
 }
 
 export function createMemoSqliteStore({ userDataPath, dbPath } = {}) {
@@ -617,7 +676,7 @@ export function createMemoSqliteStore({ userDataPath, dbPath } = {}) {
 
     async createCategory(input = {}) {
       return runSerialized(async () => {
-        const category = createCategoryDefinitionFromLabel(input.label);
+        const category = createCategoryDefinitionFromLabel(input.label, { description: input.description });
 
         if (!category) {
           throw new Error("카테고리 이름을 확인해 주세요.");
@@ -631,6 +690,56 @@ export function createMemoSqliteStore({ userDataPath, dbPath } = {}) {
 
         statements.insertCategory.run(toCategoryRow(category));
         return category;
+      });
+    },
+
+    async updateCategory(categoryId, patch = {}) {
+      return runSerialized(async () => {
+        const existingRow = statements.getCategory.get({ id: categoryId });
+        const currentCategory = rowToCategory(existingRow);
+
+        if (!currentCategory) {
+          throw new Error("카테고리를 찾지 못했어요.");
+        }
+
+        const updatedCategory = {
+          ...currentCategory,
+          ...normalizeCategoryUpdateInput(patch),
+          updatedAt: new Date().toISOString()
+        };
+
+        statements.updateCategory.run({
+          id: updatedCategory.id,
+          label: updatedCategory.label,
+          description: updatedCategory.description,
+          updatedAt: updatedCategory.updatedAt
+        });
+        return updatedCategory;
+      });
+    },
+
+    async deleteCategory(categoryId) {
+      return runSerialized(async () => {
+        const existingRow = statements.getCategory.get({ id: categoryId });
+        const currentCategory = rowToCategory(existingRow);
+
+        if (!currentCategory) {
+          return { category: null, updatedMemos: [] };
+        }
+
+        const affectedMemos = statements.listMemosByCategory.all({ category: categoryId }).map((row) => cloneMemo(rowToMemo(row)));
+
+        const removeCategory = db.transaction(() => {
+          statements.unassignMemoCategory.run({ category: categoryId });
+          statements.deleteCategory.run({ id: categoryId });
+        });
+
+        removeCategory();
+
+        return {
+          category: currentCategory,
+          updatedMemos: affectedMemos.map((memo) => ({ ...memo, category: null }))
+        };
       });
     }
   };

@@ -11,17 +11,23 @@ const memoChannels = {
   delete: "memo:delete",
   listCategories: "memo:list-categories",
   createCategory: "memo:create-category",
+  updateCategory: "memo:update-category",
+  deleteCategory: "memo:delete-category",
   search: "memo:search",
   aiSearch: "memo:ai-search",
   organize: "memo:organize",
   compose: "memo:compose",
   categorize: "memo:categorize",
-  categorizeState: "memo:categorize-state"
+  categorizeState: "memo:categorize-state",
+  categorizeAll: "memo:categorize-all",
+  categorizeAllState: "memo:categorize-all-state"
 };
 const memoEventChannels = {
   changed: "memo:changed",
   organizeState: "memo:organize-state-changed",
-  categorizeState: "memo:categorize-state-changed"
+  categorizeState: "memo:categorize-state-changed",
+  categorizeAllState: "memo:categorize-all-state-changed",
+  categoriesChanged: "memo:categories-changed"
 };
 const promptTemplateChannels = {
   list: "prompt-template:list",
@@ -63,6 +69,12 @@ const memoAPI = {
   createCategory(input) {
     return ipcRenderer.invoke(memoChannels.createCategory, input);
   },
+  updateCategory(categoryId, patch) {
+    return ipcRenderer.invoke(memoChannels.updateCategory, categoryId, patch);
+  },
+  deleteCategory(categoryId) {
+    return ipcRenderer.invoke(memoChannels.deleteCategory, categoryId);
+  },
   search(query) {
     return ipcRenderer.invoke(memoChannels.search, query);
   },
@@ -83,6 +95,12 @@ const memoAPI = {
   },
   categorize(memoId) {
     return ipcRenderer.invoke(memoChannels.categorize, memoId);
+  },
+  categorizeAllState() {
+    return ipcRenderer.invoke(memoChannels.categorizeAllState);
+  },
+  categorizeAll() {
+    return ipcRenderer.invoke(memoChannels.categorizeAll);
   },
   onDidChange(listener) {
     if (typeof listener !== "function") {
@@ -127,6 +145,36 @@ const memoAPI = {
 
     return () => {
       ipcRenderer.off(memoEventChannels.categorizeState, wrappedListener);
+    };
+  },
+  onDidCategorizeAllState(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+
+    const wrappedListener = (_event, busy) => {
+      listener(busy);
+    };
+
+    ipcRenderer.on(memoEventChannels.categorizeAllState, wrappedListener);
+
+    return () => {
+      ipcRenderer.off(memoEventChannels.categorizeAllState, wrappedListener);
+    };
+  },
+  onDidCategoriesChange(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+
+    const wrappedListener = (_event, categories) => {
+      listener(categories);
+    };
+
+    ipcRenderer.on(memoEventChannels.categoriesChanged, wrappedListener);
+
+    return () => {
+      ipcRenderer.off(memoEventChannels.categoriesChanged, wrappedListener);
     };
   }
 };

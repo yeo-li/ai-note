@@ -24,3 +24,11 @@ export function getMemoCategoryLabel(category) {
 
   return MEMO_CATEGORY_LABELS[category] ?? category;
 }
+
+export function normalizeMemoCategoryDescription(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.trim().replace(/\s+/gu, " ").slice(0, 200);
+}

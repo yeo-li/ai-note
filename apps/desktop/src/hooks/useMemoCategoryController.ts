@@ -1,16 +1,22 @@
 import { useEffect, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { MemoCategory, MemoCategoryDefinition, MemoId } from "@ai-note/shared/memo";
+import type { MemoCategory, MemoCategoryDefinition, MemoCategoryUpdateInput, MemoId } from "@ai-note/shared/memo";
 import { createDefaultCategoryDefinitions, hasCategoryDuplicate, mergeCategoryDefinitions, normalizeCategoryDraft } from "../domain/categories";
 import type { Note } from "../domain/note";
 import {
+  categorizeAllMemos,
   categorizeMemo,
   createMemoCategory,
+  deleteMemoCategory,
+  getCategorizeAllState,
   getCategorizingMemoIds,
   isMemoRepositoryAvailable,
   listMemoCategories,
+  subscribeToCategoriesChange,
+  subscribeToCategorizeAllState,
   subscribeToCategorizeState,
-  updateMemo
+  updateMemo,
+  updateMemoCategory
 } from "../infrastructure/memo-repository";
 
 export type CategoryFilter = MemoCategory | "all";
@@ -26,18 +32,24 @@ export function useMemoCategoryController(params: UseMemoCategoryControllerParam
   const [categorizingNoteIds, setCategorizingNoteIds] = useState<Record<MemoId, boolean>>({});
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
   const [categories, setCategories] = useState<MemoCategoryDefinition[]>(createDefaultCategoryDefinitions);
+  const [isCategorizingAll, setIsCategorizingAll] = useState(false);
 
   useCategorizeState(setCategorizingNoteIds);
+  useCategorizeAllState(setIsCategorizingAll);
   useCategoryList(setCategories);
 
   return {
     categorizingNoteIds,
     categories,
     categoryFilter,
+    isCategorizingAll,
     setCategoryFilter,
     createCategory: (label: string) => createCategory(label, { ...params, categories, setCategories, setCategoryFilter }),
+    updateCategory: (categoryId: MemoCategory, patch: MemoCategoryUpdateInput) => updateCategory(categoryId, patch, { ...params, setCategories }),
+    deleteCategory: (categoryId: MemoCategory) => deleteCategory(categoryId, { ...params, setCategories, categoryFilter, setCategoryFilter }),
     setNoteCategory: (noteId: MemoId, category: MemoCategory | null) => setNoteCategory(noteId, category, params),
-    runAiCategorize: (noteId: MemoId) => runAiCategorize(noteId, params)
+    runAiCategorize: (noteId: MemoId) => runAiCategorize(noteId, params),
+    runCategorizeAllUncategorized: () => runCategorizeAllUncategorized(params)
   };
 }
 
@@ -45,9 +57,14 @@ function useCategoryList(setCategories: Dispatch<SetStateAction<MemoCategoryDefi
   useEffect(() => {
     let cancelled = false;
     void hydrateCategories(setCategories, () => cancelled);
+    const unsubscribe = subscribeToCategoriesChange((storedCategories) => {
+      if (cancelled) return;
+      setCategories(storedCategories.length > 0 ? mergeCategoryDefinitions(storedCategories) : createDefaultCategoryDefinitions());
+    });
 
     return () => {
       cancelled = true;
+      unsubscribe?.();
     };
   }, [setCategories]);
 }
@@ -60,7 +77,7 @@ async function hydrateCategories(setCategories: Dispatch<SetStateAction<MemoCate
   try {
     const storedCategories = await listMemoCategories();
     if (isCancelled()) return;
-    setCategories(mergeCategoryDefinitions(createDefaultCategoryDefinitions(), storedCategories));
+    setCategories(storedCategories.length > 0 ? mergeCategoryDefinitions(storedCategories) : createDefaultCategoryDefinitions());
   } catch {
     if (isCancelled()) return;
     setCategories(createDefaultCategoryDefinitions());
@@ -84,6 +101,25 @@ async function hydrateCategorizingNoteIds(setCategorizingNoteIds: Dispatch<SetSt
   const memoIds = await getCategorizingMemoIds();
   if (isCancelled()) return;
   setCategorizingNoteIds(Object.fromEntries(memoIds.map((memoId) => [memoId, true])));
+}
+
+function useCategorizeAllState(setIsCategorizingAll: Dispatch<SetStateAction<boolean>>) {
+  useEffect(() => {
+    let cancelled = false;
+
+    void getCategorizeAllState().then((busy) => {
+      if (!cancelled) {
+        setIsCategorizingAll(busy);
+      }
+    });
+
+    const unsubscribe = subscribeToCategorizeAllState((busy) => setIsCategorizingAll(busy));
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, [setIsCategorizingAll]);
 }
 
 function updateCategorizingNote(setCategorizingNoteIds: Dispatch<SetStateAction<Record<MemoId, boolean>>>, memoId: MemoId, busy: boolean) {
@@ -143,6 +179,71 @@ async function createCategory(label: string, params: CreateCategoryParams) {
   }
 }
 
+type UpdateCategoryParams = UseMemoCategoryControllerParams & {
+  setCategories: Dispatch<SetStateAction<MemoCategoryDefinition[]>>;
+};
+
+async function updateCategory(categoryId: MemoCategory, patch: MemoCategoryUpdateInput, params: UpdateCategoryParams) {
+  if (params.isMutationLocked) {
+    params.setStatusMessage("저장소 연결이 복구될 때까지 카테고리를 수정할 수 없어요.");
+    return null;
+  }
+
+  if (!isMemoRepositoryAvailable()) {
+    params.setStatusMessage("카테고리 저장소를 찾지 못했어요.");
+    return null;
+  }
+
+  try {
+    const updatedCategory = await updateMemoCategory(categoryId, patch);
+    params.setCategories((currentCategories) => mergeCategoryDefinitions([updatedCategory], currentCategories.filter((category) => category.id !== updatedCategory.id)));
+    params.setStatusMessage("카테고리를 수정했어요.");
+    return updatedCategory;
+  } catch {
+    params.setStatusMessage("카테고리를 수정하지 못했어요.");
+    return null;
+  }
+}
+
+type DeleteCategoryParams = UseMemoCategoryControllerParams & {
+  categoryFilter: CategoryFilter;
+  setCategories: Dispatch<SetStateAction<MemoCategoryDefinition[]>>;
+  setCategoryFilter: Dispatch<SetStateAction<CategoryFilter>>;
+};
+
+async function deleteCategory(categoryId: MemoCategory, params: DeleteCategoryParams) {
+  if (params.isMutationLocked) {
+    params.setStatusMessage("저장소 연결이 복구될 때까지 카테고리를 삭제할 수 없어요.");
+    return false;
+  }
+
+  if (!isMemoRepositoryAvailable()) {
+    params.setStatusMessage("카테고리 저장소를 찾지 못했어요.");
+    return false;
+  }
+
+  try {
+    const deletedCategory = await deleteMemoCategory(categoryId);
+
+    if (!deletedCategory) {
+      params.setStatusMessage("삭제할 카테고리를 찾지 못했어요.");
+      return false;
+    }
+
+    params.setCategories((currentCategories) => currentCategories.filter((category) => category.id !== categoryId));
+
+    if (params.categoryFilter === categoryId) {
+      params.setCategoryFilter("all");
+    }
+
+    params.setStatusMessage("카테고리를 삭제했어요.");
+    return true;
+  } catch {
+    params.setStatusMessage("카테고리를 삭제하지 못했어요.");
+    return false;
+  }
+}
+
 async function setNoteCategory(noteId: MemoId, category: MemoCategory | null, params: UseMemoCategoryControllerParams) {
   if (params.isMutationLocked) {
     params.setStatusMessage("저장소 연결이 복구될 때까지 카테고리를 변경할 수 없어요.");
@@ -184,6 +285,13 @@ async function runAiCategorize(noteId: MemoId, params: UseMemoCategoryController
     return;
   }
 
+  const note = params.notes.find((currentNote) => currentNote.id === noteId);
+
+  if (!note?.body.trim()) {
+    params.setStatusMessage("빈 메모는 분류할 수 없어요.");
+    return;
+  }
+
   params.setStatusMessage("AI가 메모를 분류하고 있어요.");
 
   try {
@@ -195,8 +303,45 @@ async function runAiCategorize(noteId: MemoId, params: UseMemoCategoryController
     }
 
     applyNoteCategory(params.setNotes, noteId, updatedMemo.category);
+
+    if (!updatedMemo.category) {
+      params.setStatusMessage("AI가 이 메모에 맞는 카테고리를 찾지 못해 미분류로 남겼어요.");
+      return;
+    }
+
     params.setStatusMessage("AI가 메모 카테고리를 정했어요.");
   } catch {
     params.setStatusMessage("AI 분류 요청에 실패했어요.");
+  }
+}
+
+async function runCategorizeAllUncategorized(params: UseMemoCategoryControllerParams) {
+  if (params.isMutationLocked) {
+    params.setStatusMessage("저장소 연결이 복구될 때까지 AI 분류를 실행할 수 없어요.");
+    return;
+  }
+
+  if (!isMemoRepositoryAvailable()) {
+    params.setStatusMessage("AI 분류 브리지를 찾지 못했어요.");
+    return;
+  }
+
+  params.setStatusMessage("미분류 메모를 자동으로 분류하고 있어요.");
+
+  try {
+    const { processed, updated, memos } = await categorizeAllMemos();
+
+    if (processed === 0) {
+      params.setStatusMessage("미분류 메모가 없어요.");
+      return;
+    }
+
+    for (const memo of memos) {
+      applyNoteCategory(params.setNotes, memo.id, memo.category);
+    }
+
+    params.setStatusMessage(`${updated}개 메모를 자동으로 분류했어요.`);
+  } catch {
+    params.setStatusMessage("자동 분류 요청에 실패했어요.");
   }
 }

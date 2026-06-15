@@ -15,7 +15,7 @@ import { createOrganizeOrchestrator } from "./organize/organize-orchestrator.mjs
 import { createMemoStore } from "./store/memo-store.mjs";
 import { createMemoSqliteStore } from "./store/memo-sqlite-store.mjs";
 import { createPromptTemplateStore } from "./store/prompt-template-store.mjs";
-import { MEMO_CATEGORIES, normalizeMemoCategoryValue } from "@ai-note/shared/memo";
+import { normalizeMemoCategoryDescription, normalizeMemoCategoryValue } from "@ai-note/shared/memo";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -52,11 +52,14 @@ const userDataPathOverride = process.env.AI_NOTE_USER_DATA_PATH;
 const memoEventChannels = {
   changed: "memo:changed",
   organizeState: "memo:organize-state-changed",
-  categorizeState: "memo:categorize-state-changed"
+  categorizeState: "memo:categorize-state-changed",
+  categorizeAllState: "memo:categorize-all-state-changed",
+  categoriesChanged: "memo:categories-changed"
 };
 const organizingMemoIds = new Set();
 const composingMemoIds = new Set();
 const categorizingMemoIds = new Set();
+let isCategorizingAll = false;
 
 if (userDataPathOverride) {
   app.setPath("userData", userDataPathOverride);
@@ -194,7 +197,25 @@ function normalizeMemoCategoryCreateInput(value) {
     return null;
   }
 
-  return { label };
+  return { label, description: normalizeMemoCategoryDescription(value.description) };
+}
+
+function normalizeMemoCategoryUpdateInput(value) {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+
+  const patch = {};
+
+  if (typeof value.label === "string") {
+    patch.label = value.label;
+  }
+
+  if (typeof value.description === "string") {
+    patch.description = value.description;
+  }
+
+  return patch;
 }
 
 function normalizeSearchQuery(value) {
@@ -331,6 +352,149 @@ function broadcastCategorizeStateChange(changeEvent) {
   }
 }
 
+function broadcastCategoriesChanged(categories) {
+  for (const browserWindow of BrowserWindow.getAllWindows()) {
+    if (browserWindow.isDestroyed()) {
+      continue;
+    }
+
+    const { webContents } = browserWindow;
+
+    if (webContents.isDestroyed()) {
+      continue;
+    }
+
+    webContents.send(memoEventChannels.categoriesChanged, categories);
+  }
+}
+
+function broadcastCategorizeAllStateChange(busy) {
+  for (const browserWindow of BrowserWindow.getAllWindows()) {
+    if (browserWindow.isDestroyed()) {
+      continue;
+    }
+
+    const { webContents } = browserWindow;
+
+    if (webContents.isDestroyed()) {
+      continue;
+    }
+
+    webContents.send(memoEventChannels.categorizeAllState, busy);
+  }
+}
+
+async function applyAiCategorization(memoStore, aiMemoProvider, memo, event) {
+  const memoId = memo.id;
+
+  categorizingMemoIds.add(memoId);
+  broadcastCategorizeStateChange({ memoId, busy: true });
+
+  try {
+    const categories = await memoStore.listCategories();
+    const result = await aiMemoProvider.categorizeMemo({ title: memo.title, body: memo.body, categories });
+    let categoryId;
+
+    if (result.isNewCategory) {
+      categoryId = normalizeMemoCategoryValue(result.newCategoryLabel);
+
+      try {
+        await memoStore.createCategory({ label: result.newCategoryLabel, description: result.newCategoryDescription });
+        broadcastCategoriesChanged(await memoStore.listCategories());
+      } catch {
+        // 비슷한 카테고리가 이미 있으면 정규화된 이름을 그대로 카테고리로 사용
+      }
+    } else {
+      categoryId = result.categoryId;
+    }
+
+    const updatedMemo = await memoStore.update(memoId, { category: categoryId });
+
+    if (updatedMemo) {
+      broadcastMemoChange(event, {
+        type: "updated",
+        memo: updatedMemo
+      });
+    }
+
+    return updatedMemo;
+  } finally {
+    categorizingMemoIds.delete(memoId);
+    broadcastCategorizeStateChange({ memoId, busy: false });
+  }
+}
+
+async function applyAiCategorizationBatch(memoStore, aiMemoProvider, memos, event) {
+  for (const memo of memos) {
+    categorizingMemoIds.add(memo.id);
+    broadcastCategorizeStateChange({ memoId: memo.id, busy: true });
+  }
+
+  try {
+    const categories = await memoStore.listCategories();
+    const results = await aiMemoProvider.categorizeMemos({
+      memos: memos.map((memo) => ({ id: memo.id, title: memo.title, body: memo.body })),
+      categories
+    });
+
+    const newCategoryIdsByLabel = new Map();
+
+    for (const result of results) {
+      if (!result?.isNewCategory) {
+        continue;
+      }
+
+      const normalizedLabel = normalizeMemoCategoryValue(result.newCategoryLabel);
+
+      if (!normalizedLabel || newCategoryIdsByLabel.has(normalizedLabel)) {
+        continue;
+      }
+
+      try {
+        const createdCategory = await memoStore.createCategory({ label: result.newCategoryLabel, description: result.newCategoryDescription });
+        newCategoryIdsByLabel.set(normalizedLabel, createdCategory.id);
+      } catch {
+        // 비슷한 카테고리가 이미 있으면 정규화된 이름을 그대로 카테고리로 사용
+        newCategoryIdsByLabel.set(normalizedLabel, normalizedLabel);
+      }
+    }
+
+    if (newCategoryIdsByLabel.size > 0) {
+      broadcastCategoriesChanged(await memoStore.listCategories());
+    }
+
+    const updatedMemos = [];
+
+    for (let index = 0; index < memos.length; index += 1) {
+      const result = results[index];
+
+      if (!result) {
+        continue;
+      }
+
+      const categoryId = result.isNewCategory ? newCategoryIdsByLabel.get(normalizeMemoCategoryValue(result.newCategoryLabel)) : result.categoryId;
+
+      if (!categoryId) {
+        continue;
+      }
+
+      const updatedMemo = await memoStore.update(memos[index].id, { category: categoryId });
+
+      if (updatedMemo) {
+        broadcastMemoChange(event, { type: "updated", memo: updatedMemo });
+        updatedMemos.push(updatedMemo);
+      }
+    }
+
+    return updatedMemos;
+  } finally {
+    for (const memo of memos) {
+      categorizingMemoIds.delete(memo.id);
+      broadcastCategorizeStateChange({ memoId: memo.id, busy: false });
+    }
+  }
+}
+
 function registerMemoHandlers(memoStore, memoSearchService, organizer, aiMemoProvider, memoStoreContext, contextSearchService, composeService) {
   ipcMain.handle(memoChannels.health, async () => {
     const baseHealth = {
@@ -367,6 +531,10 @@ function registerMemoHandlers(memoStore, memoSearchService, organizer, aiMemoPro
       type: "created",
       memo: createdMemo
     });
+
+    if (!createdMemo.category) {
+      void applyAiCategorization(memoStore, aiMemoProvider, createdMemo, undefined).catch(() => {});
+    }
 
     return createdMemo;
   });
@@ -418,7 +586,42 @@ function registerMemoHandlers(memoStore, memoSearchService, organizer, aiMemoPro
       throw new Error("카테고리 이름을 확인해 주세요.");
     }
 
-    return memoStore.createCategory(categoryInput);
+    const createdCategory = await memoStore.createCategory(categoryInput);
+    broadcastCategoriesChanged(await memoStore.listCategories());
+    return createdCategory;
+  });
+
+  ipcMain.handle(memoChannels.updateCategory, async (_event, id, patch) => {
+    const categoryId = normalizeMemoCategoryValue(id);
+
+    if (!categoryId) {
+      throw new Error("잘못된 카테고리 요청입니다.");
+    }
+
+    const updatedCategory = await memoStore.updateCategory(categoryId, normalizeMemoCategoryUpdateInput(patch));
+    broadcastCategoriesChanged(await memoStore.listCategories());
+    return updatedCategory;
+  });
+
+  ipcMain.handle(memoChannels.deleteCategory, async (_event, id) => {
+    const categoryId = normalizeMemoCategoryValue(id);
+
+    if (!categoryId) {
+      throw new Error("잘못된 카테고리 요청입니다.");
+    }
+
+    const { category, updatedMemos } = await memoStore.deleteCategory(categoryId);
+
+    if (!category) {
+      return null;
+    }
+
+    for (const updatedMemo of updatedMemos) {
+      broadcastMemoChange(undefined, { type: "updated", memo: updatedMemo });
+    }
+
+    broadcastCategoriesChanged(await memoStore.listCategories());
+    return category;
   });
 
   ipcMain.handle(memoChannels.search, async (_event, query) => {
@@ -466,24 +669,37 @@ function registerMemoHandlers(memoStore, memoSearchService, organizer, aiMemoPro
       throw new Error("메모를 찾지 못했어요.");
     }
 
-    categorizingMemoIds.add(memoId);
-    broadcastCategorizeStateChange({ memoId, busy: true });
+    if (!memo.body.trim()) {
+      return memo;
+    }
+
+    return applyAiCategorization(memoStore, aiMemoProvider, memo, event);
+  });
+
+  ipcMain.handle(memoChannels.categorizeAllState, async () => isCategorizingAll);
+
+  ipcMain.handle(memoChannels.categorizeAll, async (event) => {
+    if (isCategorizingAll) {
+      return { processed: 0, updated: 0, memos: [] };
+    }
+
+    isCategorizingAll = true;
+    broadcastCategorizeAllStateChange(true);
 
     try {
-      const result = await aiMemoProvider.categorizeMemo({ title: memo.title, body: memo.body });
-      const updatedMemo = await memoStore.update(memoId, { category: result.category });
+      const memos = await memoStore.list();
+      const targetMemos = memos.filter((memo) => !memo.category && memo.body.trim().length > 0);
 
-      if (updatedMemo) {
-        broadcastMemoChange(event, {
-          type: "updated",
-          memo: updatedMemo
-        });
+      if (targetMemos.length === 0) {
+        return { processed: 0, updated: 0, memos: [] };
       }
 
-      return updatedMemo;
+      const updatedMemos = await applyAiCategorizationBatch(memoStore, aiMemoProvider, targetMemos, event);
+
+      return { processed: targetMemos.length, updated: updatedMemos.length, memos: updatedMemos };
     } finally {
-      categorizingMemoIds.delete(memoId);
-      broadcastCategorizeStateChange({ memoId, busy: false });
+      isCategorizingAll = false;
+      broadcastCategorizeAllStateChange(false);
     }
   });
 
@@ -834,13 +1050,14 @@ app.whenReady().then(() => {
           };
         },
         async categorizeMemo({ title, body }) {
-          return { category: guessMemoCategory(`${title} ${body}`) };
+          return { categoryId: guessMemoCategory(`${title} ${body}`), isNewCategory: false };
         }
       }
     : createAiMemoProvider();
 
   const contextSearchService = createContextSearchService({
     listMemos: () => memoStore.list(),
+    listCategories: () => memoStore.listCategories(),
     aiMemoProvider
   });
   const composeService = createComposeService({
@@ -889,7 +1106,7 @@ app.whenReady().then(() => {
       return;
     }
 
-    const shouldRestoreBackground = Boolean(mainWindow && !mainWindow.isDestroyed() && !mainWindow.isFocused());
+    const shouldRestoreBackground = Boolean(mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible());
 
     activeQuickCaptureWindow = createQuickCaptureWindow();
     activeQuickCaptureWindow.on("closed", () => {

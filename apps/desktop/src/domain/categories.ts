@@ -8,6 +8,7 @@ export function createDefaultCategoryDefinitions(): MemoCategoryDefinition[] {
   return MEMO_CATEGORIES.map((category) => ({
     id: category,
     label: getMemoCategoryLabel(category),
+    description: "",
     builtin: true,
     createdAt: defaultCategoryTimestamp,
     updatedAt: defaultCategoryTimestamp
@@ -37,6 +38,7 @@ export function createNoteCategoryDefinitions(notes: Note[]): MemoCategoryDefini
     .map((category) => ({
       id: category,
       label: getMemoCategoryLabel(category),
+      description: "",
       builtin: MEMO_CATEGORIES.includes(category),
       createdAt: defaultCategoryTimestamp,
       updatedAt: defaultCategoryTimestamp

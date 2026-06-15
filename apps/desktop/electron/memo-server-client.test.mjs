@@ -126,6 +126,37 @@ test("delete sends DELETE and returns deleted flag", async () => {
   assert.equal(deleted, true);
 });
 
+test("listDeletions sends GET to /api/memos/deletions and returns deletions", async () => {
+  let requestUrl = "";
+  const client = createMemoServerClient({
+    baseUrl: "http://127.0.0.1:4310",
+    request(url) {
+      requestUrl = url;
+      return Promise.resolve(createResponse({ payload: { deletions: [{ memoId: "memo-1", deletedAt: "2026-01-02T00:00:00.000Z" }] } }));
+    }
+  });
+
+  const deletions = await client.listDeletions();
+
+  assert.equal(requestUrl, "http://127.0.0.1:4310/api/memos/deletions");
+  assert.deepEqual(deletions, [{ memoId: "memo-1", deletedAt: "2026-01-02T00:00:00.000Z" }]);
+});
+
+test("listDeletions appends since query param when provided", async () => {
+  let requestUrl = "";
+  const client = createMemoServerClient({
+    baseUrl: "http://127.0.0.1:4310",
+    request(url) {
+      requestUrl = url;
+      return Promise.resolve(createResponse({ payload: { deletions: [] } }));
+    }
+  });
+
+  await client.listDeletions({ since: "2026-01-01T00:00:00.000Z" });
+
+  assert.ok(requestUrl.includes("since="), `URL should include since param: ${requestUrl}`);
+});
+
 test("throws MemoServerError when response is not ok", async () => {
   const client = createMemoServerClient({
     baseUrl: "http://127.0.0.1:4310",

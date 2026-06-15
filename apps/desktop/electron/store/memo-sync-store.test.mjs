@@ -131,6 +131,7 @@ test("pullFromServer applies a remote memo that does not exist locally", async (
     async list() {
       return [{ id: "memo-1", title: "원격 메모", body: "", favorite: false, category: null, color: null, updatedAt: "2026-01-02T00:00:00.000Z" }];
     },
+    async listDeletions() { return []; },
     async upsert() {},
     async delete() {}
   };
@@ -151,6 +152,7 @@ test("pullFromServer overwrites a local memo when the remote one is newer", asyn
     async list() {
       return [{ id: "memo-1", title: "서버 메모", body: "", favorite: false, category: null, color: null, updatedAt: "2026-01-02T00:00:00.000Z" }];
     },
+    async listDeletions() { return []; },
     async upsert() {},
     async delete() {}
   };
@@ -171,6 +173,7 @@ test("pullFromServer keeps the local memo when it is newer than the remote one",
     async list() {
       return [{ id: "memo-1", title: "서버 메모", body: "", favorite: false, category: null, color: null, updatedAt: "2026-01-01T00:00:00.000Z" }];
     },
+    async listDeletions() { return []; },
     async upsert() {},
     async delete() {}
   };
@@ -180,6 +183,47 @@ test("pullFromServer keeps the local memo when it is newer than the remote one",
 
   const stored = await memoStore.get("memo-1");
   assert.equal(stored.title, "로컬 메모");
+});
+
+test("pullFromServer deletes a local memo when the server tombstone is newer", async () => {
+  const memoStore = createFakeMemoStore([
+    { id: "memo-1", title: "로컬 메모", body: "", favorite: false, category: null, color: null, updatedAt: "2026-01-01T00:00:00.000Z" }
+  ]);
+  const queue = createFakeQueue();
+  const serverClient = {
+    async list() { return []; },
+    async listDeletions() {
+      return [{ memoId: "memo-1", deletedAt: "2026-01-02T00:00:00.000Z" }];
+    },
+    async upsert() {},
+    async delete() {}
+  };
+  const syncStore = createMemoSyncStore({ memoStore, serverClient, queue });
+
+  await syncStore.pullFromServer();
+
+  assert.equal(await memoStore.get("memo-1"), null);
+});
+
+test("pullFromServer keeps a local memo when it was updated after the server tombstone", async () => {
+  const memoStore = createFakeMemoStore([
+    { id: "memo-1", title: "새로 수정된 메모", body: "", favorite: false, category: null, color: null, updatedAt: "2026-01-03T00:00:00.000Z" }
+  ]);
+  const queue = createFakeQueue();
+  const serverClient = {
+    async list() { return []; },
+    async listDeletions() {
+      return [{ memoId: "memo-1", deletedAt: "2026-01-02T00:00:00.000Z" }];
+    },
+    async upsert() {},
+    async delete() {}
+  };
+  const syncStore = createMemoSyncStore({ memoStore, serverClient, queue });
+
+  await syncStore.pullFromServer();
+
+  const stored = await memoStore.get("memo-1");
+  assert.equal(stored?.title, "새로 수정된 메모");
 });
 
 test("delete pushes deletion to the server and clears queued upserts for the memo", async () => {

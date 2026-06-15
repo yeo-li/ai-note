@@ -6,6 +6,7 @@ import static org.springframework.boot.test.context.SpringBootTest.WebEnvironmen
 import com.ainote.server.memo.dto.CreateMemoResponse;
 import com.ainote.server.memo.dto.DeleteMemoResponse;
 import com.ainote.server.memo.dto.GetMemoResponse;
+import com.ainote.server.memo.dto.ListDeletionsResponse;
 import com.ainote.server.memo.dto.ListMemosResponse;
 import com.ainote.server.memo.dto.MemoCreateRequest;
 import com.ainote.server.memo.dto.MemoUpsertRequest;
@@ -116,5 +117,22 @@ class MemoControllerTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().memo()).isNull();
+    }
+
+    @Test
+    void deleteRecordsTombstoneAndItAppearsInDeletions() {
+        ResponseEntity<CreateMemoResponse> createResponse =
+                restTemplate.postForEntity("/api/memos", new MemoCreateRequest("삭제 대상", "내용", null, null), CreateMemoResponse.class);
+        String memoId = createResponse.getBody().memo().id();
+        Instant before = Instant.now().minusSeconds(1);
+
+        restTemplate.delete("/api/memos/" + memoId);
+
+        ResponseEntity<ListDeletionsResponse> deletionsResponse =
+                restTemplate.getForEntity("/api/memos/deletions?since=" + before.toString(), ListDeletionsResponse.class);
+
+        assertThat(deletionsResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(deletionsResponse.getBody().deletions())
+                .anyMatch(d -> d.memoId().equals(memoId));
     }
 }

@@ -1006,9 +1006,27 @@ app.whenReady().then(() => {
     queue: memoSyncQueue
   });
 
-  memoStore.pullFromServer().catch((error) => {
-    console.error("[memo-store] Failed to pull memos from server.", error);
-  });
+  function scheduleMemoServerPoll() {
+    const intervalMs = Number(process.env.AI_NOTE_MEMO_POLL_INTERVAL_MS) || 30_000;
+    let currentPull = null;
+
+    const pull = () => {
+      currentPull = memoStore.pullFromServer().catch((error) => {
+        console.error("[memo-store] Failed to pull memos from server.", error);
+      });
+    };
+
+    pull();
+    const intervalId = setInterval(pull, intervalMs);
+
+    app.on("before-quit", () => {
+      clearInterval(intervalId);
+    });
+
+    return { stop: () => { clearInterval(intervalId); return currentPull; } };
+  }
+
+  scheduleMemoServerPoll();
 
   const promptTemplateStore = createPromptTemplateStore({
     userDataPath: app.getPath("userData")

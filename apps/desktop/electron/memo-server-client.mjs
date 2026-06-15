@@ -66,6 +66,14 @@ export function createMemoServerClient({ baseUrl = defaultMemoServerUrl, request
         method: "DELETE"
       });
       return deleted;
+    },
+
+    async listDeletions({ since } = {}) {
+      const url = since
+        ? `${buildMemosUrl(baseUrl, "/deletions")}?since=${encodeURIComponent(since)}`
+        : buildMemosUrl(baseUrl, "/deletions");
+      const { deletions } = await requestJson(request, url);
+      return deletions;
     }
   };
 }

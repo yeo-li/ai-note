@@ -63,13 +63,24 @@ export function createMemoSyncStore({ memoStore, serverClient, queue }) {
   }
 
   async function pullFromServer() {
-    const remoteMemos = await serverClient.list();
+    const [remoteMemos, deletions] = await Promise.all([
+      serverClient.list(),
+      serverClient.listDeletions()
+    ]);
 
     for (const remoteMemo of remoteMemos) {
       const localMemo = await memoStore.get(remoteMemo.id);
 
       if (isRemoteNewer(remoteMemo, localMemo)) {
         await memoStore.replace(remoteMemo);
+      }
+    }
+
+    for (const { memoId, deletedAt } of deletions) {
+      const localMemo = await memoStore.get(memoId);
+
+      if (localMemo && new Date(deletedAt).getTime() > new Date(localMemo.updatedAt).getTime()) {
+        await memoStore.delete(memoId);
       }
     }
   }

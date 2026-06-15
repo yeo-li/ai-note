@@ -2,6 +2,7 @@ package com.ainote.server.memo;
 
 import com.ainote.server.memo.dto.MemoCreateRequest;
 import com.ainote.server.memo.dto.MemoDto;
+import com.ainote.server.memo.dto.MemoTombstoneDto;
 import com.ainote.server.memo.dto.MemoUpsertRequest;
 import java.time.Instant;
 import java.util.List;
@@ -14,9 +15,11 @@ import org.springframework.stereotype.Service;
 public class MemoService {
 
     private final MemoRepository memoRepository;
+    private final MemoTombstoneRepository tombstoneRepository;
 
-    public MemoService(MemoRepository memoRepository) {
+    public MemoService(MemoRepository memoRepository, MemoTombstoneRepository tombstoneRepository) {
         this.memoRepository = memoRepository;
+        this.tombstoneRepository = tombstoneRepository;
     }
 
     public List<MemoDto> listMemos() {
@@ -116,8 +119,17 @@ public class MemoService {
             return false;
         }
 
+        Instant now = Instant.now();
         memoRepository.deleteById(memoId);
+        tombstoneRepository.save(new MemoTombstone(memoId, now));
         return true;
+    }
+
+    public List<MemoTombstoneDto> listDeletions(Instant since) {
+        List<MemoTombstone> tombstones = since != null
+                ? tombstoneRepository.findByDeletedAtAfter(since)
+                : tombstoneRepository.findAll();
+        return tombstones.stream().map(MemoTombstoneDto::from).toList();
     }
 
     private static String asString(Object value) {

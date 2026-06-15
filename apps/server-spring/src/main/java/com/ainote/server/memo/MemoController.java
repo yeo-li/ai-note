@@ -3,10 +3,12 @@ package com.ainote.server.memo;
 import com.ainote.server.memo.dto.CreateMemoResponse;
 import com.ainote.server.memo.dto.DeleteMemoResponse;
 import com.ainote.server.memo.dto.GetMemoResponse;
+import com.ainote.server.memo.dto.ListDeletionsResponse;
 import com.ainote.server.memo.dto.ListMemosResponse;
 import com.ainote.server.memo.dto.MemoCreateRequest;
 import com.ainote.server.memo.dto.MemoUpsertRequest;
 import com.ainote.server.memo.dto.UpdateMemoResponse;
+import java.time.Instant;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -33,6 +36,11 @@ public class MemoController {
     @GetMapping
     public ListMemosResponse listMemos() {
         return new ListMemosResponse(memoService.listMemos());
+    }
+
+    @GetMapping("/deletions")
+    public ListDeletionsResponse listDeletions(@RequestParam(required = false) Instant since) {
+        return new ListDeletionsResponse(memoService.listDeletions(since));
     }
 
     @GetMapping("/{memoId}")

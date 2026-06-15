@@ -57,6 +57,7 @@ function ensureSchema(db) {
       body TEXT NOT NULL,
       favorite INTEGER NOT NULL DEFAULT 0,
       category TEXT DEFAULT NULL,
+      color TEXT DEFAULT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -77,6 +78,7 @@ function ensureSchema(db) {
   const memoColumns = db.prepare("PRAGMA table_info(memos)").all();
   const hasFavoriteColumn = memoColumns.some((column) => column.name === "favorite");
   const hasCategoryColumn = memoColumns.some((column) => column.name === "category");
+  const hasColorColumn = memoColumns.some((column) => column.name === "color");
 
   if (!hasFavoriteColumn) {
     db.exec("ALTER TABLE memos ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0;");
@@ -84,6 +86,10 @@ function ensureSchema(db) {
 
   if (!hasCategoryColumn) {
     db.exec("ALTER TABLE memos ADD COLUMN category TEXT DEFAULT NULL;");
+  }
+
+  if (!hasColorColumn) {
+    db.exec("ALTER TABLE memos ADD COLUMN color TEXT DEFAULT NULL;");
   }
 
   const categoryColumns = db.prepare("PRAGMA table_info(memo_categories)").all();
@@ -108,6 +114,7 @@ function rowToMemo(row) {
     body: row.body,
     favorite: row.favorite === 1,
     category: row.category,
+    color: row.color,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   });
@@ -182,8 +189,8 @@ function readLegacyStoreSync(userDataPath) {
 function createMemoInsertStatement(db) {
   return db.prepare(
     `
-      INSERT OR REPLACE INTO memos (id, title, body, favorite, category, created_at, updated_at)
-      VALUES (@id, @title, @body, @favorite, @category, @createdAt, @updatedAt)
+      INSERT OR REPLACE INTO memos (id, title, body, favorite, category, color, created_at, updated_at)
+      VALUES (@id, @title, @body, @favorite, @category, @color, @createdAt, @updatedAt)
     `
   );
 }
@@ -279,6 +286,7 @@ function migrateLegacyStoreIfNeeded(db, userDataPath) {
         body: normalized.body,
         favorite: normalized.favorite ? 1 : 0,
         category: normalized.category,
+        color: normalized.color,
         createdAt: normalized.createdAt,
         updatedAt: normalized.updatedAt
       });
@@ -349,7 +357,7 @@ function syncLegacyStoreIfNeeded(db, userDataPath) {
 
   const insertMemoStatement = createMemoInsertStatement(db);
   const categoriesToSync = mergeCategoryDefinitions(store.categories ?? [], store.memos.map(createCategoryFromMemo).filter(Boolean));
-  const getMemoStatement = db.prepare("SELECT id, favorite, category, updated_at FROM memos WHERE id = @id LIMIT 1");
+  const getMemoStatement = db.prepare("SELECT id, favorite, category, color, updated_at FROM memos WHERE id = @id LIMIT 1");
   const updateMemoStatement = db.prepare(
     `
       UPDATE memos
@@ -357,6 +365,7 @@ function syncLegacyStoreIfNeeded(db, userDataPath) {
           body = @body,
           favorite = @favorite,
           category = @category,
+          color = @color,
           created_at = @createdAt,
           updated_at = @updatedAt
       WHERE id = @id
@@ -366,7 +375,8 @@ function syncLegacyStoreIfNeeded(db, userDataPath) {
     `
       UPDATE memos
       SET favorite = @favorite,
-          category = @category
+          category = @category,
+          color = @color
       WHERE id = @id
     `
   );
@@ -383,6 +393,7 @@ function syncLegacyStoreIfNeeded(db, userDataPath) {
           body: normalized.body,
           favorite: normalized.favorite ? 1 : 0,
           category: normalized.category,
+          color: normalized.color,
           createdAt: normalized.createdAt,
           updatedAt: normalized.updatedAt
         });
@@ -400,17 +411,19 @@ function syncLegacyStoreIfNeeded(db, userDataPath) {
           body: normalized.body,
           favorite: incomingFavorite,
           category: normalized.category,
+          color: normalized.color,
           createdAt: normalized.createdAt,
           updatedAt: normalized.updatedAt
         });
         continue;
       }
 
-      if (incomingUpdatedAt === existingUpdatedAt && (existing.favorite !== incomingFavorite || existing.category !== normalized.category)) {
+      if (incomingUpdatedAt === existingUpdatedAt && (existing.favorite !== incomingFavorite || existing.category !== normalized.category || existing.color !== normalized.color)) {
         updateMemoMetadataStatement.run({
           id: normalized.id,
           favorite: incomingFavorite,
-          category: normalized.category
+          category: normalized.category,
+          color: normalized.color
         });
       }
     }
@@ -427,7 +440,7 @@ function createStatements(db) {
     list: db.prepare(
       `
         SELECT id, title, body, created_at, updated_at
-               , favorite, category
+               , favorite, category, color
         FROM memos
         ORDER BY updated_at DESC, created_at DESC
       `
@@ -435,7 +448,7 @@ function createStatements(db) {
     get: db.prepare(
       `
         SELECT id, title, body, created_at, updated_at
-               , favorite, category
+               , favorite, category, color
         FROM memos
         WHERE id = @id
         LIMIT 1
@@ -443,8 +456,8 @@ function createStatements(db) {
     ),
     insert: db.prepare(
       `
-        INSERT INTO memos (id, title, body, favorite, category, created_at, updated_at)
-        VALUES (@id, @title, @body, @favorite, @category, @createdAt, @updatedAt)
+        INSERT INTO memos (id, title, body, favorite, category, color, created_at, updated_at)
+        VALUES (@id, @title, @body, @favorite, @category, @color, @createdAt, @updatedAt)
       `
     ),
     update: db.prepare(
@@ -454,6 +467,7 @@ function createStatements(db) {
             body = @body,
             favorite = @favorite,
             category = @category,
+            color = @color,
             updated_at = @updatedAt
         WHERE id = @id
       `
@@ -524,7 +538,7 @@ function createStatements(db) {
     listMemosByCategory: db.prepare(
       `
         SELECT id, title, body, created_at, updated_at
-               , favorite, category
+               , favorite, category, color
         FROM memos
         WHERE category = @category
       `
@@ -612,6 +626,7 @@ export function createMemoSqliteStore({ userDataPath, dbPath } = {}) {
           body: input.body ?? "",
           favorite: input.favorite ?? false,
           category: input.category ?? null,
+          color: input.color ?? null,
           createdAt: now,
           updatedAt: now
         });
@@ -622,6 +637,7 @@ export function createMemoSqliteStore({ userDataPath, dbPath } = {}) {
           body: memo.body,
           favorite: memo.favorite ? 1 : 0,
           category: memo.category,
+          color: memo.color,
           createdAt: memo.createdAt,
           updatedAt: memo.updatedAt
         });
@@ -647,6 +663,7 @@ export function createMemoSqliteStore({ userDataPath, dbPath } = {}) {
           body: updates.body ?? currentMemo.body,
           favorite: typeof updates.favorite === "boolean" ? updates.favorite : currentMemo.favorite,
           category: typeof updates.category !== "undefined" ? updates.category : currentMemo.category,
+          color: typeof updates.color !== "undefined" ? updates.color : currentMemo.color,
           updatedAt: shouldRefreshTimestamp ? createTimestampAfter([currentMemo.updatedAt, latestUpdatedAt]) : currentMemo.updatedAt
         });
 
@@ -656,6 +673,7 @@ export function createMemoSqliteStore({ userDataPath, dbPath } = {}) {
           body: nextMemo.body,
           favorite: nextMemo.favorite ? 1 : 0,
           category: nextMemo.category,
+          color: nextMemo.color,
           updatedAt: nextMemo.updatedAt
         });
 

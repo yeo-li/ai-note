@@ -47,6 +47,7 @@ export function useMemoCategoryController(params: UseMemoCategoryControllerParam
     createCategory: (label: string) => createCategory(label, { ...params, categories, setCategories, setCategoryFilter }),
     updateCategory: (categoryId: MemoCategory, patch: MemoCategoryUpdateInput) => updateCategory(categoryId, patch, { ...params, setCategories }),
     deleteCategory: (categoryId: MemoCategory) => deleteCategory(categoryId, { ...params, setCategories, categoryFilter, setCategoryFilter }),
+    deleteUnusedCategories: (categoryIds: MemoCategory[]) => deleteUnusedCategories(categoryIds, { ...params, setCategories, categoryFilter, setCategoryFilter }),
     setNoteCategory: (noteId: MemoId, category: MemoCategory | null) => setNoteCategory(noteId, category, params),
     runAiCategorize: (noteId: MemoId) => runAiCategorize(noteId, params),
     runCategorizeAllUncategorized: () => runCategorizeAllUncategorized(params)
@@ -242,6 +243,47 @@ async function deleteCategory(categoryId: MemoCategory, params: DeleteCategoryPa
     params.setStatusMessage("카테고리를 삭제하지 못했어요.");
     return false;
   }
+}
+
+async function deleteUnusedCategories(categoryIds: MemoCategory[], params: DeleteCategoryParams) {
+  if (params.isMutationLocked) {
+    params.setStatusMessage("저장소 연결이 복구될 때까지 카테고리를 삭제할 수 없어요.");
+    return;
+  }
+
+  if (!isMemoRepositoryAvailable()) {
+    params.setStatusMessage("카테고리 저장소를 찾지 못했어요.");
+    return;
+  }
+
+  let deletedCount = 0;
+
+  for (const categoryId of categoryIds) {
+    try {
+      const deletedCategory = await deleteMemoCategory(categoryId);
+
+      if (!deletedCategory) {
+        continue;
+      }
+
+      params.setCategories((currentCategories) => currentCategories.filter((category) => category.id !== categoryId));
+
+      if (params.categoryFilter === categoryId) {
+        params.setCategoryFilter("all");
+      }
+
+      deletedCount += 1;
+    } catch {
+      continue;
+    }
+  }
+
+  if (deletedCount === 0) {
+    params.setStatusMessage("정리할 빈 카테고리가 없어요.");
+    return;
+  }
+
+  params.setStatusMessage(`빈 카테고리 ${deletedCount}개를 정리했어요.`);
 }
 
 async function setNoteCategory(noteId: MemoId, category: MemoCategory | null, params: UseMemoCategoryControllerParams) {

@@ -42,7 +42,29 @@ export function IconSidebarPanel({ open, className }: IconProps & { open: boolea
 export function IconPin({ className }: IconProps) {
   return (
     <svg className={className} {...BASE_PROPS}>
-      <path d="M14.5 3.5 19 8l-2 2-1.2-.4-2.8 2.8.6 3.1-1.4 1.4-3.6-3.6-3.6 3.6-1-1 3.6-3.6L4 8.7l1.4-1.4 3.1.6 2.8-2.8L10.9 4.9Z" />
+      <path d="M9 10.76V4.5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v6.26a2 2 0 0 0 .52 1.34l1.96 2.15a1 1 0 0 1-.74 1.75H7.26a1 1 0 0 1-.74-1.75l1.96-2.15A2 2 0 0 0 9 10.76Z" strokeLinejoin="round" />
+      <path d="M12 17v5" />
+    </svg>
+  );
+}
+
+export function IconPalette({ className }: IconProps) {
+  return (
+    <svg className={className} {...BASE_PROPS}>
+      <path d="M12 4a8 8 0 1 0 0 16h1.5a1.5 1.5 0 0 0 1.06-2.56 1.5 1.5 0 0 1 1.06-2.56H17a3 3 0 0 0 3-3 8 8 0 0 0-8-8Z" strokeLinejoin="round" />
+      <circle cx="8" cy="11" r="1" fill="currentColor" stroke="none" />
+      <circle cx="11" cy="8" r="1" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="8.5" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function IconExternalWindow({ className }: IconProps) {
+  return (
+    <svg className={className} {...BASE_PROPS}>
+      <path d="M9 5H6.5A2.5 2.5 0 0 0 4 7.5v10A2.5 2.5 0 0 0 6.5 20h10a2.5 2.5 0 0 0 2.5-2.5V15" />
+      <path d="M14 4h6v6" strokeLinejoin="round" />
+      <path d="M20 4 11 13" />
     </svg>
   );
 }

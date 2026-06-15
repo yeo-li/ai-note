@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import type { Dispatch, FormEvent, KeyboardEvent, MouseEvent, ReactNode, RefObject, SetStateAction } from "react";
 import type { MemoCategory, MemoCategoryDefinition, MemoCategoryUpdateInput, MemoId } from "@ai-note/shared/memo";
 import { deriveNoteHeadline } from "../note-content";
-import { IconBolt, IconChat, IconCheck, IconChevron, IconClose, IconFolder, IconPlus, IconSparkles } from "./icons";
+import { IconBolt, IconChat, IconCheck, IconChevron, IconClose, IconFolder, IconPlus, IconSparkles, IconTrash } from "./icons";
 import { canOpenQuickCaptureWindow, isMacOSPlatform, openQuickCaptureWindow } from "../infrastructure/desktop-window";
 import { getCategoryDisplayLabel } from "../domain/categories";
 import type { Note } from "../domain/note";
@@ -39,6 +39,7 @@ type SidebarProps = {
   closeContextSearchPanel: () => void;
   createCategory: (label: string) => Promise<MemoCategoryDefinition | null>;
   deleteCategory: (categoryId: MemoCategory) => Promise<boolean>;
+  deleteUnusedCategories: (categoryIds: MemoCategory[]) => Promise<void>;
   updateCategory: (categoryId: MemoCategory, patch: MemoCategoryUpdateInput) => Promise<MemoCategoryDefinition | null>;
   handleCreateNote: () => Promise<void>;
   handleSearch: (nextQuery: string) => void;
@@ -188,12 +189,14 @@ function toggleCategoryDropdown({ setIsCategoryDropdownOpen, sidebarView, switch
 }
 
 function CategoryDropdownPanel(props: SidebarProps & { closeDropdown: () => void }) {
-  const { categories, categoryCounts, categoryFilter, closeDropdown, createCategory, deleteCategory, isCategorizingAll, isComposeScreenOpen, isMutationLocked, runCategorizeAllUncategorized, setCategoryFilter, updateCategory } = props;
+  const { categories, categoryCounts, categoryFilter, closeDropdown, createCategory, deleteCategory, deleteUnusedCategories, isCategorizingAll, isComposeScreenOpen, isMutationLocked, runCategorizeAllUncategorized, setCategoryFilter, updateCategory } = props;
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [draftCategoryName, setDraftCategoryName] = useState("");
   const [isSavingCategory, setIsSavingCategory] = useState(false);
+  const [isCleaningUpCategories, setIsCleaningUpCategories] = useState(false);
   const [editingCategory, setEditingCategory] = useState<MemoCategoryDefinition | null>(null);
   const [deletingCategory, setDeletingCategory] = useState<MemoCategoryDefinition | null>(null);
+  const unusedCategoryIds = categories.filter((category) => !category.builtin && (categoryCounts[category.id] ?? 0) === 0).map((category) => category.id);
 
   async function submitCategory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -214,6 +217,16 @@ function CategoryDropdownPanel(props: SidebarProps & { closeDropdown: () => void
     setIsAddingCategory(false);
   }
 
+  async function cleanupUnusedCategories() {
+    if (isCleaningUpCategories || unusedCategoryIds.length === 0) {
+      return;
+    }
+
+    setIsCleaningUpCategories(true);
+    await deleteUnusedCategories(unusedCategoryIds);
+    setIsCleaningUpCategories(false);
+  }
+
   return (
     <div className="category-dropdown-panel" id="sidebar-category-dropdown-panel" role="listbox" aria-label="카테고리 선택">
       <div className="sidebar-category-filter__actions">
@@ -223,6 +236,11 @@ function CategoryDropdownPanel(props: SidebarProps & { closeDropdown: () => void
         <button className="category-add-button" type="button" data-testid="category-categorize-all-button" aria-label="미분류 메모 AI 자동 분류" title="미분류 메모 AI 자동 분류" aria-busy={isCategorizingAll} disabled={isComposeScreenOpen || isMutationLocked || isCategorizingAll} onClick={() => void runCategorizeAllUncategorized()}>
           <IconSparkles className={`category-add-button__icon${isCategorizingAll ? " is-spinning" : ""}`} />
         </button>
+        {unusedCategoryIds.length > 0 ? (
+          <button className="category-add-button" type="button" data-testid="category-cleanup-button" aria-label="빈 카테고리 정리" title="빈 카테고리 정리" disabled={isComposeScreenOpen || isMutationLocked || isCleaningUpCategories} onClick={() => void cleanupUnusedCategories()}>
+            <IconTrash className="category-add-button__icon" />
+          </button>
+        ) : null}
         {isCategorizingAll ? (
           <span className="category-categorize-all-status" data-testid="category-categorize-all-status">
             AI 분류 중...
@@ -240,10 +258,12 @@ function CategoryDropdownPanel(props: SidebarProps & { closeDropdown: () => void
           </button>
         </form>
       ) : null}
-      <button className="category-dropdown-item__main category-dropdown-item--all" type="button" data-testid="category-filter-all" aria-selected={categoryFilter === "all"} onClick={() => selectAllCategoryFilter({ setCategoryFilter, closeDropdown })}>
-        <IconFolder className="category-dropdown-item__icon" />
-        <span className="category-dropdown-item__label">전체</span>
-      </button>
+      <div className={`category-dropdown-item${categoryFilter === "all" ? " is-active" : ""}`}>
+        <button className="category-dropdown-item__main" type="button" data-testid="category-filter-all" aria-selected={categoryFilter === "all"} onClick={() => selectAllCategoryFilter({ setCategoryFilter, closeDropdown })}>
+          <IconFolder className="category-dropdown-item__icon" />
+          <span className="category-dropdown-item__label">전체</span>
+        </button>
+      </div>
       {categories.map((category) => (
         <CategoryDropdownItem
           key={category.id}
@@ -260,7 +280,7 @@ function CategoryDropdownPanel(props: SidebarProps & { closeDropdown: () => void
         <CategoryEditModal category={editingCategory} isMutationLocked={isMutationLocked} updateCategory={updateCategory} onClose={() => setEditingCategory(null)} />
       ) : null}
       {deletingCategory ? (
-        <CategoryDeleteModal category={deletingCategory} isMutationLocked={isMutationLocked} deleteCategory={deleteCategory} onClose={() => setDeletingCategory(null)} />
+        <CategoryDeleteModal category={deletingCategory} count={categoryCounts[deletingCategory.id] ?? 0} isMutationLocked={isMutationLocked} deleteCategory={deleteCategory} onClose={() => setDeletingCategory(null)} />
       ) : null}
     </div>
   );
@@ -428,15 +448,20 @@ function CategoryEditModal({ category, isMutationLocked, updateCategory, onClose
 
 type CategoryDeleteModalProps = {
   category: MemoCategoryDefinition;
+  count: number;
   isMutationLocked: boolean;
   deleteCategory: (categoryId: MemoCategory) => Promise<boolean>;
   onClose: () => void;
 };
 
-function CategoryDeleteModal({ category, isMutationLocked, deleteCategory, onClose }: CategoryDeleteModalProps) {
+function CategoryDeleteModal({ category, count, isMutationLocked, deleteCategory, onClose }: CategoryDeleteModalProps) {
   const [isDeleting, setIsDeleting] = useState(false);
   const titleId = `category-delete-modal-title-${category.id}`;
   const descriptionId = `category-delete-modal-description-${category.id}`;
+  const description =
+    count > 0
+      ? `"${category.label}" 카테고리를 삭제하면 이 카테고리로 분류된 메모 ${count}개는 미분류로 변경돼요.`
+      : `"${category.label}" 카테고리로 분류된 메모는 없어요. 바로 삭제할 수 있어요.`;
 
   async function confirmDelete() {
     if (isDeleting) {
@@ -456,7 +481,7 @@ function CategoryDeleteModal({ category, isMutationLocked, deleteCategory, onClo
     <div className="delete-modal-backdrop" data-testid={`category-delete-modal-${category.id}`} onClick={onClose}>
       <section className="delete-modal" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId} onClick={stopPropagation}>
         <h2 id={titleId}>카테고리를 삭제할까요?</h2>
-        <p id={descriptionId}>&quot;{category.label}&quot; 카테고리를 삭제하면 이 카테고리로 분류된 메모는 미분류로 변경돼요.</p>
+        <p id={descriptionId}>{description}</p>
         {category.description ? <p className="category-delete-confirm__description">{category.description}</p> : null}
         <div className="delete-modal-actions">
           <button className="paper-button" type="button" data-testid={`category-delete-cancel-${category.id}`} disabled={isDeleting} onClick={onClose}>

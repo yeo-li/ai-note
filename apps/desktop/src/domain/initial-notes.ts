@@ -69,5 +69,6 @@ export const initialNotes: Note[] = [
   ...note,
   mode: note.mode as TransformMode,
   favorite: false,
-  category: null
+  category: null,
+  color: null
 }));

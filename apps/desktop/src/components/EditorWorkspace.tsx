@@ -1,6 +1,6 @@
 import type { Dispatch, FormEvent, KeyboardEvent, RefObject, SetStateAction } from "react";
 import type { MemoCategory, MemoCategoryDefinition, MemoId } from "@ai-note/shared/memo";
-import { IconPin, IconSearch, IconSidebarPanel, IconSparkles, IconStar, IconTag } from "./icons";
+import { IconExternalWindow, IconSearch, IconSidebarPanel, IconSparkles, IconStar, IconTag } from "./icons";
 import { getCategoryDisplayLabel } from "../domain/categories";
 import type { PromptTemplate } from "../shared/prompt-template-bridge";
 import type { DiffSegment } from "../domain/diff";
@@ -142,7 +142,7 @@ function SidebarToggleButton({ isSidebarOpen, toggleSidebar }: EditorWorkspacePr
 function OpenStickyButton({ activeNote, handleOpenStickyNoteWindow }: EditorWorkspaceProps) {
   return (
     <button className="paper-button paper-button-icon" type="button" data-testid="open-sticky-note-button" aria-label="스티커 메모로 열기" title="스티커 메모로 열기" disabled={!activeNote} onClick={() => void handleOpenStickyNoteWindow()}>
-      <IconPin className="button-icon" />
+      <IconExternalWindow className="button-icon" />
       <span className="visually-hidden">스티커 메모로 열기</span>
     </button>
   );

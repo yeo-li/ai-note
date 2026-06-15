@@ -8,6 +8,8 @@ export const MEMO_CATEGORY_LABELS = {
   other: "기타"
 };
 
+export const MEMO_STICKY_COLORS = ["yellow", "pink", "blue", "green", "purple"];
+
 export function normalizeMemoCategoryValue(value) {
   if (typeof value !== "string") {
     return null;
@@ -31,4 +33,8 @@ export function normalizeMemoCategoryDescription(value) {
   }
 
   return value.trim().replace(/\s+/gu, " ").slice(0, 200);
+}
+
+export function normalizeMemoStickyColor(value) {
+  return typeof value === "string" && MEMO_STICKY_COLORS.includes(value) ? value : null;
 }

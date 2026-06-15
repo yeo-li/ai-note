@@ -131,6 +131,7 @@ export function createMemoStore({ userDataPath }) {
           body: input.body ?? "",
           favorite: input.favorite ?? false,
           category: input.category ?? null,
+          color: input.color ?? null,
           createdAt: now,
           updatedAt: now
         });
@@ -161,6 +162,7 @@ export function createMemoStore({ userDataPath }) {
           body: updates.body ?? currentMemo.body,
           favorite: typeof updates.favorite === "boolean" ? updates.favorite : currentMemo.favorite,
           category: typeof updates.category !== "undefined" ? updates.category : currentMemo.category,
+          color: typeof updates.color !== "undefined" ? updates.color : currentMemo.color,
           updatedAt: shouldRefreshTimestamp ? createTimestampAfter(store.memos.map((memo) => memo.updatedAt)) : currentMemo.updatedAt
         });
 

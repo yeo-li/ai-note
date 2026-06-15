@@ -148,6 +148,7 @@ function App() {
     createCategory,
     updateCategory,
     deleteCategory,
+    deleteUnusedCategories,
     setCategoryFilter,
     setNoteCategory,
     runAiCategorize,
@@ -575,6 +576,7 @@ function App() {
             contextSearch={contextSearch}
             createCategory={createCategory}
             deleteCategory={deleteCategory}
+            deleteUnusedCategories={deleteUnusedCategories}
             updateCategory={updateCategory}
             filteredNotes={filteredNotes}
             hasQuery={hasQuery}

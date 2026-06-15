@@ -209,7 +209,8 @@ function toCreateInput(note: Note): MemoCreateInput {
   return {
     title: buildMemoTitleFromBody(note.body),
     body: note.body,
-    category: note.category
+    category: note.category,
+    color: note.color
   };
 }
 

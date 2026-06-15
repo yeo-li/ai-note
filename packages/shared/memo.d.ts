@@ -15,11 +15,17 @@ export const MEMO_CATEGORIES: readonly MemoCategory[];
 
 export const MEMO_CATEGORY_LABELS: Record<string, string>;
 
+export type MemoStickyColor = "yellow" | "pink" | "blue" | "green" | "purple";
+
+export const MEMO_STICKY_COLORS: readonly MemoStickyColor[];
+
 export function normalizeMemoCategoryValue(value: unknown): MemoCategory | null;
 
 export function normalizeMemoCategoryDescription(value: unknown): string;
 
 export function getMemoCategoryLabel(category: MemoCategory | null | undefined): string;
+
+export function normalizeMemoStickyColor(value: unknown): MemoStickyColor | null;
 
 export type Memo = {
   id: MemoId;
@@ -27,6 +33,7 @@ export type Memo = {
   body: string;
   favorite: boolean;
   category: MemoCategory | null;
+  color: MemoStickyColor | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -49,6 +56,7 @@ export type MemoCreateInput = {
   title?: string;
   body?: string;
   category?: MemoCategory | null;
+  color?: MemoStickyColor | null;
 };
 
 export type MemoCategoryCreateInput = {
@@ -66,6 +74,7 @@ export type MemoUpdateInput = {
   body?: string;
   favorite?: boolean;
   category?: MemoCategory | null;
+  color?: MemoStickyColor | null;
 };
 
 export type MemoSearchResult = {

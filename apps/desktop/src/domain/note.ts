@@ -1,4 +1,4 @@
-import type { Memo, MemoCategory, MemoId, MemoUpdateInput } from "@ai-note/shared/memo";
+import type { Memo, MemoCategory, MemoId, MemoStickyColor, MemoUpdateInput } from "@ai-note/shared/memo";
 import { buildMemoTitleFromBody } from "../note-content";
 
 export type TransformMode = "default" | "organized";
@@ -8,6 +8,7 @@ export type Note = {
   body: string;
   favorite: boolean;
   category: MemoCategory | null;
+  color: MemoStickyColor | null;
   updatedAt: string;
   dateLabel: string;
   mode: TransformMode;
@@ -54,6 +55,7 @@ export function createNote(): Note {
     body: "",
     favorite: false,
     category: null,
+    color: null,
     mode: "default",
     ...nowStamp()
   };
@@ -88,6 +90,7 @@ export function toNoteFromMemo(memo: Memo, mode: TransformMode = "default"): Not
     body: memo.body,
     favorite: memo.favorite ?? false,
     category: memo.category ?? null,
+    color: memo.color ?? null,
     updatedAt: formatUpdatedAtFromIso(memo.updatedAt),
     dateLabel: formatDateLabelFromIso(memo.updatedAt),
     mode
@@ -103,6 +106,7 @@ export function upsertSyncedNote(currentNotes: Note[], memo: Memo) {
         body: incomingNote.body,
         favorite: incomingNote.favorite,
         category: incomingNote.category,
+        color: incomingNote.color,
         updatedAt: incomingNote.updatedAt,
         dateLabel: incomingNote.dateLabel
       }
@@ -130,6 +134,10 @@ export function toMemoUpdateInput(update: Partial<Note>): MemoUpdateInput {
 
   if (typeof update.category !== "undefined") {
     patch.category = update.category;
+  }
+
+  if (typeof update.color !== "undefined") {
+    patch.color = update.color;
   }
 
   return patch;

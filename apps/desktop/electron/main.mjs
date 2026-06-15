@@ -1005,6 +1005,11 @@ app.whenReady().then(() => {
     serverClient: memoServerClient,
     queue: memoSyncQueue
   });
+
+  memoStore.pullFromServer().catch((error) => {
+    console.error("[memo-store] Failed to pull memos from server.", error);
+  });
+
   const promptTemplateStore = createPromptTemplateStore({
     userDataPath: app.getPath("userData")
   });

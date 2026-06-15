@@ -27,6 +27,10 @@ function createFakeMemoStore(initialMemos = []) {
     },
     async get(memoId) {
       return memos.get(memoId) ?? null;
+    },
+    async replace(memo) {
+      memos.set(memo.id, { ...memo });
+      return memo;
     }
   };
 }
@@ -118,6 +122,64 @@ test("flushQueue retries queued operations and stops at the first failure", asyn
   const remaining = await queue.list();
   assert.equal(remaining.length, 1);
   assert.equal(remaining[0].memoId, "memo-2");
+});
+
+test("pullFromServer applies a remote memo that does not exist locally", async () => {
+  const memoStore = createFakeMemoStore();
+  const queue = createFakeQueue();
+  const serverClient = {
+    async list() {
+      return [{ id: "memo-1", title: "원격 메모", body: "", favorite: false, category: null, color: null, updatedAt: "2026-01-02T00:00:00.000Z" }];
+    },
+    async upsert() {},
+    async delete() {}
+  };
+  const syncStore = createMemoSyncStore({ memoStore, serverClient, queue });
+
+  await syncStore.pullFromServer();
+
+  const stored = await memoStore.get("memo-1");
+  assert.equal(stored.title, "원격 메모");
+});
+
+test("pullFromServer overwrites a local memo when the remote one is newer", async () => {
+  const memoStore = createFakeMemoStore([
+    { id: "memo-1", title: "로컬 메모", body: "", favorite: false, category: null, color: null, updatedAt: "2026-01-01T00:00:00.000Z" }
+  ]);
+  const queue = createFakeQueue();
+  const serverClient = {
+    async list() {
+      return [{ id: "memo-1", title: "서버 메모", body: "", favorite: false, category: null, color: null, updatedAt: "2026-01-02T00:00:00.000Z" }];
+    },
+    async upsert() {},
+    async delete() {}
+  };
+  const syncStore = createMemoSyncStore({ memoStore, serverClient, queue });
+
+  await syncStore.pullFromServer();
+
+  const stored = await memoStore.get("memo-1");
+  assert.equal(stored.title, "서버 메모");
+});
+
+test("pullFromServer keeps the local memo when it is newer than the remote one", async () => {
+  const memoStore = createFakeMemoStore([
+    { id: "memo-1", title: "로컬 메모", body: "", favorite: false, category: null, color: null, updatedAt: "2026-01-02T00:00:00.000Z" }
+  ]);
+  const queue = createFakeQueue();
+  const serverClient = {
+    async list() {
+      return [{ id: "memo-1", title: "서버 메모", body: "", favorite: false, category: null, color: null, updatedAt: "2026-01-01T00:00:00.000Z" }];
+    },
+    async upsert() {},
+    async delete() {}
+  };
+  const syncStore = createMemoSyncStore({ memoStore, serverClient, queue });
+
+  await syncStore.pullFromServer();
+
+  const stored = await memoStore.get("memo-1");
+  assert.equal(stored.title, "로컬 메모");
 });
 
 test("delete pushes deletion to the server and clears queued upserts for the memo", async () => {

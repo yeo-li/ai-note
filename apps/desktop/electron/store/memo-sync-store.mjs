@@ -3,7 +3,8 @@
  * 서버 요청이 실패하면(오프라인 등) 변경 사항을 큐에 쌓아두고,
  * 다음 변경 시점 또는 flushQueue() 호출 시 재전송한다.
  *
- * list/get은 로컬 스토어를 그대로 사용한다. 서버 → 로컬 풀 동기화는 이후 작업 범위다.
+ * list/get은 로컬 스토어를 그대로 사용한다. pullFromServer()는 서버의 메모 목록을 받아
+ * updatedAt 기준 Last-Write-Wins로 로컬에 반영한다(서버가 더 최신일 때만 덮어쓴다).
  */
 export function createMemoSyncStore({ memoStore, serverClient, queue }) {
   async function pushUpsert(memo) {
@@ -53,6 +54,26 @@ export function createMemoSyncStore({ memoStore, serverClient, queue }) {
     }
   }
 
+  function isRemoteNewer(remoteMemo, localMemo) {
+    if (!localMemo) {
+      return true;
+    }
+
+    return new Date(remoteMemo.updatedAt).getTime() > new Date(localMemo.updatedAt).getTime();
+  }
+
+  async function pullFromServer() {
+    const remoteMemos = await serverClient.list();
+
+    for (const remoteMemo of remoteMemos) {
+      const localMemo = await memoStore.get(remoteMemo.id);
+
+      if (isRemoteNewer(remoteMemo, localMemo)) {
+        await memoStore.replace(remoteMemo);
+      }
+    }
+  }
+
   return {
     ...memoStore,
 
@@ -82,6 +103,7 @@ export function createMemoSyncStore({ memoStore, serverClient, queue }) {
       return deleted;
     },
 
-    flushQueue
+    flushQueue,
+    pullFromServer
   };
 }

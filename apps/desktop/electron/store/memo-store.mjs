@@ -190,6 +190,19 @@ export function createMemoStore({ userDataPath }) {
       });
     },
 
+    async replace(memo) {
+      return runSerialized(async () => {
+        const normalized = normalizeMemo(memo);
+        const store = await readStore(filePath, legacyFilePath);
+
+        store.memos = [normalized, ...store.memos.filter((current) => current.id !== normalized.id)];
+        store.categories = mergeCategoryDefinitions(store.categories ?? createBuiltinCategoryDefinitions(), [createCategoryFromMemo(normalized)].filter(Boolean));
+        await writeStore(filePath, store);
+
+        return cloneMemo(normalized);
+      });
+    },
+
     async listCategories() {
       return runSerialized(async () => {
         const store = await readStore(filePath, legacyFilePath);

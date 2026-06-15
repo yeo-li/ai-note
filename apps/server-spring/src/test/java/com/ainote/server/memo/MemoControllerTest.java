@@ -8,12 +8,18 @@ import com.ainote.server.memo.dto.DeleteMemoResponse;
 import com.ainote.server.memo.dto.GetMemoResponse;
 import com.ainote.server.memo.dto.ListMemosResponse;
 import com.ainote.server.memo.dto.MemoCreateRequest;
+import com.ainote.server.memo.dto.MemoUpsertRequest;
 import com.ainote.server.memo.dto.UpdateMemoResponse;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
@@ -63,6 +69,44 @@ class MemoControllerTest {
         ResponseEntity<GetMemoResponse> afterDelete =
                 restTemplate.getForEntity("/api/memos/" + memoId, GetMemoResponse.class);
         assertThat(afterDelete.getBody().memo()).isNull();
+    }
+
+    @Test
+    void upsertCreatesMemoWhenMissing() {
+        String memoId = UUID.randomUUID().toString();
+        Instant updatedAt = Instant.now();
+        MemoUpsertRequest request = new MemoUpsertRequest("Title", "Body", true, "idea", "pink", updatedAt, updatedAt);
+
+        ResponseEntity<UpdateMemoResponse> response = restTemplate.exchange(
+                "/api/memos/" + memoId,
+                HttpMethod.PUT,
+                new HttpEntity<>(request),
+                UpdateMemoResponse.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody().memo().id()).isEqualTo(memoId);
+        assertThat(response.getBody().memo().title()).isEqualTo("Title");
+        assertThat(response.getBody().memo().favorite()).isTrue();
+    }
+
+    @Test
+    void upsertIgnoresOlderUpdateThanServer() {
+        ResponseEntity<CreateMemoResponse> createResponse =
+                restTemplate.postForEntity("/api/memos", new MemoCreateRequest("Original", "Body", null, null), CreateMemoResponse.class);
+        String memoId = createResponse.getBody().memo().id();
+        Instant serverUpdatedAt = createResponse.getBody().memo().updatedAt();
+
+        MemoUpsertRequest staleRequest = new MemoUpsertRequest(
+                "Stale", "Stale body", false, null, null,
+                serverUpdatedAt.minus(1, ChronoUnit.DAYS), serverUpdatedAt.minus(1, ChronoUnit.DAYS));
+
+        ResponseEntity<UpdateMemoResponse> response = restTemplate.exchange(
+                "/api/memos/" + memoId,
+                HttpMethod.PUT,
+                new HttpEntity<>(staleRequest),
+                UpdateMemoResponse.class);
+
+        assertThat(response.getBody().memo().title()).isEqualTo("Original");
     }
 
     @Test

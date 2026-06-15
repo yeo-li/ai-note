@@ -67,6 +67,26 @@ test("create sends POST with JSON body and returns created memo", async () => {
   assert.deepEqual(memo, { id: "memo-1", title: "제목" });
 });
 
+test("upsert sends PUT with JSON body and returns upserted memo", async () => {
+  let requestUrl = "";
+  let requestInit;
+  const client = createMemoServerClient({
+    baseUrl: "http://127.0.0.1:4310",
+    request(url, init) {
+      requestUrl = url;
+      requestInit = init;
+      return Promise.resolve(createResponse({ payload: { memo: { id: "memo-1", title: "제목" } } }));
+    }
+  });
+
+  const memo = await client.upsert("memo-1", { title: "제목" });
+
+  assert.equal(requestUrl, "http://127.0.0.1:4310/api/memos/memo-1");
+  assert.equal(requestInit.method, "PUT");
+  assert.deepEqual(JSON.parse(requestInit.body), { title: "제목" });
+  assert.deepEqual(memo, { id: "memo-1", title: "제목" });
+});
+
 test("update sends PATCH with JSON body and returns updated memo", async () => {
   let requestUrl = "";
   let requestInit;

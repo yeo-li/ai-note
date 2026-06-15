@@ -43,6 +43,15 @@ export function createMemoServerClient({ baseUrl = defaultMemoServerUrl, request
       return memo;
     },
 
+    async upsert(memoId, memo) {
+      const { memo: upserted } = await requestJson(request, buildMemosUrl(baseUrl, `/${encodeURIComponent(memoId)}`), {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(memo)
+      });
+      return upserted;
+    },
+
     async update(memoId, patch) {
       const { memo } = await requestJson(request, buildMemosUrl(baseUrl, `/${encodeURIComponent(memoId)}`), {
         method: "PATCH",

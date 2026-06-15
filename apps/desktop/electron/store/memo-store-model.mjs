@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { MEMO_CATEGORIES, MEMO_CATEGORY_LABELS, normalizeMemoCategoryDescription, normalizeMemoCategoryValue, normalizeMemoStickyColor } from "@ai-note/shared/memo";
 
 export const MEMO_STORE_VERSION = 1;
 export const MEMO_STORE_FILENAME = "memos.json";
 export const MEMO_SQLITE_FILENAME = "memos.db";
 export const LEGACY_NOTE_STORE_FILENAME = "notes.json";
+export const DEFAULT_CATEGORY_TIMESTAMP = "1970-01-01T00:00:00.000Z";
+export const RESERVED_CATEGORY_IDS = new Set(["all"]);
 
 function normalizeTimestamp(value) {
   return typeof value === "string" && value.length > 0 ? value : new Date().toISOString();
@@ -38,12 +41,19 @@ function normalizeFavorite(value) {
   return value === true;
 }
 
+export function normalizeCategory(value) {
+  const category = normalizeMemoCategoryValue(value);
+  return category && !RESERVED_CATEGORY_IDS.has(category) ? category : null;
+}
+
 export function normalizeMemo(memo) {
   return {
     id: typeof memo.id === "string" && memo.id.length > 0 ? memo.id : randomUUID(),
     title: normalizeTitle(memo.title),
     body: normalizeBody(memo.body),
     favorite: normalizeFavorite(memo.favorite),
+    category: normalizeCategory(memo.category),
+    color: normalizeMemoStickyColor(memo.color),
     createdAt: normalizeTimestamp(memo.createdAt),
     updatedAt: normalizeTimestamp(memo.updatedAt)
   };
@@ -55,9 +65,136 @@ export function cloneMemo(memo) {
     title: memo.title,
     body: memo.body,
     favorite: memo.favorite,
+    category: memo.category,
+    color: memo.color,
     createdAt: memo.createdAt,
     updatedAt: memo.updatedAt
   };
+}
+
+function normalizeCategoryLabel(value) {
+  return normalizeMemoCategoryValue(value);
+}
+
+export function createBuiltinCategoryDefinitions() {
+  return MEMO_CATEGORIES.map((category) => ({
+    id: category,
+    label: MEMO_CATEGORY_LABELS[category] ?? category,
+    description: "",
+    builtin: true,
+    createdAt: DEFAULT_CATEGORY_TIMESTAMP,
+    updatedAt: DEFAULT_CATEGORY_TIMESTAMP
+  }));
+}
+
+export function normalizeCategoryDefinition(input = {}) {
+  const id = normalizeCategory(input.id ?? input.label);
+  const label = normalizeCategoryLabel(input.label ?? input.id);
+
+  if (!id || RESERVED_CATEGORY_IDS.has(id)) {
+    return null;
+  }
+
+  return {
+    id,
+    label: label ?? id,
+    description: normalizeMemoCategoryDescription(input.description),
+    builtin: input.builtin === true,
+    createdAt: normalizeTimestamp(input.createdAt),
+    updatedAt: normalizeTimestamp(input.updatedAt)
+  };
+}
+
+export function createCategoryDefinitionFromLabel(label, { description = "", builtin = false, now = new Date().toISOString() } = {}) {
+  const normalizedLabel = normalizeCategoryLabel(label);
+
+  if (!normalizedLabel || RESERVED_CATEGORY_IDS.has(normalizedLabel)) {
+    return null;
+  }
+
+  return {
+    id: normalizedLabel,
+    label: normalizedLabel,
+    description: normalizeMemoCategoryDescription(description),
+    builtin,
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+function normalizeCategoryDefinitions(values) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return values
+    .map((value) => (typeof value === "string" ? normalizeCategoryDefinition({ id: value, label: value }) : normalizeCategoryDefinition(value)))
+    .filter(Boolean);
+}
+
+function createCategoryDefinitionFromMemoCategory(category) {
+  const id = normalizeCategory(category);
+
+  if (!id || RESERVED_CATEGORY_IDS.has(id)) {
+    return null;
+  }
+
+  return {
+    id,
+    label: MEMO_CATEGORY_LABELS[id] ?? id,
+    description: "",
+    builtin: MEMO_CATEGORIES.includes(id),
+    createdAt: DEFAULT_CATEGORY_TIMESTAMP,
+    updatedAt: DEFAULT_CATEGORY_TIMESTAMP
+  };
+}
+
+export function mergeCategoryDefinitions(...categoryGroups) {
+  const categoriesById = new Map();
+
+  for (const categoryGroup of categoryGroups) {
+    if (!Array.isArray(categoryGroup)) {
+      continue;
+    }
+
+    for (const category of categoryGroup) {
+      const normalized = normalizeCategoryDefinition(category);
+
+      if (!normalized || categoriesById.has(normalized.id)) {
+        continue;
+      }
+
+      categoriesById.set(normalized.id, normalized);
+    }
+  }
+
+  return Array.from(categoriesById.values()).sort(compareCategoryDefinitions);
+}
+
+export function normalizeCategoryUpdateInput(value = {}) {
+  const patch = {};
+
+  if (typeof value.label === "string") {
+    const label = normalizeCategoryLabel(value.label);
+
+    if (label) {
+      patch.label = label;
+    }
+  }
+
+  if (typeof value.description === "string") {
+    patch.description = normalizeMemoCategoryDescription(value.description);
+  }
+
+  return patch;
+}
+
+function compareCategoryDefinitions(left, right) {
+  if (left.builtin !== right.builtin) {
+    return left.builtin ? -1 : 1;
+  }
+
+  return left.label.localeCompare(right.label, "ko-KR");
 }
 
 export function sortMemosByUpdatedAt(memos) {
@@ -75,22 +212,31 @@ export function createTimestampAfter(values = []) {
 }
 
 export function parseStorePayload(parsed) {
-  if (Array.isArray(parsed.memos)) {
+  const payload = parsed && typeof parsed === "object" ? parsed : {};
+  const memos = Array.isArray(payload.memos)
+    ? sortMemosByUpdatedAt(payload.memos.map(normalizeMemo))
+    : Array.isArray(payload.notes)
+      ? sortMemosByUpdatedAt(payload.notes.map(normalizeMemo))
+      : [];
+  const memoCategories = memos.map((memo) => createCategoryDefinitionFromMemoCategory(memo.category)).filter(Boolean);
+
+  if (!Array.isArray(payload.memos) && !Array.isArray(payload.notes)) {
     return {
       version: MEMO_STORE_VERSION,
-      memos: sortMemosByUpdatedAt(parsed.memos.map(normalizeMemo))
+      memos: [],
+      categories: createBuiltinCategoryDefinitions()
     };
   }
 
-  if (Array.isArray(parsed.notes)) {
-    return {
-      version: MEMO_STORE_VERSION,
-      memos: sortMemosByUpdatedAt(parsed.notes.map(normalizeMemo))
-    };
-  }
+  // payload.categories가 한 번이라도 저장된 적이 있다면 사용자가 기본 카테고리를 수정/삭제한
+  // 결과를 그대로 신뢰한다. 처음 마이그레이션되는 구버전 저장소에만 기본 카테고리를 채워준다.
+  const categories = Array.isArray(payload.categories)
+    ? mergeCategoryDefinitions(normalizeCategoryDefinitions(payload.categories), memoCategories)
+    : mergeCategoryDefinitions(createBuiltinCategoryDefinitions(), memoCategories);
 
   return {
     version: MEMO_STORE_VERSION,
-    memos: []
+    memos,
+    categories
   };
 }

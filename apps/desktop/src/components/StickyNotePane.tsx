@@ -1,6 +1,16 @@
-import type { RefObject } from "react";
-import { IconClose, IconPin, IconPlus } from "./icons";
+import { useState, type RefObject } from "react";
+import type { MemoStickyColor } from "@ai-note/shared/memo";
+import { MEMO_STICKY_COLORS } from "@ai-note/shared/memo";
+import { IconCheck, IconClose, IconPalette, IconPin, IconPlus } from "./icons";
 import type { Note } from "../domain/note";
+
+const STICKY_COLOR_LABELS: Record<MemoStickyColor, string> = {
+  yellow: "노란색",
+  pink: "분홍색",
+  blue: "파란색",
+  green: "초록색",
+  purple: "보라색"
+};
 
 type StickyNotePaneProps = {
   activeNote: Note | null;
@@ -17,9 +27,11 @@ type StickyNotePaneProps = {
 };
 
 export function StickyNotePane(props: StickyNotePaneProps) {
+  const colorClassName = props.activeNote?.color ? ` sticky-note-card--${props.activeNote.color}` : "";
+
   return (
     <div className="sticky-note-canvas">
-      <article className="sticky-note-card">
+      <article className={`sticky-note-card${colorClassName}`}>
         <StickyToolbar {...props} />
         <StickyBody {...props} />
       </article>
@@ -35,6 +47,7 @@ function StickyToolbar(props: StickyNotePaneProps) {
       </div>
       <div className="sticky-note-toolbar__actions sticky-note-toolbar__actions--right">
         <PinStickyButton {...props} />
+        <StickyColorPickerButton {...props} />
         <NewStickyButton {...props} />
       </div>
     </div>
@@ -60,6 +73,56 @@ function PinStickyButton({ isStickyPinned, toggleStickyPinned }: StickyNotePaneP
       <IconPin className="button-icon" />
       <span className="visually-hidden">{label}</span>
     </button>
+  );
+}
+
+function StickyColorPickerButton({ activeNote, patchActiveNote }: StickyNotePaneProps) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  if (!activeNote) {
+    return null;
+  }
+
+  function selectColor(color: MemoStickyColor) {
+    const nextColor = activeNote?.color === color ? null : color;
+    patchActiveNote({ color: nextColor }, "스티커 메모 색상을 변경했다.");
+    setIsOpen(false);
+  }
+
+  return (
+    <div className="sticky-note-color-picker">
+      <button
+        className="sticky-note-toolbar__button sticky-note-toolbar__button--color"
+        type="button"
+        data-testid="sticky-mode-color-button"
+        aria-label="스티커 메모 색상 변경"
+        title="스티커 메모 색상 변경"
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen((open) => !open)}
+      >
+        <IconPalette className="button-icon" />
+        <span className="visually-hidden">스티커 메모 색상 변경</span>
+      </button>
+      {isOpen ? (
+        <div className="sticky-note-color-picker__popover" role="menu" aria-label="스티커 메모 색상 선택" data-testid="sticky-color-popover">
+          {MEMO_STICKY_COLORS.map((color) => (
+            <button
+              key={color}
+              className={`sticky-note-color-swatch sticky-note-color-swatch--${color}`}
+              type="button"
+              role="menuitemradio"
+              aria-checked={activeNote.color === color}
+              aria-label={STICKY_COLOR_LABELS[color]}
+              title={STICKY_COLOR_LABELS[color]}
+              data-testid={`sticky-color-swatch-${color}`}
+              onClick={() => selectColor(color)}
+            >
+              {activeNote.color === color ? <IconCheck className="sticky-note-color-swatch__check" /> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

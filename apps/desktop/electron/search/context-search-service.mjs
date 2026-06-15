@@ -40,13 +40,18 @@ export function buildContextSearchReason(memo, query) {
 /**
  * AI 기반 맥락 검색(memo:ai-search)의 조립 로직을 캡슐화한다.
  */
-export function createContextSearchService({ listMemos, aiMemoProvider }) {
+export function createContextSearchService({ listMemos, listCategories = async () => [], aiMemoProvider }) {
   return {
     async search(query) {
-      const memos = await listMemos();
+      const [memos, categories] = await Promise.all([listMemos(), listCategories()]);
+      const categoryLabelsById = new Map(categories.map((category) => [category.id, category.label]));
+      const memosWithCategoryLabel = memos.map((memo) => ({
+        ...memo,
+        categoryLabel: memo.category ? categoryLabelsById.get(memo.category) ?? null : null
+      }));
       const memoIds = await aiMemoProvider.searchMemos({
         query,
-        memos
+        memos: memosWithCategoryLabel
       });
       const memoMap = new Map(memos.map((memo) => [memo.id, memo]));
 

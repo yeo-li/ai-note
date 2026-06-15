@@ -5,8 +5,16 @@ export const memoChannels = {
   create: "memo:create",
   update: "memo:update",
   delete: "memo:delete",
+  listCategories: "memo:list-categories",
+  createCategory: "memo:create-category",
+  updateCategory: "memo:update-category",
+  deleteCategory: "memo:delete-category",
   search: "memo:search",
   aiSearch: "memo:ai-search",
   organize: "memo:organize",
-  organizeState: "memo:organize-state"
+  organizeState: "memo:organize-state",
+  categorize: "memo:categorize",
+  categorizeState: "memo:categorize-state",
+  categorizeAll: "memo:categorize-all",
+  categorizeAllState: "memo:categorize-all-state"
 };

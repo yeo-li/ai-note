@@ -1,5 +1,7 @@
 import type { Dispatch, FormEvent, KeyboardEvent, RefObject, SetStateAction } from "react";
-import { IconPin, IconSearch, IconSidebarPanel, IconSparkles, IconStar } from "./icons";
+import type { MemoCategory, MemoCategoryDefinition, MemoId } from "@ai-note/shared/memo";
+import { IconExternalWindow, IconSearch, IconSidebarPanel, IconSparkles, IconStar, IconTag } from "./icons";
+import { getCategoryDisplayLabel } from "../domain/categories";
 import type { PromptTemplate } from "../shared/prompt-template-bridge";
 import type { DiffSegment } from "../domain/diff";
 import type { FindMatch, Note } from "../domain/note";
@@ -15,6 +17,9 @@ type EditorWorkspaceProps = {
   activeNote: Note | null;
   activeTransformFeedback: EditorFeedback | null;
   aiPromptInputRef: RefObject<HTMLInputElement>;
+  categorizingNoteIds: Record<MemoId, boolean>;
+  categories: MemoCategoryDefinition[];
+  categoryFilter: MemoCategory | "all";
   committedFindQuery: string;
   emptyCreateButtonRef: RefObject<HTMLButtonElement>;
   findInputRef: RefObject<HTMLInputElement>;
@@ -59,8 +64,10 @@ type EditorWorkspaceProps = {
   persistPromptTemplate: () => Promise<void>;
   removePromptTemplate: (templateId: string) => Promise<void>;
   restoreOriginal: () => void;
+  runAiCategorize: (noteId: MemoId) => Promise<void>;
   searchFind: (direction: 1 | -1) => void;
   setFindQuery: Dispatch<SetStateAction<string>>;
+  setNoteCategory: (noteId: MemoId, category: MemoCategory | null) => Promise<void>;
   setPromptTemplateEditor: Dispatch<SetStateAction<PromptTemplateEditorState>>;
   startTransformPreview: () => Promise<void>;
   toggleFavorite: (noteId: string) => void;
@@ -111,6 +118,8 @@ function EditorToolbar(props: EditorWorkspaceProps) {
           <SidebarToggleButton {...props} />
         </div>
         <div className="paper-toolbar-editor__group paper-toolbar-editor__group--right">
+          <CategorySelector {...props} />
+          <AiCategorizeButton {...props} />
           <OpenStickyButton {...props} />
           <FavoriteButton {...props} />
           <OrganizeButton {...props} />
@@ -133,7 +142,7 @@ function SidebarToggleButton({ isSidebarOpen, toggleSidebar }: EditorWorkspacePr
 function OpenStickyButton({ activeNote, handleOpenStickyNoteWindow }: EditorWorkspaceProps) {
   return (
     <button className="paper-button paper-button-icon" type="button" data-testid="open-sticky-note-button" aria-label="스티커 메모로 열기" title="스티커 메모로 열기" disabled={!activeNote} onClick={() => void handleOpenStickyNoteWindow()}>
-      <IconPin className="button-icon" />
+      <IconExternalWindow className="button-icon" />
       <span className="visually-hidden">스티커 메모로 열기</span>
     </button>
   );
@@ -148,6 +157,50 @@ function FavoriteButton({ activeNote, isActiveNoteBusy, toggleFavorite }: Editor
     <button className={`paper-button paper-button-icon editor-favorite-button${activeNote.favorite ? " is-favorite" : ""}`} type="button" data-testid="selected-note-favorite-button" aria-label={activeNote.favorite ? "즐겨찾기를 해제해요" : "즐겨찾기에 추가해요"} aria-pressed={activeNote.favorite} disabled={isActiveNoteBusy} onClick={() => toggleFavorite(activeNote.id)}>
       <IconStar filled={activeNote.favorite} className="button-icon" />
       <span className="visually-hidden">{activeNote.favorite ? "즐겨찾기를 해제해요" : "즐겨찾기에 추가해요"}</span>
+    </button>
+  );
+}
+
+function CategorySelector({ activeNote, categories, isActiveNoteBusy, isMutationLocked, setNoteCategory }: EditorWorkspaceProps) {
+  if (!activeNote) {
+    return null;
+  }
+
+  return (
+    <label className="editor-category-select">
+      <span className="visually-hidden">메모 카테고리</span>
+      <select data-testid="note-category-select" value={activeNote.category ?? ""} disabled={isMutationLocked || isActiveNoteBusy} onChange={(event) => void setNoteCategory(activeNote.id, toMemoCategory(event.target.value, categories))}>
+        <option value="">미분류</option>
+        {categories.map((category) => (
+          <option key={category.id} value={category.id}>
+            {category.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function toMemoCategory(value: string, categories: MemoCategoryDefinition[]): MemoCategory | null {
+  if (!value) {
+    return null;
+  }
+
+  return categories.some((category) => category.id === value) ? value : null;
+}
+
+function AiCategorizeButton({ activeNote, categorizingNoteIds, isMutationLocked, isStickyMode, runAiCategorize }: EditorWorkspaceProps) {
+  if (!activeNote) {
+    return null;
+  }
+
+  const isCategorizing = Boolean(categorizingNoteIds[activeNote.id]);
+  const disabled = isMutationLocked || isStickyMode || isCategorizing || activeNote.body.trim().length === 0;
+
+  return (
+    <button className={`paper-button paper-button-icon${isCategorizing ? " is-loading" : ""}`} type="button" data-testid="ai-categorize-button" aria-label="AI로 카테고리 분류하기" title="AI로 카테고리 분류하기" aria-busy={isCategorizing} disabled={disabled} onClick={() => void runAiCategorize(activeNote.id)}>
+      <IconTag className="button-icon" />
+      <span className="visually-hidden">AI로 카테고리 분류하기</span>
     </button>
   );
 }
@@ -538,14 +591,16 @@ function EditorEmptyState(props: EditorWorkspaceProps) {
   );
 }
 
-function getEditorEmptyTitle({ activeNote, hasQuery, isCollectionEmpty, sidebarView }: EditorWorkspaceProps) {
+function getEditorEmptyTitle({ activeNote, categories, categoryFilter, hasQuery, isCollectionEmpty, sidebarView }: EditorWorkspaceProps) {
   if (isCollectionEmpty) return "메모가 없어요";
+  if (categoryFilter !== "all" && !hasQuery && !activeNote) return `${getCategoryDisplayLabel(categories, categoryFilter)} 메모가 없어요`;
   if (sidebarView === "favorites" && !hasQuery && !activeNote) return "즐겨찾기 메모가 없어요";
   return "선택한 메모가 없어요";
 }
 
-function getEditorEmptyText({ activeNote, hasQuery, isCollectionEmpty, sidebarView }: EditorWorkspaceProps) {
+function getEditorEmptyText({ activeNote, categoryFilter, hasQuery, isCollectionEmpty, sidebarView }: EditorWorkspaceProps) {
   if (isCollectionEmpty) return "새 메모를 만들면 바로 시작할 수 있어요.";
+  if (categoryFilter !== "all" && !hasQuery && !activeNote) return "해당 카테고리로 분류된 메모가 아직 없어요.";
   if (sidebarView === "favorites" && !hasQuery && !activeNote) return "메모 오른쪽 위 별 버튼을 누르면 즐겨찾기만 따로 모아볼 수 있어요.";
   return "왼쪽 목록에서 메모를 선택하거나 새 메모를 만들어 주세요.";
 }

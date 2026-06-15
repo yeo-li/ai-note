@@ -90,6 +90,27 @@ test("memo store persists favorite flag updates", async () => {
   });
 });
 
+test("memo store persists custom categories without requiring a memo", async () => {
+  const userDataPath = await mkdtemp(join(tmpdir(), "ai-note-memo-store-"));
+
+  try {
+    const store = createMemoStore({ userDataPath });
+    const createdCategory = await store.createCategory({ label: "독서" });
+
+    assert.equal(createdCategory.id, "독서");
+    assert.equal(createdCategory.label, "독서");
+    assert.equal(createdCategory.builtin, false);
+
+    const reloadedStore = createMemoStore({ userDataPath });
+    const categories = await reloadedStore.listCategories();
+
+    assert.equal(categories.some((category) => category.id === "idea" && category.builtin), true);
+    assert.equal(categories.some((category) => category.id === "독서" && !category.builtin), true);
+  } finally {
+    await rm(userDataPath, { recursive: true, force: true });
+  }
+});
+
 test("memo store preserves the last concurrent update", async () => {
   await withTempStore(async (store) => {
     const created = await store.create({

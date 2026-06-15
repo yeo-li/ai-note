@@ -1,5 +1,9 @@
 import type {
   Memo,
+  MemoCategory,
+  MemoCategoryCreateInput,
+  MemoCategoryDefinition,
+  MemoCategoryUpdateInput,
   MemoCreateInput,
   MemoId,
   MemoOrganizeInput,
@@ -26,6 +30,35 @@ export type CreateMemoRequest = {
 
 export type CreateMemoResponse = {
   memo: Memo;
+};
+
+export type ListMemoCategoriesResponse = {
+  categories: MemoCategoryDefinition[];
+};
+
+export type CreateMemoCategoryRequest = {
+  input: MemoCategoryCreateInput;
+};
+
+export type CreateMemoCategoryResponse = {
+  category: MemoCategoryDefinition;
+};
+
+export type UpdateMemoCategoryRequest = {
+  categoryId: MemoCategory;
+  patch: MemoCategoryUpdateInput;
+};
+
+export type UpdateMemoCategoryResponse = {
+  category: MemoCategoryDefinition;
+};
+
+export type DeleteMemoCategoryRequest = {
+  categoryId: MemoCategory;
+};
+
+export type DeleteMemoCategoryResponse = {
+  category: MemoCategoryDefinition | null;
 };
 
 export type UpdateMemoRequest = {

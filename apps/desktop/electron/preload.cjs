@@ -9,14 +9,25 @@ const memoChannels = {
   create: "memo:create",
   update: "memo:update",
   delete: "memo:delete",
+  listCategories: "memo:list-categories",
+  createCategory: "memo:create-category",
+  updateCategory: "memo:update-category",
+  deleteCategory: "memo:delete-category",
   search: "memo:search",
   aiSearch: "memo:ai-search",
   organize: "memo:organize",
-  compose: "memo:compose"
+  compose: "memo:compose",
+  categorize: "memo:categorize",
+  categorizeState: "memo:categorize-state",
+  categorizeAll: "memo:categorize-all",
+  categorizeAllState: "memo:categorize-all-state"
 };
 const memoEventChannels = {
   changed: "memo:changed",
-  organizeState: "memo:organize-state-changed"
+  organizeState: "memo:organize-state-changed",
+  categorizeState: "memo:categorize-state-changed",
+  categorizeAllState: "memo:categorize-all-state-changed",
+  categoriesChanged: "memo:categories-changed"
 };
 const promptTemplateChannels = {
   list: "prompt-template:list",
@@ -52,6 +63,18 @@ const memoAPI = {
   delete(id) {
     return ipcRenderer.invoke(memoChannels.delete, id);
   },
+  listCategories() {
+    return ipcRenderer.invoke(memoChannels.listCategories);
+  },
+  createCategory(input) {
+    return ipcRenderer.invoke(memoChannels.createCategory, input);
+  },
+  updateCategory(categoryId, patch) {
+    return ipcRenderer.invoke(memoChannels.updateCategory, categoryId, patch);
+  },
+  deleteCategory(categoryId) {
+    return ipcRenderer.invoke(memoChannels.deleteCategory, categoryId);
+  },
   search(query) {
     return ipcRenderer.invoke(memoChannels.search, query);
   },
@@ -66,6 +89,18 @@ const memoAPI = {
   },
   compose(input) {
     return ipcRenderer.invoke(memoChannels.compose, input);
+  },
+  categorizeState() {
+    return ipcRenderer.invoke(memoChannels.categorizeState);
+  },
+  categorize(memoId) {
+    return ipcRenderer.invoke(memoChannels.categorize, memoId);
+  },
+  categorizeAllState() {
+    return ipcRenderer.invoke(memoChannels.categorizeAllState);
+  },
+  categorizeAll() {
+    return ipcRenderer.invoke(memoChannels.categorizeAll);
   },
   onDidChange(listener) {
     if (typeof listener !== "function") {
@@ -95,6 +130,51 @@ const memoAPI = {
 
     return () => {
       ipcRenderer.off(memoEventChannels.organizeState, wrappedListener);
+    };
+  },
+  onDidCategorizeState(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+
+    const wrappedListener = (_event, changeEvent) => {
+      listener(changeEvent);
+    };
+
+    ipcRenderer.on(memoEventChannels.categorizeState, wrappedListener);
+
+    return () => {
+      ipcRenderer.off(memoEventChannels.categorizeState, wrappedListener);
+    };
+  },
+  onDidCategorizeAllState(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+
+    const wrappedListener = (_event, busy) => {
+      listener(busy);
+    };
+
+    ipcRenderer.on(memoEventChannels.categorizeAllState, wrappedListener);
+
+    return () => {
+      ipcRenderer.off(memoEventChannels.categorizeAllState, wrappedListener);
+    };
+  },
+  onDidCategoriesChange(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+
+    const wrappedListener = (_event, categories) => {
+      listener(categories);
+    };
+
+    ipcRenderer.on(memoEventChannels.categoriesChanged, wrappedListener);
+
+    return () => {
+      ipcRenderer.off(memoEventChannels.categoriesChanged, wrappedListener);
     };
   }
 };

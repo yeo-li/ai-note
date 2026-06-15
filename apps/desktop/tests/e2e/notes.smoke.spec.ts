@@ -1,4 +1,12 @@
+import type { Page } from "@playwright/test";
 import { test, expect } from "./electron-fixture";
+
+async function getMemoStoreKind(appWindow: Page) {
+  return appWindow.evaluate(async () => {
+    const health = await window.memoAPI?.health();
+    return health?.storeKind ?? "missing";
+  });
+}
 
 test.describe("AI Note desktop smoke", () => {
   test("creates and edits a note without leaving the workspace", async ({ appWindow }) => {
@@ -76,6 +84,67 @@ test.describe("AI Note desktop smoke", () => {
     await searchInput.clear();
 
     await expect(bodyInput).toHaveValue(selectedBody);
+  });
+
+  test("filters notes through the category accordion in the sidebar nav", async ({ appWindow }) => {
+    const createButton = appWindow.getByTestId("sidebar-create-note-button");
+    const noteList = appWindow.getByTestId("note-list");
+    const bodyInput = appWindow.getByTestId("note-body-input");
+    const categorySelect = appWindow.getByTestId("note-category-select");
+
+    await expect(await getMemoStoreKind(appWindow)).toBe("sqlite");
+
+    await createButton.click();
+    await bodyInput.fill("카테고리 아이디어 메모\n새 기능 아이디어를 기록합니다.");
+    await categorySelect.selectOption("idea");
+
+    await createButton.click();
+    await bodyInput.fill("카테고리 할 일 메모\n오늘 처리할 일을 기록합니다.");
+    await categorySelect.selectOption("task");
+
+    await appWindow.getByTestId("sidebar-category-view-button").click();
+    await expect(appWindow.getByTestId("category-filter-idea")).toBeVisible();
+    await expect(appWindow.getByTestId("category-filter-task")).toBeVisible();
+
+    await appWindow.getByTestId("category-add-button").click();
+    await appWindow.getByTestId("category-create-input").fill("독서");
+    await appWindow.getByTestId("category-create-submit-button").click();
+    await expect(appWindow.getByTestId("category-filter-독서")).toBeVisible();
+
+    await createButton.click();
+    await bodyInput.fill("카테고리 독서 메모\n읽을 책을 기록합니다.");
+    await expect(categorySelect).toHaveValue("독서");
+
+    await appWindow.getByTestId("category-filter-idea").click();
+
+    await expect(noteList).toContainText("카테고리 아이디어 메모");
+    await expect(noteList).not.toContainText("카테고리 할 일 메모");
+    await expect(noteList).not.toContainText("카테고리 독서 메모");
+    await expect(appWindow.getByTestId("note-body-input")).toHaveValue(/카테고리 아이디어 메모/);
+
+    await appWindow.getByTestId("sidebar-all-view-button").click();
+
+    await expect(appWindow.getByTestId("category-filter-idea")).toHaveCount(0);
+    await expect(noteList).toContainText("카테고리 아이디어 메모");
+    await expect(noteList).toContainText("카테고리 할 일 메모");
+
+    await appWindow.reload();
+    await appWindow.waitForLoadState("domcontentloaded");
+    await appWindow.waitForSelector('[data-testid="app-shell"]');
+    await expect(await getMemoStoreKind(appWindow)).toBe("sqlite");
+    await expect(noteList).toContainText("카테고리 할 일 메모");
+
+    await appWindow.getByTestId("sidebar-category-view-button").click();
+    await expect(appWindow.getByTestId("category-filter-독서")).toBeVisible();
+    await appWindow.getByTestId("category-filter-idea").click();
+
+    await expect(noteList).toContainText("카테고리 아이디어 메모");
+    await expect(noteList).not.toContainText("카테고리 할 일 메모");
+
+    await appWindow.getByTestId("category-filter-독서").click();
+
+    await expect(noteList).toContainText("카테고리 독서 메모");
+    await expect(noteList).not.toContainText("카테고리 아이디어 메모");
   });
 
   test("runs AI chat search and summary without replacing the sidebar filter", async ({ appWindow }) => {

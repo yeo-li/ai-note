@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { MemoId } from "@ai-note/shared/memo";
+import type { MemoCategory, MemoId } from "@ai-note/shared/memo";
+import { createNoteCategoryDefinitions, mergeCategoryDefinitions } from "./domain/categories";
 import {
   matchesQuery,
 } from "./domain/note";
@@ -18,6 +19,7 @@ import { useComposeController } from "./hooks/useComposeController";
 import { useContextSearchController } from "./hooks/useContextSearchController";
 import { useDeleteNoteController } from "./hooks/useDeleteNoteController";
 import { useFindController } from "./hooks/useFindController";
+import { useMemoCategoryController } from "./hooks/useMemoCategoryController";
 import { useMemoSyncEffects } from "./hooks/useMemoSyncEffects";
 import { patchActiveNoteWithPersistence, useNoteMutationActions } from "./hooks/useNoteMutationActions";
 import { useNotesBootstrap } from "./hooks/useNotesBootstrap";
@@ -138,23 +140,63 @@ function App() {
     closeFindBar
   });
 
+  const {
+    categorizingNoteIds,
+    categories,
+    categoryFilter,
+    isCategorizingAll,
+    createCategory,
+    updateCategory,
+    deleteCategory,
+    deleteUnusedCategories,
+    setCategoryFilter,
+    setNoteCategory,
+    runAiCategorize,
+    runCategorizeAllUncategorized
+  } = useMemoCategoryController({
+    isMutationLocked,
+    notes,
+    setNotes,
+    setStatusMessage
+  });
+
   const hasQuery = sidebarSearchMode === "keyword" && query.trim().length > 0;
   const scopedNotes = useMemo(
-    () => notes.filter((note) => (sidebarView === "favorites" ? note.favorite : true)),
-    [notes, sidebarView]
+    () =>
+      notes.filter((note) => {
+        if (sidebarView === "favorites" && !note.favorite) return false;
+        if (categoryFilter !== "all" && note.category !== categoryFilter) return false;
+        return true;
+      }),
+    [notes, sidebarView, categoryFilter]
   );
   const filteredNotes = useMemo(
     () => scopedNotes.filter((note) => matchesQuery(note, query)),
     [scopedNotes, query]
   );
   const selectedNote = notes.find((note) => note.id === selectedNoteId) ?? null;
+  const visibleCategories = useMemo(
+    () => mergeCategoryDefinitions(categories, createNoteCategoryDefinitions(notes)),
+    [categories, notes]
+  );
+  const categoryCounts = useMemo(
+    () =>
+      visibleCategories.reduce(
+        (counts, category) => ({
+          ...counts,
+          [category.id]: notes.filter((note) => note.category === category.id).length
+        }),
+        {} as Record<MemoCategory, number>
+      ),
+    [notes, visibleCategories]
+  );
 
   const activeNote = useMemo(() => {
     if (notes.length === 0) {
       return null;
     }
 
-    if (sidebarView === "favorites") {
+    if (sidebarView === "favorites" || categoryFilter !== "all") {
       if (scopedNotes.length === 0) {
         return null;
       }
@@ -163,7 +205,7 @@ function App() {
     }
 
     return selectedNote ?? notes[0];
-  }, [notes, scopedNotes, selectedNote, selectedNoteId, sidebarView]);
+  }, [categoryFilter, notes, scopedNotes, selectedNote, selectedNoteId, sidebarView]);
   const {
     committedFindQuery,
     findInputRef,
@@ -261,6 +303,7 @@ function App() {
     toggleFavorite
   } = useNoteMutationActions({
     activeNote,
+    categoryFilter,
     hasQuery,
     isMutationLocked,
     setDeleteIntentId,
@@ -512,6 +555,8 @@ function App() {
   const showPaperStatus = isMutationLocked || isTransformPreviewGenerating || Boolean(activeDraft);
   const sidebarCountLabel = hasQuery
     ? `결과 ${filteredNotes.length}개`
+    : categoryFilter !== "all"
+      ? `메모 ${scopedNotes.length}개`
     : sidebarView === "favorites"
       ? `즐겨찾기 ${scopedNotes.length}개`
       : `메모 ${notes.length}개`;
@@ -525,10 +570,18 @@ function App() {
           <Sidebar
             activeNote={activeNote}
             activeSidebarSurface={activeSidebarSurface}
+            categories={visibleCategories}
+            categoryCounts={categoryCounts}
+            categoryFilter={categoryFilter}
             contextSearch={contextSearch}
+            createCategory={createCategory}
+            deleteCategory={deleteCategory}
+            deleteUnusedCategories={deleteUnusedCategories}
+            updateCategory={updateCategory}
             filteredNotes={filteredNotes}
             hasQuery={hasQuery}
             isAiChatOpen={isAiChatOpen}
+            isCategorizingAll={isCategorizingAll}
             isCollectionEmpty={isCollectionEmpty}
             isComposeScreenOpen={isComposeScreenOpen}
             isMutationLocked={isMutationLocked}
@@ -548,7 +601,9 @@ function App() {
             handleCreateNote={handleCreateNote}
             handleSearch={handleSearch}
             openNoteFromContextSearch={openNoteFromContextSearch}
+            runCategorizeAllUncategorized={runCategorizeAllUncategorized}
             runContextSearch={runContextSearch}
+            setCategoryFilter={setCategoryFilter}
             setDeleteIntentId={setDeleteIntentId}
             setNoteMenuId={setNoteMenuId}
             setSelectedNoteId={setSelectedNoteId}
@@ -599,6 +654,9 @@ function App() {
                 activeNote={activeNote}
                 activeTransformFeedback={activeTransformFeedback}
                 aiPromptInputRef={aiPromptInputRef}
+                categorizingNoteIds={categorizingNoteIds}
+                categories={visibleCategories}
+                categoryFilter={categoryFilter}
                 emptyCreateButtonRef={emptyCreateButtonRef}
                 committedFindQuery={committedFindQuery}
                 findInputRef={findInputRef}
@@ -643,8 +701,10 @@ function App() {
                 persistPromptTemplate={persistPromptTemplate}
                 removePromptTemplate={removePromptTemplate}
                 restoreOriginal={restoreOriginal}
+                runAiCategorize={runAiCategorize}
                 searchFind={searchFind}
                 setFindQuery={setFindQuery}
+                setNoteCategory={setNoteCategory}
                 setPromptTemplateEditor={setPromptTemplateEditor}
                 startTransformPreview={startTransformPreview}
                 toggleFavorite={toggleFavorite}

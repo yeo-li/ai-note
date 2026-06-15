@@ -167,10 +167,16 @@ export function createJsonApiClient({
         const outputText = extractOutputText(payload);
 
         if (!outputText) {
+          console.error("[ai-api-client] 빈 응답을 받았어요.", JSON.stringify(payload).slice(0, 2000));
           throw new OrganizeProviderError("API_PARSE_FAILED", parseFailureMessage);
         }
 
-        return JSON.parse(outputText);
+        try {
+          return JSON.parse(outputText);
+        } catch (parseError) {
+          console.error("[ai-api-client] JSON 파싱 실패. 응답 원문:", outputText.slice(0, 2000));
+          throw parseError;
+        }
       } catch (error) {
         throw normalizeApiError(error, parseFailureMessage);
       } finally {

@@ -6,17 +6,24 @@ import type {
 import type {
   CreateMemoRequest,
   CreateMemoResponse,
+  CreateMemoCategoryRequest,
+  CreateMemoCategoryResponse,
   DeleteMemoRequest,
   DeleteMemoResponse,
+  DeleteMemoCategoryRequest,
+  DeleteMemoCategoryResponse,
   GetMemoRequest,
   GetMemoResponse,
+  ListMemoCategoriesResponse,
   ListMemosResponse,
   OrganizeMemoRequest,
   OrganizeMemoResponse,
   SearchMemosRequest,
   SearchMemosResponse,
   UpdateMemoRequest,
-  UpdateMemoResponse
+  UpdateMemoResponse,
+  UpdateMemoCategoryRequest,
+  UpdateMemoCategoryResponse
 } from "@ai-note/shared/memo-api";
 import type { MemoStoreHealth } from "./shared/memo-bridge";
 import type { PromptTemplate, PromptTemplateCreateInput, PromptTemplateUpdateInput } from "./shared/prompt-template-bridge";
@@ -53,6 +60,10 @@ type MemoAPI = {
   create(input: CreateMemoRequest["input"]): Promise<CreateMemoResponse["memo"]>;
   update(id: UpdateMemoRequest["memoId"], patch: UpdateMemoRequest["patch"]): Promise<UpdateMemoResponse["memo"]>;
   delete(id: DeleteMemoRequest["memoId"]): Promise<DeleteMemoResponse["deleted"]>;
+  listCategories(): Promise<ListMemoCategoriesResponse["categories"]>;
+  createCategory(input: CreateMemoCategoryRequest["input"]): Promise<CreateMemoCategoryResponse["category"]>;
+  updateCategory(categoryId: UpdateMemoCategoryRequest["categoryId"], patch: UpdateMemoCategoryRequest["patch"]): Promise<UpdateMemoCategoryResponse["category"]>;
+  deleteCategory(categoryId: DeleteMemoCategoryRequest["categoryId"]): Promise<DeleteMemoCategoryResponse["category"]>;
   search(query: SearchMemosRequest["query"]): Promise<SearchMemosResponse["results"]>;
   aiSearch(query: string): Promise<ContextSearchResult[]>;
   organizeState(): Promise<string[]>;
@@ -75,8 +86,15 @@ type MemoAPI = {
         relatedCount: number;
       }
   >;
+  categorizeState(): Promise<string[]>;
+  categorize(memoId: string): Promise<Memo | null>;
+  categorizeAllState(): Promise<boolean>;
+  categorizeAll(): Promise<{ processed: number; updated: number; memos: Memo[] }>;
   onDidChange(listener: (event: MemoChangeEvent) => void): () => void;
   onDidOrganizeState(listener: (event: { memoId: string; busy: boolean }) => void): () => void;
+  onDidCategorizeState(listener: (event: { memoId: string; busy: boolean }) => void): () => void;
+  onDidCategorizeAllState(listener: (busy: boolean) => void): () => void;
+  onDidCategoriesChange(listener: (categories: ListMemoCategoriesResponse["categories"]) => void): () => void;
 };
 
 type PromptTemplateAPI = {

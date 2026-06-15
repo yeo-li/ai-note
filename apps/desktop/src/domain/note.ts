@@ -1,4 +1,4 @@
-import type { Memo, MemoId, MemoUpdateInput } from "@ai-note/shared/memo";
+import type { Memo, MemoCategory, MemoId, MemoStickyColor, MemoUpdateInput } from "@ai-note/shared/memo";
 import { buildMemoTitleFromBody } from "../note-content";
 
 export type TransformMode = "default" | "organized";
@@ -7,6 +7,8 @@ export type Note = {
   id: MemoId;
   body: string;
   favorite: boolean;
+  category: MemoCategory | null;
+  color: MemoStickyColor | null;
   updatedAt: string;
   dateLabel: string;
   mode: TransformMode;
@@ -52,6 +54,8 @@ export function createNote(): Note {
     id: `note-${Date.now()}`,
     body: "",
     favorite: false,
+    category: null,
+    color: null,
     mode: "default",
     ...nowStamp()
   };
@@ -85,6 +89,8 @@ export function toNoteFromMemo(memo: Memo, mode: TransformMode = "default"): Not
     id: memo.id,
     body: memo.body,
     favorite: memo.favorite ?? false,
+    category: memo.category ?? null,
+    color: memo.color ?? null,
     updatedAt: formatUpdatedAtFromIso(memo.updatedAt),
     dateLabel: formatDateLabelFromIso(memo.updatedAt),
     mode
@@ -99,6 +105,8 @@ export function upsertSyncedNote(currentNotes: Note[], memo: Memo) {
         ...existingNote,
         body: incomingNote.body,
         favorite: incomingNote.favorite,
+        category: incomingNote.category,
+        color: incomingNote.color,
         updatedAt: incomingNote.updatedAt,
         dateLabel: incomingNote.dateLabel
       }
@@ -124,6 +132,14 @@ export function toMemoUpdateInput(update: Partial<Note>): MemoUpdateInput {
     patch.favorite = update.favorite;
   }
 
+  if (typeof update.category !== "undefined") {
+    patch.category = update.category;
+  }
+
+  if (typeof update.color !== "undefined") {
+    patch.color = update.color;
+  }
+
   return patch;
 }
 
@@ -144,7 +160,11 @@ function resolveFavoriteSelectedNoteId(params: { scopedNotes: Note[]; selectedNo
   return params.scopedNotes.some((note) => note.id === params.selectedNoteId) ? params.selectedNoteId : params.scopedNotes[0].id;
 }
 
-function resolveAllSelectedNoteId(params: { notes: Note[]; selectedNote: Note | null | undefined; selectedNoteId: string }) {
+function resolveAllSelectedNoteId(params: { notes: Note[]; scopedNotes: Note[]; selectedNote: Note | null | undefined; selectedNoteId: string }) {
+  if (params.scopedNotes.length > 0 && !params.scopedNotes.some((note) => note.id === params.selectedNoteId)) {
+    return params.scopedNotes[0].id;
+  }
+
   return params.selectedNote ? params.selectedNoteId : params.notes[0].id;
 }
 
@@ -180,8 +200,13 @@ function getDeleteIndexes(params: DeleteSelectionParams): DeleteIndexes | null {
 }
 
 function getVisibleNotesAfterDelete(params: DeleteSelectionParams, nextNotes: Note[]) {
-  const scopedNextNotes = nextNotes.filter((note) => (params.sidebarView === "favorites" ? note.favorite : true));
-  return params.hasQuery ? scopedNextNotes.filter((note) => matchesQuery(note, params.query)) : scopedNextNotes;
+  const nextVisibleNotes = params.currentVisibleNotes.filter((note) => note.id !== params.deleteTargetNoteId && nextNotes.some((nextNote) => nextNote.id === note.id));
+
+  if (params.hasQuery || params.sidebarView === "favorites" || params.currentVisibleNotes.length !== params.notes.length) {
+    return nextVisibleNotes;
+  }
+
+  return nextNotes;
 }
 
 function getFallbackSelectedNote(nextNotes: Note[], visibleNotes: Note[], indexes: DeleteIndexes) {

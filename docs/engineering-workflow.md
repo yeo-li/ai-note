@@ -39,7 +39,7 @@
 
 - 루트는 `npm workspaces` 설정과 공통 명령 위임만 담당한다
 - `apps/desktop`은 현재 Electron + React 앱과 검증 스크립트를 가진다
-- `apps/server`는 후속 서버 이슈를 위한 자리만 확보한다
+- `apps/server-spring`은 Java/Spring Boot 서버(Gradle 빌드)를 가진다
 - `packages/shared`는 공용 계약/유틸리티를 수용할 자리만 확보한다
 
 ## GitHub Sprint Workflow

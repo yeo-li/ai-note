@@ -89,7 +89,7 @@ npm run allure:open
 ## 구조
 
 - `apps/desktop/`: Electron main/preload, React renderer, Playwright E2E를 포함한 현재 실행 앱
-- `apps/server/`: 이후 서버/API 이슈를 위한 워크스페이스 자리
+- `apps/server-spring/`: Java/Spring Boot 기반 서버 (Gradle)
 - `packages/shared/`: 공용 타입/계약/유틸리티 수용 자리
 - 루트 `package.json`: workspace 선언과 공통 명령 위임
 

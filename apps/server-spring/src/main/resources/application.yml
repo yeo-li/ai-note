@@ -1,0 +1,3 @@
+server:
+  address: ${HOST:127.0.0.1}
+  port: ${PORT:4310}

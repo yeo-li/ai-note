@@ -1,5 +1,6 @@
-package com.ainote.server.health;
+package com.ainote.server.controller;
 
+import com.ainote.server.dto.HealthResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 

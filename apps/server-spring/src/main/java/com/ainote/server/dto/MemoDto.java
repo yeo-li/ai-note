@@ -1,6 +1,6 @@
-package com.ainote.server.memo.dto;
+package com.ainote.server.dto;
 
-import com.ainote.server.memo.Memo;
+import com.ainote.server.domain.Memo;
 import java.time.Instant;
 
 public record MemoDto(

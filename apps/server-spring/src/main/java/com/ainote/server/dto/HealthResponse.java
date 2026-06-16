@@ -1,4 +1,4 @@
-package com.ainote.server.health;
+package com.ainote.server.dto;
 
 public record HealthResponse(String service, String status) {
 

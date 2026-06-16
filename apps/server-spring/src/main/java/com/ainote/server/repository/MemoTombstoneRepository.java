@@ -1,5 +1,6 @@
-package com.ainote.server.memo;
+package com.ainote.server.repository;
 
+import com.ainote.server.domain.MemoTombstone;
 import java.time.Instant;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;

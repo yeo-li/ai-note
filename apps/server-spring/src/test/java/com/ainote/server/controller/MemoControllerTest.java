@@ -1,16 +1,16 @@
-package com.ainote.server.memo;
+package com.ainote.server.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
 
-import com.ainote.server.memo.dto.CreateMemoResponse;
-import com.ainote.server.memo.dto.DeleteMemoResponse;
-import com.ainote.server.memo.dto.GetMemoResponse;
-import com.ainote.server.memo.dto.ListDeletionsResponse;
-import com.ainote.server.memo.dto.ListMemosResponse;
-import com.ainote.server.memo.dto.MemoCreateRequest;
-import com.ainote.server.memo.dto.MemoUpsertRequest;
-import com.ainote.server.memo.dto.UpdateMemoResponse;
+import com.ainote.server.dto.CreateMemoResponse;
+import com.ainote.server.dto.DeleteMemoResponse;
+import com.ainote.server.dto.GetMemoResponse;
+import com.ainote.server.dto.ListDeletionsResponse;
+import com.ainote.server.dto.ListMemosResponse;
+import com.ainote.server.dto.MemoCreateRequest;
+import com.ainote.server.dto.MemoUpsertRequest;
+import com.ainote.server.dto.UpdateMemoResponse;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
@@ -19,8 +19,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
@@ -53,18 +53,17 @@ class MemoControllerTest {
 
         ResponseEntity<UpdateMemoResponse> updateResponse = restTemplate.exchange(
                 "/api/memos/" + memoId,
-                org.springframework.http.HttpMethod.PATCH,
-                new org.springframework.http.HttpEntity<>(Map.of("favorite", true, "title", "Updated")),
+                HttpMethod.PATCH,
+                new HttpEntity<>(Map.of("favorite", true, "title", "Updated")),
                 UpdateMemoResponse.class);
         assertThat(updateResponse.getBody().memo().favorite()).isTrue();
         assertThat(updateResponse.getBody().memo().title()).isEqualTo("Updated");
 
-        ResponseEntity<DeleteMemoResponse> deleteResponse =
-                restTemplate.exchange(
-                        "/api/memos/" + memoId,
-                        org.springframework.http.HttpMethod.DELETE,
-                        null,
-                        DeleteMemoResponse.class);
+        ResponseEntity<DeleteMemoResponse> deleteResponse = restTemplate.exchange(
+                "/api/memos/" + memoId,
+                HttpMethod.DELETE,
+                null,
+                DeleteMemoResponse.class);
         assertThat(deleteResponse.getBody().deleted()).isTrue();
 
         ResponseEntity<GetMemoResponse> afterDelete =

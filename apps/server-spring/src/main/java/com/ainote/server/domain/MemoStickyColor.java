@@ -1,4 +1,4 @@
-package com.ainote.server.memo;
+package com.ainote.server.domain;
 
 import java.util.Set;
 

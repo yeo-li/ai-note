@@ -1,9 +1,15 @@
-package com.ainote.server.memo;
+package com.ainote.server.service;
 
-import com.ainote.server.memo.dto.MemoCreateRequest;
-import com.ainote.server.memo.dto.MemoDto;
-import com.ainote.server.memo.dto.MemoTombstoneDto;
-import com.ainote.server.memo.dto.MemoUpsertRequest;
+import com.ainote.server.domain.Memo;
+import com.ainote.server.domain.MemoCategories;
+import com.ainote.server.domain.MemoStickyColor;
+import com.ainote.server.domain.MemoTombstone;
+import com.ainote.server.dto.MemoCreateRequest;
+import com.ainote.server.dto.MemoDto;
+import com.ainote.server.dto.MemoTombstoneDto;
+import com.ainote.server.dto.MemoUpsertRequest;
+import com.ainote.server.repository.MemoRepository;
+import com.ainote.server.repository.MemoTombstoneRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;

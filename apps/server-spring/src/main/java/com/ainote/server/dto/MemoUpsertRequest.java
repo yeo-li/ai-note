@@ -1,4 +1,4 @@
-package com.ainote.server.memo.dto;
+package com.ainote.server.dto;
 
 import java.time.Instant;
 

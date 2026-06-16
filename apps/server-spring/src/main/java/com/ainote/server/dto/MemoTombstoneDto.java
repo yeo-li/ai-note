@@ -1,6 +1,6 @@
-package com.ainote.server.memo.dto;
+package com.ainote.server.dto;
 
-import com.ainote.server.memo.MemoTombstone;
+import com.ainote.server.domain.MemoTombstone;
 import java.time.Instant;
 
 public record MemoTombstoneDto(String memoId, Instant deletedAt) {

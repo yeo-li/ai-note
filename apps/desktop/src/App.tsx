@@ -165,6 +165,7 @@ function App() {
     () =>
       notes.filter((note) => {
         if (sidebarView === "favorites" && !note.favorite) return false;
+        if (sidebarView === "folders") return false;
         if (categoryFilter !== "all" && note.category !== categoryFilter) return false;
         return true;
       }),
@@ -587,6 +588,7 @@ function App() {
             isMutationLocked={isMutationLocked}
             isStickyMode={isStickyMode}
             noteMenuId={noteMenuId}
+            notes={notes}
             query={query}
             searchInputRef={searchInputRef}
             shouldShowStorageNotice={shouldShowStorageNotice}

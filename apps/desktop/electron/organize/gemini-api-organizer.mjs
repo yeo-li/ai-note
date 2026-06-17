@@ -1,5 +1,6 @@
 import { createJsonApiClient, defaultTimeoutMs } from "../ai-api-client.mjs";
 import { OrganizeProviderError } from "./organize-provider.mjs";
+import { normalizeMemoCheckboxSyntax, serializeMemoCheckboxesForMarkdown } from "@ai-note/shared/memo";
 
 function buildInstruction(input) {
   const intentGuide =
@@ -122,11 +123,11 @@ function buildInstruction(input) {
     "",
     "<context>",
     `Intent: ${input.intent}`,
-    `Title: ${input.title ?? ""}`,
+    `Title: ${serializeMemoCheckboxesForMarkdown(input.title ?? "")}`,
     "</context>",
     "",
     "<memo>",
-    input.body,
+    serializeMemoCheckboxesForMarkdown(input.body),
     "</memo>"
   ]
       .filter(Boolean)
@@ -164,8 +165,8 @@ export function createGeminiApiOrganizeProvider({ apiClient, apiKey, apiUrl, mod
 
       return {
         intent: input.intent,
-        original: String(parsed.original),
-        suggested: String(parsed.suggested),
+        original: normalizeMemoCheckboxSyntax(parsed.original),
+        suggested: normalizeMemoCheckboxSyntax(parsed.suggested),
         summary: String(parsed.summary),
         provider: "api",
         fallbackErrorMessage: null

@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { MemoId } from "@ai-note/shared/memo";
+import { normalizeMemoCheckboxSyntax } from "@ai-note/shared/memo";
 import { buildMemoTitleFromBody } from "../note-content";
 import {
   buildAiChatSummary,
@@ -199,12 +200,13 @@ function createComposeRefusalMessage(result: { refusalReason: string; message: s
 }
 
 async function createAiChatComposedNote(result: { title?: string; body: string; sourceCount: number; relatedCount: number }, context: AiChatContext) {
-  const resultTitle = result.title || buildMemoTitleFromBody(result.body);
-  const createdMemo = await createMemo({ title: resultTitle, body: result.body });
+  const resultBody = normalizeMemoCheckboxSyntax(result.body);
+  const resultTitle = result.title || buildMemoTitleFromBody(resultBody);
+  const createdMemo = await createMemo({ title: resultTitle, body: resultBody });
   const nextNote = toNoteFromMemo(createdMemo);
 
   selectCreatedAiChatNote(nextNote, context);
-  appendAiChatMessage(createCreatedNoteMessage(result, resultTitle, nextNote.id), context);
+  appendAiChatMessage(createCreatedNoteMessage({ ...result, body: resultBody }, resultTitle, nextNote.id), context);
   context.setStatusMessage(`${result.sourceCount}개의 관련 메모를 바탕으로 새 메모를 만들었어요.`);
 }
 

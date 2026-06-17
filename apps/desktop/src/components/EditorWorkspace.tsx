@@ -1,6 +1,7 @@
 import type { Dispatch, FormEvent, KeyboardEvent, RefObject, SetStateAction } from "react";
-import type { MemoCategory, MemoCategoryDefinition, MemoId } from "@ai-note/shared/memo";
-import { IconExternalWindow, IconSearch, IconSidebarPanel, IconSparkles, IconStar, IconTag } from "./icons";
+import { insertMemoCheckbox, type MemoCategory, type MemoCategoryDefinition, type MemoId } from "@ai-note/shared/memo";
+import { IconCheckbox, IconExternalWindow, IconSearch, IconSidebarPanel, IconSparkles, IconStar, IconTag } from "./icons";
+import { NoteBodyEditor } from "./NoteBodyEditor";
 import { getCategoryDisplayLabel } from "../domain/categories";
 import type { PromptTemplate } from "../shared/prompt-template-bridge";
 import type { DiffSegment } from "../domain/diff";
@@ -120,6 +121,7 @@ function EditorToolbar(props: EditorWorkspaceProps) {
         <div className="paper-toolbar-editor__group paper-toolbar-editor__group--right">
           <CategorySelector {...props} />
           <AiCategorizeButton {...props} />
+          <InsertCheckboxButton {...props} />
           <OpenStickyButton {...props} />
           <FavoriteButton {...props} />
           <OrganizeButton {...props} />
@@ -135,6 +137,17 @@ function SidebarToggleButton({ isSidebarOpen, toggleSidebar }: EditorWorkspacePr
     <button className="paper-button paper-button-icon" type="button" data-testid="editor-toggle-sidebar-button" aria-label={isSidebarOpen ? "목록 닫기" : "목록 열기"} title={isSidebarOpen ? "목록 닫기" : "목록 열기"} aria-controls="memo-sidebar" aria-expanded={isSidebarOpen} onClick={toggleSidebar}>
       <IconSidebarPanel open={isSidebarOpen} className="button-icon" />
       <span className="visually-hidden">{isSidebarOpen ? "목록 닫기" : "목록 열기"}</span>
+    </button>
+  );
+}
+
+function InsertCheckboxButton(props: EditorWorkspaceProps) {
+  const disabled = !props.activeNote || props.isEditorLocked || props.isMutationLocked || Boolean(props.activeDraft);
+
+  return (
+    <button className="paper-button paper-button-icon" type="button" data-testid="insert-checkbox-button" aria-label="체크박스 추가" title="체크박스 추가" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={() => insertCheckboxIntoEditor(props)}>
+      <IconCheckbox className="button-icon" />
+      <span className="visually-hidden">체크박스 추가</span>
     </button>
   );
 }
@@ -562,11 +575,19 @@ function OriginalPanel({ activeNote }: { activeNote: Note | null }) {
 }
 
 function EditableNoteBody(props: EditorWorkspaceProps) {
+  const body = props.activeNote?.body ?? "";
+
   return (
     <div className="editor-card">
-      <label className="editor-field editor-field-body">
-        <textarea className="paper-editor" data-testid="note-body-input" ref={props.noteBodyInputRef} value={props.activeNote?.body ?? ""} placeholder="여기에 메모를 적어 주세요." disabled={props.isEditorLocked} readOnly={props.isEditorLocked} onChange={(event) => patchEditorBody(event.target.value, props)} />
-      </label>
+      <NoteBodyEditor
+        body={body}
+        fieldClassName="editor-field editor-field-body"
+        isLocked={props.isEditorLocked}
+        placeholder="여기에 메모를 적어 주세요."
+        textareaClassName="paper-editor"
+        textareaRef={props.noteBodyInputRef}
+        onChange={(nextBody) => patchEditorBody(nextBody, props)}
+      />
     </div>
   );
 }
@@ -579,6 +600,21 @@ function patchEditorBody(body: string, props: EditorWorkspaceProps) {
     },
     "메모 내용을 수정했어요."
   );
+}
+
+function insertCheckboxIntoEditor(props: EditorWorkspaceProps) {
+  if (!props.activeNote) {
+    return;
+  }
+
+  const textarea = props.noteBodyInputRef.current;
+  const insertion = insertMemoCheckbox(props.activeNote.body, textarea?.selectionStart, textarea?.selectionEnd);
+  patchEditorBody(insertion.body, props);
+  window.setTimeout(() => {
+    const nextTextarea = props.noteBodyInputRef.current;
+    nextTextarea?.focus();
+    nextTextarea?.setSelectionRange(insertion.selectionStart, insertion.selectionEnd);
+  }, 0);
 }
 
 function EditorEmptyState(props: EditorWorkspaceProps) {

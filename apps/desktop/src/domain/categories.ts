@@ -2,6 +2,32 @@ import { MEMO_CATEGORIES, getMemoCategoryLabel, normalizeMemoCategoryValue } fro
 import type { MemoCategory, MemoCategoryDefinition } from "@ai-note/shared/memo";
 import type { Note } from "./note";
 
+export type FolderNode = {
+  folder: MemoCategoryDefinition;
+  children: FolderNode[];
+};
+
+export function buildFolderTree(categories: MemoCategoryDefinition[]): FolderNode[] {
+  const byId = new Map(categories.map((c) => [c.id, c]));
+  const childrenOf = new Map<string | null, MemoCategoryDefinition[]>();
+
+  for (const c of categories) {
+    const parentId = c.parentId ?? null;
+    const validParent = parentId && byId.has(parentId) ? parentId : null;
+    const list = childrenOf.get(validParent) ?? [];
+    list.push(c);
+    childrenOf.set(validParent, list);
+  }
+
+  function buildNodes(parentId: string | null): FolderNode[] {
+    return (childrenOf.get(parentId) ?? [])
+      .sort(compareCategoryDefinitions)
+      .map((folder) => ({ folder, children: buildNodes(folder.id) }));
+  }
+
+  return buildNodes(null);
+}
+
 const defaultCategoryTimestamp = "1970-01-01T00:00:00.000Z";
 
 export function createDefaultCategoryDefinitions(): MemoCategoryDefinition[] {
@@ -10,6 +36,7 @@ export function createDefaultCategoryDefinitions(): MemoCategoryDefinition[] {
     label: getMemoCategoryLabel(category),
     description: "",
     builtin: true,
+    parentId: null,
     createdAt: defaultCategoryTimestamp,
     updatedAt: defaultCategoryTimestamp
   }));
@@ -40,6 +67,7 @@ export function createNoteCategoryDefinitions(notes: Note[]): MemoCategoryDefini
       label: getMemoCategoryLabel(category),
       description: "",
       builtin: MEMO_CATEGORIES.includes(category),
+      parentId: null,
       createdAt: defaultCategoryTimestamp,
       updatedAt: defaultCategoryTimestamp
     }));

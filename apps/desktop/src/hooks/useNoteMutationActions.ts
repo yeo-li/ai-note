@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import type { MemoCategory, MemoCreateInput, MemoId } from "@ai-note/shared/memo";
+import { normalizeMemoCheckboxSyntax } from "@ai-note/shared/memo";
 import { buildMemoTitleFromBody } from "../note-content";
 import {
   createNote,
@@ -54,10 +55,17 @@ export function patchActiveNoteWithPersistence(update: Partial<Note>, message: s
 
   const activeNote = params.activeNote;
   if (!activeNote) return;
-  applyLocalNotePatch(activeNote, update, params);
+  const normalizedUpdate = normalizeNotePatch(update);
+  applyLocalNotePatch(activeNote, normalizedUpdate, params);
   resetNoteTransientState(params);
-  persistNotePatch(activeNote.id, update, params.setStatusMessage);
+  persistNotePatch(activeNote.id, normalizedUpdate, params.setStatusMessage);
   if (message) params.setStatusMessage(message);
+}
+
+function normalizeNotePatch(update: Partial<Note>) {
+  return typeof update.body === "string"
+    ? { ...update, body: normalizeMemoCheckboxSyntax(update.body) }
+    : update;
 }
 
 function canPatchActiveNote(params: PatchActiveNoteParams) {

@@ -44,7 +44,7 @@ export function useMemoCategoryController(params: UseMemoCategoryControllerParam
     categoryFilter,
     isCategorizingAll,
     setCategoryFilter,
-    createCategory: (label: string) => createCategory(label, { ...params, categories, setCategories, setCategoryFilter }),
+    createCategory: (label: string, parentId?: string | null) => createCategory(label, { ...params, categories, setCategories, setCategoryFilter }, parentId),
     updateCategory: (categoryId: MemoCategory, patch: MemoCategoryUpdateInput) => updateCategory(categoryId, patch, { ...params, setCategories }),
     deleteCategory: (categoryId: MemoCategory) => deleteCategory(categoryId, { ...params, setCategories, categoryFilter, setCategoryFilter }),
     deleteUnusedCategories: (categoryIds: MemoCategory[]) => deleteUnusedCategories(categoryIds, { ...params, setCategories, categoryFilter, setCategoryFilter }),
@@ -145,7 +145,7 @@ type CreateCategoryParams = UseMemoCategoryControllerParams & {
   setCategoryFilter: Dispatch<SetStateAction<CategoryFilter>>;
 };
 
-async function createCategory(label: string, params: CreateCategoryParams) {
+async function createCategory(label: string, params: CreateCategoryParams, parentId?: string | null) {
   if (params.isMutationLocked) {
     params.setStatusMessage("저장소 연결이 복구될 때까지 카테고리를 추가할 수 없어요.");
     return null;
@@ -169,7 +169,7 @@ async function createCategory(label: string, params: CreateCategoryParams) {
   }
 
   try {
-    const createdCategory = await createMemoCategory({ label: normalizedLabel });
+    const createdCategory = await createMemoCategory({ label: normalizedLabel, parentId: parentId ?? null });
     params.setCategories((currentCategories) => mergeCategoryDefinitions(createDefaultCategoryDefinitions(), currentCategories, [createdCategory]));
     params.setCategoryFilter(createdCategory.id);
     params.setStatusMessage("카테고리를 추가했어요.");

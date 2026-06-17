@@ -18,7 +18,7 @@ import { createMemoSyncQueue, MEMO_SYNC_QUEUE_FILENAME } from "./store/memo-sync
 import { createMemoSyncStore } from "./store/memo-sync-store.mjs";
 import { createMemoServerClient, defaultMemoServerUrl } from "./memo-server-client.mjs";
 import { createPromptTemplateStore } from "./store/prompt-template-store.mjs";
-import { normalizeMemoCategoryDescription, normalizeMemoCategoryValue } from "@ai-note/shared/memo";
+import { normalizeMemoCategoryDescription, normalizeMemoCategoryValue, serializeMemoCheckboxesForMarkdown } from "@ai-note/shared/memo";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -200,7 +200,11 @@ function normalizeMemoCategoryCreateInput(value) {
     return null;
   }
 
-  return { label, description: normalizeMemoCategoryDescription(value.description) };
+  return {
+    label,
+    description: normalizeMemoCategoryDescription(value.description),
+    parentId: typeof value.parentId === "string" ? value.parentId : null
+  };
 }
 
 function normalizeMemoCategoryUpdateInput(value) {
@@ -216,6 +220,10 @@ function normalizeMemoCategoryUpdateInput(value) {
 
   if (typeof value.description === "string") {
     patch.description = value.description;
+  }
+
+  if ("parentId" in value) {
+    patch.parentId = typeof value.parentId === "string" ? value.parentId : null;
   }
 
   return patch;
@@ -284,8 +292,8 @@ function normalizeOrganizeInput(value) {
 
   const memoId = normalizeMemoId(value.memoId);
   const intent = value.intent === "polish" || value.intent === "polite" ? value.intent : null;
-  const body = typeof value.body === "string" ? value.body : "";
-  const title = typeof value.title === "string" ? value.title : "";
+  const body = serializeMemoCheckboxesForMarkdown(typeof value.body === "string" ? value.body : "");
+  const title = serializeMemoCheckboxesForMarkdown(typeof value.title === "string" ? value.title : "");
   const prompt = typeof value.prompt === "string" ? value.prompt : "";
 
   if (!memoId || !intent) {

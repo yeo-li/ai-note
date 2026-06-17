@@ -1,7 +1,8 @@
 import { useState, type RefObject } from "react";
 import type { MemoStickyColor } from "@ai-note/shared/memo";
-import { MEMO_STICKY_COLORS } from "@ai-note/shared/memo";
-import { IconCheck, IconClose, IconPalette, IconPin, IconPlus } from "./icons";
+import { insertMemoCheckbox, MEMO_STICKY_COLORS } from "@ai-note/shared/memo";
+import { IconCheck, IconCheckbox, IconClose, IconPalette, IconPin, IconPlus } from "./icons";
+import { NoteBodyEditor } from "./NoteBodyEditor";
 import type { Note } from "../domain/note";
 
 const STICKY_COLOR_LABELS: Record<MemoStickyColor, string> = {
@@ -47,6 +48,7 @@ function StickyToolbar(props: StickyNotePaneProps) {
       </div>
       <div className="sticky-note-toolbar__actions sticky-note-toolbar__actions--right">
         <PinStickyButton {...props} />
+        <InsertStickyCheckboxButton {...props} />
         <StickyColorPickerButton {...props} />
         <NewStickyButton {...props} />
       </div>
@@ -72,6 +74,17 @@ function PinStickyButton({ isStickyPinned, toggleStickyPinned }: StickyNotePaneP
     <button className={`sticky-note-toolbar__button sticky-note-toolbar__button--pin${isStickyPinned ? " is-pinned" : ""}`} type="button" data-testid="sticky-mode-pin-button" aria-label={label} title={label} aria-pressed={isStickyPinned} onClick={() => void toggleStickyPinned()}>
       <IconPin className="button-icon" />
       <span className="visually-hidden">{label}</span>
+    </button>
+  );
+}
+
+function InsertStickyCheckboxButton(props: StickyNotePaneProps) {
+  const disabled = !props.activeNote || props.isEditorLocked || props.isMutationLocked;
+
+  return (
+    <button className="sticky-note-toolbar__button sticky-note-toolbar__button--checkbox" type="button" data-testid="sticky-mode-insert-checkbox-button" aria-label="체크박스 추가" title="체크박스 추가" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={() => insertCheckboxIntoStickyNote(props)}>
+      <IconCheckbox className="button-icon" />
+      <span className="visually-hidden">체크박스 추가</span>
     </button>
   );
 }
@@ -142,9 +155,15 @@ function StickyBody(props: StickyNotePaneProps) {
 
   return (
     <div className="sticky-note-body">
-      <label className="editor-field editor-field-body sticky-note-field">
-        <textarea className="paper-editor sticky-note-editor" data-testid="note-body-input" ref={props.noteBodyInputRef} value={props.activeNote.body} placeholder="여기에 메모를 적어 주세요." disabled={props.isEditorLocked} readOnly={props.isEditorLocked} onChange={(event) => patchStickyBody(event.target.value, props)} />
-      </label>
+      <NoteBodyEditor
+        body={props.activeNote.body}
+        fieldClassName="editor-field editor-field-body sticky-note-field"
+        isLocked={props.isEditorLocked}
+        placeholder="여기에 메모를 적어 주세요."
+        textareaClassName="paper-editor sticky-note-editor"
+        textareaRef={props.noteBodyInputRef}
+        onChange={(body) => patchStickyBody(body, props)}
+      />
     </div>
   );
 }
@@ -157,6 +176,21 @@ function patchStickyBody(body: string, props: StickyNotePaneProps) {
     },
     "메모 내용을 수정했다."
   );
+}
+
+function insertCheckboxIntoStickyNote(props: StickyNotePaneProps) {
+  if (!props.activeNote) {
+    return;
+  }
+
+  const textarea = props.noteBodyInputRef.current;
+  const insertion = insertMemoCheckbox(props.activeNote.body, textarea?.selectionStart, textarea?.selectionEnd);
+  patchStickyBody(insertion.body, props);
+  window.setTimeout(() => {
+    const nextTextarea = props.noteBodyInputRef.current;
+    nextTextarea?.focus();
+    nextTextarea?.setSelectionRange(insertion.selectionStart, insertion.selectionEnd);
+  }, 0);
 }
 
 function StickyEmptyState() {

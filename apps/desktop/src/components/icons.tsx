@@ -119,6 +119,15 @@ export function IconCheck({ className }: IconProps) {
   );
 }
 
+export function IconCheckbox({ className }: IconProps) {
+  return (
+    <svg className={className} {...BASE_PROPS}>
+      <rect x="4.5" y="4.5" width="15" height="15" rx="3.5" />
+      <path d="M8.25 12.2 10.8 14.75 16 9.25" />
+    </svg>
+  );
+}
+
 export function IconSearch({ className }: IconProps) {
   return (
     <svg className={className} {...BASE_PROPS}>

@@ -1,5 +1,7 @@
+import { normalizeMemoCheckboxSyntax } from "@ai-note/shared/memo";
 import type { Memo, MemoCategory, MemoId, MemoStickyColor, MemoUpdateInput } from "@ai-note/shared/memo";
 import { buildMemoTitleFromBody } from "../note-content";
+import type { SidebarView } from "./workspace";
 
 export type TransformMode = "default" | "organized";
 
@@ -85,9 +87,11 @@ export function formatUpdatedAtFromIso(iso: string) {
 }
 
 export function toNoteFromMemo(memo: Memo, mode: TransformMode = "default"): Note {
+  const body = normalizeMemoCheckboxSyntax(memo.body);
+
   return {
     id: memo.id,
-    body: memo.body,
+    body,
     favorite: memo.favorite ?? false,
     category: memo.category ?? null,
     color: memo.color ?? null,
@@ -123,9 +127,10 @@ export function toMemoUpdateInput(update: Partial<Note>): MemoUpdateInput {
   const patch: MemoUpdateInput = {};
 
   if (typeof update.body === "string") {
-    patch.body = update.body;
+    const body = normalizeMemoCheckboxSyntax(update.body);
+    patch.body = body;
     // 저장소/검색 계층과의 호환성을 위해 title은 본문 첫 줄에서 파생한다.
-    patch.title = buildMemoTitleFromBody(update.body);
+    patch.title = buildMemoTitleFromBody(body);
   }
 
   if (typeof update.favorite === "boolean") {
@@ -148,7 +153,7 @@ export function resolveSelectedNoteId(params: {
   scopedNotes: Note[];
   selectedNote: Note | null | undefined;
   selectedNoteId: string;
-  sidebarView: "all" | "favorites";
+  sidebarView: SidebarView;
 }): string {
   if (params.notes.length === 0) return "";
   if (params.sidebarView === "favorites") return resolveFavoriteSelectedNoteId(params);
@@ -173,7 +178,7 @@ type DeleteSelectionParams = {
   currentVisibleNotes: Note[];
   deleteTargetNoteId: MemoId;
   selectedNoteId: string;
-  sidebarView: "all" | "favorites";
+  sidebarView: SidebarView;
   hasQuery: boolean;
   query: string;
 };

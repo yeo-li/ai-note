@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Dispatch, FormEvent, KeyboardEvent, RefObject, SetStateAction } from "react";
 import type { MemoCategory, MemoCategoryDefinition, MemoId } from "@ai-note/shared/memo";
 import { IconExternalWindow, IconSearch, IconSidebarPanel, IconSparkles, IconStar, IconTag } from "./icons";
@@ -561,12 +562,95 @@ function OriginalPanel({ activeNote }: { activeNote: Note | null }) {
   );
 }
 
+const CHECKBOX_LINE_RE = /^- \[([ xX])\] (.*)$/;
+
+function hasCheckboxSyntax(body: string) {
+  return CHECKBOX_LINE_RE.test(body);
+}
+
 function EditableNoteBody(props: EditorWorkspaceProps) {
+  const [isRawEditing, setIsRawEditing] = useState(false);
+  const body = props.activeNote?.body ?? "";
+  const showRenderer = !isRawEditing && !props.isEditorLocked && hasCheckboxSyntax(body);
+
+  function handleCheckboxToggle(newBody: string) {
+    props.patchActiveNote(
+      { body: newBody, mode: props.hasBackup && props.activeNote ? props.activeNote.mode : "default" },
+      "체크박스를 변경했어요."
+    );
+  }
+
+  function activateEditor() {
+    setIsRawEditing(true);
+    setTimeout(() => props.noteBodyInputRef.current?.focus(), 0);
+  }
+
   return (
     <div className="editor-card">
-      <label className="editor-field editor-field-body">
-        <textarea className="paper-editor" data-testid="note-body-input" ref={props.noteBodyInputRef} value={props.activeNote?.body ?? ""} placeholder="여기에 메모를 적어 주세요." disabled={props.isEditorLocked} readOnly={props.isEditorLocked} onChange={(event) => patchEditorBody(event.target.value, props)} />
+      {/* textarea는 항상 마운트 — find/ref 등에서 필요 */}
+      <label className={`editor-field editor-field-body${showRenderer ? " visually-hidden" : ""}`}>
+        <textarea
+          className="paper-editor"
+          data-testid="note-body-input"
+          ref={props.noteBodyInputRef}
+          value={body}
+          placeholder="여기에 메모를 적어 주세요."
+          disabled={props.isEditorLocked}
+          readOnly={props.isEditorLocked}
+          onFocus={() => setIsRawEditing(true)}
+          onBlur={() => setIsRawEditing(false)}
+          onChange={(event) => patchEditorBody(event.target.value, props)}
+        />
       </label>
+      {showRenderer && (
+        <NoteBodyRenderer body={body} onToggle={handleCheckboxToggle} onClickText={activateEditor} />
+      )}
+    </div>
+  );
+}
+
+function NoteBodyRenderer({ body, onToggle, onClickText }: { body: string; onToggle: (newBody: string) => void; onClickText: () => void }) {
+  const lines = body.split("\n");
+
+  function toggleCheckbox(lineIndex: number, checked: boolean) {
+    const newLines = lines.map((line, i) => {
+      if (i !== lineIndex) return line;
+      const match = line.match(CHECKBOX_LINE_RE);
+      if (!match) return line;
+      return `- [${checked ? "x" : " "}] ${match[2]}`;
+    });
+    onToggle(newLines.join("\n"));
+  }
+
+  return (
+    <div className="note-body-renderer editor-field-body" onClick={onClickText} role="textbox" aria-multiline="true" aria-label="메모 내용">
+      {body.trim() === "" ? (
+        <span className="note-body-renderer__placeholder">여기에 메모를 적어 주세요.</span>
+      ) : (
+        lines.map((line, i) => {
+          const match = line.match(CHECKBOX_LINE_RE);
+          if (match) {
+            const isChecked = match[1].toLowerCase() === "x";
+            return (
+              <div key={i} className="note-body-renderer__line note-body-renderer__checkbox-line" onClick={(e) => e.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  className="note-body-renderer__checkbox"
+                  checked={isChecked}
+                  onChange={(e) => toggleCheckbox(i, e.target.checked)}
+                  aria-label={match[2]}
+                />
+                <span className={`note-body-renderer__checkbox-text${isChecked ? " is-checked" : ""}`}>{match[2]}</span>
+              </div>
+            );
+          }
+          return (
+            <div key={i} className="note-body-renderer__line">
+              {line || "​"}
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }

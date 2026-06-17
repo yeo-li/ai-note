@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import type { Dispatch, FormEvent, KeyboardEvent, MouseEvent, ReactNode, RefObject, SetStateAction } from "react";
 import type { MemoCategory, MemoCategoryDefinition, MemoCategoryUpdateInput, MemoId } from "@ai-note/shared/memo";
 import { deriveNoteHeadline } from "../note-content";
-import { IconBolt, IconChat, IconCheck, IconChevron, IconClose, IconFolder, IconPlus, IconSparkles, IconTrash } from "./icons";
+import { IconBolt, IconChat, IconCheck, IconClose, IconFolder, IconPlus, IconSparkles, IconTrash } from "./icons";
 import { canOpenQuickCaptureWindow, isMacOSPlatform, openQuickCaptureWindow } from "../infrastructure/desktop-window";
 import { getCategoryDisplayLabel } from "../domain/categories";
 import type { Note } from "../domain/note";
@@ -59,6 +59,7 @@ export function Sidebar(props: SidebarProps) {
   return (
     <aside className="sidebar" id="memo-sidebar">
       <SidebarHead {...props} />
+      <FolderList {...props} />
       <SidebarSurface {...props} />
       <SidebarStorageNotice {...props} />
     </aside>
@@ -66,13 +67,10 @@ export function Sidebar(props: SidebarProps) {
 }
 
 function SidebarHead(props: SidebarProps) {
-  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
-
   return (
     <div className="sidebar-head" data-testid="app-brand-mark">
       <SidebarActions {...props} />
       <SidebarSearch {...props} />
-      <SidebarNav {...props} isCategoryDropdownOpen={isCategoryDropdownOpen} setIsCategoryDropdownOpen={setIsCategoryDropdownOpen} />
     </div>
   );
 }
@@ -133,221 +131,235 @@ function closeSearchOnEscape(event: KeyboardEvent<HTMLInputElement>, searchInput
   searchInputRef.current?.blur();
 }
 
-function SidebarNav(props: SidebarProps & CategoryDropdownState) {
-  const { categories, categoryFilter, isCategoryDropdownOpen, isComposeScreenOpen, setCategoryFilter, setIsCategoryDropdownOpen, sidebarView, switchSidebarView } = props;
-  const categoryLabel = categoryFilter !== "all" ? getCategoryDisplayLabel(categories, categoryFilter) : "카테고리";
+/* ── Folder List ── */
+function FolderList(props: SidebarProps) {
+  const {
+    categories,
+    categoryCounts,
+    categoryFilter,
+    isCategorizingAll,
+    isComposeScreenOpen,
+    isMutationLocked,
+    isStickyMode,
+    sidebarView,
+    setCategoryFilter,
+    switchSidebarView,
+    createCategory,
+    deleteCategory,
+    deleteUnusedCategories,
+    runCategorizeAllUncategorized,
+    updateCategory,
+  } = props;
+
+  const [isAdding, setIsAdding] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [isCleaningUp, setIsCleaningUp] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<MemoCategoryDefinition | null>(null);
+  const [deletingCategory, setDeletingCategory] = useState<MemoCategoryDefinition | null>(null);
+
+  const unusedCategoryIds = categories
+    .filter((c) => !c.builtin && (categoryCounts[c.id] ?? 0) === 0)
+    .map((c) => c.id);
+
+  async function submitCreate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (isSaving) return;
+    setIsSaving(true);
+    const created = await createCategory(draftName);
+    setIsSaving(false);
+    if (!created) return;
+    setDraftName("");
+    setIsAdding(false);
+  }
+
+  async function handleCleanup() {
+    if (isCleaningUp || unusedCategoryIds.length === 0) return;
+    setIsCleaningUp(true);
+    await deleteUnusedCategories(unusedCategoryIds);
+    setIsCleaningUp(false);
+  }
+
+  if (isStickyMode) return null;
 
   return (
-    <nav className="sidebar-nav" aria-label="사이드바 탐색">
-      <SidebarNavButton active={sidebarView === "all" && categoryFilter === "all"} disabled={isComposeScreenOpen} testId="sidebar-all-view-button" onClick={() => selectPrimaryView("all", { setCategoryFilter, setIsCategoryDropdownOpen, switchSidebarView })}>
-        <span>전체 메모</span>
-      </SidebarNavButton>
-      <SidebarNavButton active={sidebarView === "favorites" && categoryFilter === "all"} disabled={isComposeScreenOpen} testId="sidebar-favorites-view-button" onClick={() => selectPrimaryView("favorites", { setCategoryFilter, setIsCategoryDropdownOpen, switchSidebarView })}>
-        <span>즐겨찾기</span>
-      </SidebarNavButton>
-      <SidebarNavButton active={categoryFilter !== "all" || isCategoryDropdownOpen} disabled={isComposeScreenOpen} testId="sidebar-category-view-button" ariaControls="sidebar-category-dropdown-panel" ariaExpanded={isCategoryDropdownOpen} onClick={() => toggleCategoryDropdown({ setIsCategoryDropdownOpen, sidebarView, switchSidebarView })}>
-        <span className="sidebar-nav-item__content">
-          <span className="sidebar-nav-item__label">{categoryLabel}</span>
-          <IconChevron className="sidebar-nav-item__chevron" open={isCategoryDropdownOpen} />
-        </span>
-      </SidebarNavButton>
-      {isCategoryDropdownOpen ? (
-        <>
-          <div className="category-dropdown-backdrop" onClick={() => setIsCategoryDropdownOpen(false)} />
-          <CategoryDropdownPanel {...props} closeDropdown={() => setIsCategoryDropdownOpen(false)} />
-        </>
+    <nav className="folder-list" aria-label="폴더">
+      {/* 기본 뷰 */}
+      <FolderItem
+        icon={<IconFolder className="folder-list__item-icon" />}
+        label="전체 메모"
+        count={null}
+        active={sidebarView === "all" && categoryFilter === "all"}
+        disabled={isComposeScreenOpen}
+        testId="sidebar-all-view-button"
+        onClick={() => { setCategoryFilter("all"); switchSidebarView("all"); }}
+      />
+      <FolderItem
+        icon={<StarIcon className="folder-list__item-icon" />}
+        label="즐겨찾기"
+        count={null}
+        active={sidebarView === "favorites" && categoryFilter === "all"}
+        disabled={isComposeScreenOpen}
+        testId="sidebar-favorites-view-button"
+        onClick={() => { setCategoryFilter("all"); switchSidebarView("favorites"); }}
+      />
+
+      {/* 폴더(카테고리) 섹션 */}
+      <div className="folder-list__divider" />
+      <div className="folder-list__section-label">
+        <span>폴더</span>
+        <div className="folder-list__section-actions">
+          {isCategorizingAll ? (
+            <span className="category-categorize-all-status">AI 분류 중...</span>
+          ) : null}
+          <button
+            className="folder-list__add-button"
+            type="button"
+            data-testid="category-categorize-all-button"
+            aria-label="미분류 메모 AI 자동 분류"
+            title="미분류 메모 AI 자동 분류"
+            aria-busy={isCategorizingAll}
+            disabled={isComposeScreenOpen || isMutationLocked || isCategorizingAll}
+            onClick={() => void runCategorizeAllUncategorized()}
+          >
+            <IconSparkles className={`folder-list__create-btn-icon${isCategorizingAll ? " folder-list__ai-spinner" : ""}`} />
+          </button>
+          {unusedCategoryIds.length > 0 ? (
+            <button
+              className="folder-list__add-button"
+              type="button"
+              data-testid="category-cleanup-button"
+              aria-label="빈 폴더 정리"
+              title="빈 폴더 정리"
+              disabled={isComposeScreenOpen || isMutationLocked || isCleaningUp}
+              onClick={() => void handleCleanup()}
+            >
+              <IconTrash className="folder-list__create-btn-icon" />
+            </button>
+          ) : null}
+          <button
+            className="folder-list__add-button"
+            type="button"
+            data-testid="category-add-button"
+            aria-label="폴더 추가"
+            title="새 폴더"
+            disabled={isComposeScreenOpen || isMutationLocked || isSaving}
+            onClick={() => setIsAdding(true)}
+          >
+            <IconPlus className="folder-list__create-btn-icon" />
+          </button>
+        </div>
+      </div>
+
+      {isAdding ? (
+        <form className="folder-list__create-form" data-testid="category-create-form" onSubmit={submitCreate}>
+          <input
+            className="folder-list__create-input"
+            data-testid="category-create-input"
+            type="text"
+            value={draftName}
+            maxLength={32}
+            autoFocus
+            placeholder="폴더 이름"
+            disabled={isSaving}
+            onChange={(e) => setDraftName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") { e.preventDefault(); setDraftName(""); setIsAdding(false); }
+            }}
+          />
+          <button className="folder-list__create-btn" type="submit" data-testid="category-create-submit-button" aria-label="저장" disabled={isSaving || draftName.trim().length === 0}>
+            <IconCheck className="folder-list__create-btn-icon" />
+          </button>
+          <button className="folder-list__create-btn" type="button" aria-label="취소" disabled={isSaving} onClick={() => { setDraftName(""); setIsAdding(false); }}>
+            <IconClose className="folder-list__create-btn-icon" />
+          </button>
+        </form>
+      ) : null}
+
+      {categories.map((category) => (
+        <FolderCategoryItem
+          key={category.id}
+          category={category}
+          count={categoryCounts[category.id] ?? 0}
+          active={categoryFilter === category.id}
+          isMutationLocked={isMutationLocked}
+          disabled={isComposeScreenOpen}
+          onSelect={() => { setCategoryFilter(category.id); switchSidebarView("all"); }}
+          onRequestEdit={() => setEditingCategory(category)}
+          onRequestDelete={() => setDeletingCategory(category)}
+        />
+      ))}
+
+      {editingCategory ? (
+        <CategoryEditModal
+          category={editingCategory}
+          isMutationLocked={isMutationLocked}
+          updateCategory={updateCategory}
+          onClose={() => setEditingCategory(null)}
+        />
+      ) : null}
+      {deletingCategory ? (
+        <CategoryDeleteModal
+          category={deletingCategory}
+          count={categoryCounts[deletingCategory.id] ?? 0}
+          isMutationLocked={isMutationLocked}
+          deleteCategory={deleteCategory}
+          onClose={() => setDeletingCategory(null)}
+        />
       ) : null}
     </nav>
   );
 }
 
-function SidebarNavButton({ active, ariaControls, ariaExpanded, children, disabled, onClick, testId }: { active: boolean; ariaControls?: string; ariaExpanded?: boolean; children: ReactNode; disabled: boolean; onClick: () => void; testId: string }) {
+function FolderItem({ icon, label, count, active, disabled, testId, onClick }: { icon: ReactNode; label: string; count: number | null; active: boolean; disabled: boolean; testId: string; onClick: () => void }) {
   return (
-    <button className={`sidebar-nav-item${active ? " is-active" : ""}`} type="button" data-testid={testId} disabled={disabled} aria-controls={ariaControls} aria-expanded={ariaExpanded} onClick={onClick}>
-      {children}
+    <button
+      className={`folder-list__item${active ? " is-active" : ""}`}
+      type="button"
+      data-testid={testId}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {icon}
+      <span className="folder-list__item-label">{label}</span>
+      {count !== null ? <span className="folder-list__item-count">{count}</span> : null}
     </button>
   );
 }
 
-type CategoryDropdownState = {
-  isCategoryDropdownOpen: boolean;
-  setIsCategoryDropdownOpen: Dispatch<SetStateAction<boolean>>;
-};
-
-function selectPrimaryView(nextView: SidebarView, { setCategoryFilter, setIsCategoryDropdownOpen, switchSidebarView }: Pick<SidebarProps, "setCategoryFilter" | "switchSidebarView"> & Pick<CategoryDropdownState, "setIsCategoryDropdownOpen">) {
-  setCategoryFilter("all");
-  setIsCategoryDropdownOpen(false);
-  switchSidebarView(nextView);
-}
-
-function toggleCategoryDropdown({ setIsCategoryDropdownOpen, sidebarView, switchSidebarView }: Pick<SidebarProps, "sidebarView" | "switchSidebarView"> & Pick<CategoryDropdownState, "setIsCategoryDropdownOpen">) {
-  if (sidebarView !== "all") {
-    switchSidebarView("all");
-  }
-
-  setIsCategoryDropdownOpen((current) => !current);
-}
-
-function CategoryDropdownPanel(props: SidebarProps & { closeDropdown: () => void }) {
-  const { categories, categoryCounts, categoryFilter, closeDropdown, createCategory, deleteCategory, deleteUnusedCategories, isCategorizingAll, isComposeScreenOpen, isMutationLocked, runCategorizeAllUncategorized, setCategoryFilter, updateCategory } = props;
-  const [isAddingCategory, setIsAddingCategory] = useState(false);
-  const [draftCategoryName, setDraftCategoryName] = useState("");
-  const [isSavingCategory, setIsSavingCategory] = useState(false);
-  const [isCleaningUpCategories, setIsCleaningUpCategories] = useState(false);
-  const [editingCategory, setEditingCategory] = useState<MemoCategoryDefinition | null>(null);
-  const [deletingCategory, setDeletingCategory] = useState<MemoCategoryDefinition | null>(null);
-  const unusedCategoryIds = categories.filter((category) => !category.builtin && (categoryCounts[category.id] ?? 0) === 0).map((category) => category.id);
-
-  async function submitCategory(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (isSavingCategory) {
-      return;
-    }
-
-    setIsSavingCategory(true);
-    const createdCategory = await createCategory(draftCategoryName);
-    setIsSavingCategory(false);
-
-    if (!createdCategory) {
-      return;
-    }
-
-    setDraftCategoryName("");
-    setIsAddingCategory(false);
-  }
-
-  async function cleanupUnusedCategories() {
-    if (isCleaningUpCategories || unusedCategoryIds.length === 0) {
-      return;
-    }
-
-    setIsCleaningUpCategories(true);
-    await deleteUnusedCategories(unusedCategoryIds);
-    setIsCleaningUpCategories(false);
-  }
-
-  return (
-    <div className="category-dropdown-panel" id="sidebar-category-dropdown-panel" role="listbox" aria-label="카테고리 선택">
-      <div className="sidebar-category-filter__actions">
-        <button className="category-add-button" type="button" data-testid="category-add-button" aria-label="카테고리 추가" title="카테고리 추가" disabled={isComposeScreenOpen || isMutationLocked || isSavingCategory} onClick={() => setIsAddingCategory(true)}>
-          <IconPlus className="category-add-button__icon" />
-        </button>
-        <button className="category-add-button" type="button" data-testid="category-categorize-all-button" aria-label="미분류 메모 AI 자동 분류" title="미분류 메모 AI 자동 분류" aria-busy={isCategorizingAll} disabled={isComposeScreenOpen || isMutationLocked || isCategorizingAll} onClick={() => void runCategorizeAllUncategorized()}>
-          <IconSparkles className={`category-add-button__icon${isCategorizingAll ? " is-spinning" : ""}`} />
-        </button>
-        {unusedCategoryIds.length > 0 ? (
-          <button className="category-add-button" type="button" data-testid="category-cleanup-button" aria-label="빈 카테고리 정리" title="빈 카테고리 정리" disabled={isComposeScreenOpen || isMutationLocked || isCleaningUpCategories} onClick={() => void cleanupUnusedCategories()}>
-            <IconTrash className="category-add-button__icon" />
-          </button>
-        ) : null}
-        {isCategorizingAll ? (
-          <span className="category-categorize-all-status" data-testid="category-categorize-all-status">
-            AI 분류 중...
-          </span>
-        ) : null}
-      </div>
-      {isAddingCategory ? (
-        <form className="category-create-form" data-testid="category-create-form" onSubmit={submitCategory}>
-          <input className="category-create-form__input" data-testid="category-create-input" type="text" value={draftCategoryName} maxLength={32} autoFocus placeholder="카테고리 이름" disabled={isSavingCategory} onChange={(event) => setDraftCategoryName(event.target.value)} onKeyDown={(event) => closeCategoryCreateFormOnEscape(event, { setDraftCategoryName, setIsAddingCategory })} />
-          <button className="category-create-form__button" type="submit" data-testid="category-create-submit-button" aria-label="저장" title="저장" disabled={isSavingCategory || draftCategoryName.trim().length === 0}>
-            <IconCheck className="category-create-form__icon" />
-          </button>
-          <button className="category-create-form__button" type="button" aria-label="취소" title="취소" disabled={isSavingCategory} onClick={() => cancelCategoryCreate({ setDraftCategoryName, setIsAddingCategory })}>
-            <IconClose className="category-create-form__icon" />
-          </button>
-        </form>
-      ) : null}
-      <div className={`category-dropdown-item${categoryFilter === "all" ? " is-active" : ""}`}>
-        <button className="category-dropdown-item__main" type="button" data-testid="category-filter-all" aria-selected={categoryFilter === "all"} onClick={() => selectAllCategoryFilter({ setCategoryFilter, closeDropdown })}>
-          <IconFolder className="category-dropdown-item__icon" />
-          <span className="category-dropdown-item__label">전체</span>
-        </button>
-      </div>
-      {categories.map((category) => (
-        <CategoryDropdownItem
-          key={category.id}
-          active={categoryFilter === category.id}
-          category={category}
-          count={categoryCounts[category.id] ?? 0}
-          isMutationLocked={isMutationLocked}
-          onSelect={() => selectCategoryFilter(category.id, { setCategoryFilter, closeDropdown })}
-          onRequestEdit={() => setEditingCategory(category)}
-          onRequestDelete={() => setDeletingCategory(category)}
-        />
-      ))}
-      {editingCategory ? (
-        <CategoryEditModal category={editingCategory} isMutationLocked={isMutationLocked} updateCategory={updateCategory} onClose={() => setEditingCategory(null)} />
-      ) : null}
-      {deletingCategory ? (
-        <CategoryDeleteModal category={deletingCategory} count={categoryCounts[deletingCategory.id] ?? 0} isMutationLocked={isMutationLocked} deleteCategory={deleteCategory} onClose={() => setDeletingCategory(null)} />
-      ) : null}
-    </div>
-  );
-}
-
-function closeCategoryCreateFormOnEscape(event: KeyboardEvent<HTMLInputElement>, params: Pick<CategoryCreateFormActions, "setDraftCategoryName" | "setIsAddingCategory">) {
-  if (event.key !== "Escape") {
-    return;
-  }
-
-  event.preventDefault();
-  cancelCategoryCreate(params);
-}
-
-type CategoryCreateFormActions = {
-  setDraftCategoryName: Dispatch<SetStateAction<string>>;
-  setIsAddingCategory: Dispatch<SetStateAction<boolean>>;
-};
-
-function cancelCategoryCreate({ setDraftCategoryName, setIsAddingCategory }: CategoryCreateFormActions) {
-  setDraftCategoryName("");
-  setIsAddingCategory(false);
-}
-
-function selectAllCategoryFilter({ closeDropdown, setCategoryFilter }: Pick<SidebarProps, "setCategoryFilter"> & { closeDropdown: () => void }) {
-  setCategoryFilter("all");
-  closeDropdown();
-}
-
-function selectCategoryFilter(category: MemoCategory, { closeDropdown, setCategoryFilter }: Pick<SidebarProps, "setCategoryFilter"> & { closeDropdown: () => void }) {
-  setCategoryFilter(category);
-  closeDropdown();
-}
-
-type CategoryDropdownItemProps = {
+function FolderCategoryItem({ active, category, count, disabled, isMutationLocked, onSelect, onRequestEdit, onRequestDelete }: {
   active: boolean;
   category: MemoCategoryDefinition;
   count: number;
+  disabled: boolean;
   isMutationLocked: boolean;
   onSelect: () => void;
   onRequestEdit: () => void;
   onRequestDelete: () => void;
-};
-
-function CategoryDropdownItem({ active, category, count, isMutationLocked, onSelect, onRequestEdit, onRequestDelete }: CategoryDropdownItemProps) {
+}) {
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
 
   return (
-    <div className={`category-dropdown-item${active ? " is-active" : ""}`} onContextMenu={(event) => openCategoryMenu(event, setMenuPosition)}>
-      <button className="category-dropdown-item__main" type="button" data-testid={`category-filter-${category.id}`} aria-selected={active} onClick={onSelect}>
-        <IconFolder className="category-dropdown-item__icon" />
-        <span className="category-dropdown-item__label">{category.label}</span>
-        <span className="category-dropdown-item__count">{count}</span>
+    <div onContextMenu={(e) => { e.preventDefault(); setMenuPosition({ x: e.clientX, y: e.clientY }); }}>
+      <button
+        className={`folder-list__item${active ? " is-active" : ""}`}
+        type="button"
+        data-testid={`category-filter-${category.id}`}
+        aria-selected={active}
+        disabled={disabled}
+        onClick={onSelect}
+      >
+        <IconFolder className="folder-list__item-icon" />
+        <span className="folder-list__item-label">{category.label}</span>
+        <span className="folder-list__item-count">{count}</span>
       </button>
       {menuPosition ? (
-        <CategoryDropdownItemMenu
+        <FolderContextMenu
           categoryId={category.id}
           isMutationLocked={isMutationLocked}
           position={menuPosition}
-          onEdit={() => {
-            setMenuPosition(null);
-            onRequestEdit();
-          }}
-          onDelete={() => {
-            setMenuPosition(null);
-            onRequestDelete();
-          }}
+          onEdit={() => { setMenuPosition(null); onRequestEdit(); }}
+          onDelete={() => { setMenuPosition(null); onRequestDelete(); }}
           onClose={() => setMenuPosition(null)}
         />
       ) : null}
@@ -355,19 +367,7 @@ function CategoryDropdownItem({ active, category, count, isMutationLocked, onSel
   );
 }
 
-function openCategoryMenu(event: MouseEvent<HTMLDivElement>, setMenuPosition: Dispatch<SetStateAction<{ x: number; y: number } | null>>) {
-  event.preventDefault();
-  setMenuPosition({ x: event.clientX, y: event.clientY });
-}
-
-function CategoryDropdownItemMenu({
-  categoryId,
-  isMutationLocked,
-  position,
-  onClose,
-  onDelete,
-  onEdit
-}: {
+function FolderContextMenu({ categoryId, isMutationLocked, position, onClose, onDelete, onEdit }: {
   categoryId: MemoCategory;
   isMutationLocked: boolean;
   position: { x: number; y: number };
@@ -377,8 +377,8 @@ function CategoryDropdownItemMenu({
 }) {
   return createPortal(
     <>
-      <div className="category-dropdown-item__menu-backdrop" onClick={onClose} />
-      <div className="category-dropdown-item__menu" style={{ top: position.y, left: position.x }} onClick={(event) => event.stopPropagation()}>
+      <div className="category-dropdown-backdrop" onClick={onClose} />
+      <div className="category-dropdown-item__menu" style={{ top: position.y, left: position.x }} onClick={(e) => e.stopPropagation()}>
         <button className="category-dropdown-item__menu-item" type="button" data-testid={`category-edit-${categoryId}`} disabled={isMutationLocked} onClick={onEdit}>
           수정
         </button>
@@ -391,6 +391,16 @@ function CategoryDropdownItemMenu({
   );
 }
 
+/* ── Star icon for favorites ── */
+function StarIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M8 1.5l1.7 3.4 3.8.55-2.75 2.68.65 3.78L8 10.1l-3.4 1.79.65-3.78L2.5 5.45l3.8-.55L8 1.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/* ── Category modals (reused from original) ── */
 type CategoryEditModalProps = {
   category: MemoCategoryDefinition;
   isMutationLocked: boolean;
@@ -406,39 +416,28 @@ function CategoryEditModal({ category, isMutationLocked, updateCategory, onClose
 
   async function submitEdit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    if (isSaving) {
-      return;
-    }
-
+    if (isSaving) return;
     setIsSaving(true);
     const updatedCategory = await updateCategory(category.id, { label: draftLabel, description: draftDescription });
     setIsSaving(false);
-
-    if (updatedCategory) {
-      onClose();
-    }
+    if (updatedCategory) onClose();
   }
 
   return createPortal(
     <div className="delete-modal-backdrop" data-testid={`category-edit-modal-${category.id}`} onClick={onClose}>
-      <form className="delete-modal" role="dialog" aria-modal="true" aria-labelledby={titleId} onClick={stopPropagation} onSubmit={submitEdit}>
-        <h2 id={titleId}>카테고리 수정</h2>
+      <form className="delete-modal" role="dialog" aria-modal="true" aria-labelledby={titleId} onClick={(e) => e.stopPropagation()} onSubmit={submitEdit}>
+        <h2 id={titleId}>폴더 수정</h2>
         <label className="category-edit-form__field">
           <span className="category-edit-form__label">이름</span>
-          <input className="category-edit-form__input" data-testid={`category-edit-label-${category.id}`} type="text" value={draftLabel} maxLength={32} autoFocus disabled={isSaving || isMutationLocked} onChange={(event) => setDraftLabel(event.target.value)} />
+          <input className="category-edit-form__input" data-testid={`category-edit-label-${category.id}`} type="text" value={draftLabel} maxLength={32} autoFocus disabled={isSaving || isMutationLocked} onChange={(e) => setDraftLabel(e.target.value)} />
         </label>
         <label className="category-edit-form__field">
           <span className="category-edit-form__label">설명</span>
-          <textarea className="category-edit-form__textarea" data-testid={`category-edit-description-${category.id}`} value={draftDescription} maxLength={200} rows={3} placeholder="이 카테고리에 어떤 메모가 들어가는지 설명을 입력해 주세요." disabled={isSaving || isMutationLocked} onChange={(event) => setDraftDescription(event.target.value)} />
+          <textarea className="category-edit-form__textarea" data-testid={`category-edit-description-${category.id}`} value={draftDescription} maxLength={200} rows={3} placeholder="이 폴더에 어떤 메모가 들어가는지 설명을 입력해 주세요." disabled={isSaving || isMutationLocked} onChange={(e) => setDraftDescription(e.target.value)} />
         </label>
         <div className="delete-modal-actions">
-          <button className="paper-button" type="button" data-testid={`category-edit-cancel-${category.id}`} disabled={isSaving} onClick={onClose}>
-            취소
-          </button>
-          <button className="paper-button paper-button-primary" type="submit" data-testid={`category-edit-submit-${category.id}`} disabled={isSaving || isMutationLocked || draftLabel.trim().length === 0}>
-            저장
-          </button>
+          <button className="paper-button" type="button" data-testid={`category-edit-cancel-${category.id}`} disabled={isSaving} onClick={onClose}>취소</button>
+          <button className="paper-button paper-button-primary" type="submit" data-testid={`category-edit-submit-${category.id}`} disabled={isSaving || isMutationLocked || draftLabel.trim().length === 0}>저장</button>
         </div>
       </form>
     </div>,
@@ -460,36 +459,26 @@ function CategoryDeleteModal({ category, count, isMutationLocked, deleteCategory
   const descriptionId = `category-delete-modal-description-${category.id}`;
   const description =
     count > 0
-      ? `"${category.label}" 카테고리를 삭제하면 이 카테고리로 분류된 메모 ${count}개는 미분류로 변경돼요.`
-      : `"${category.label}" 카테고리로 분류된 메모는 없어요. 바로 삭제할 수 있어요.`;
+      ? `"${category.label}" 폴더를 삭제하면 이 폴더의 메모 ${count}개는 미분류로 변경돼요.`
+      : `"${category.label}" 폴더에는 메모가 없어요. 바로 삭제할 수 있어요.`;
 
   async function confirmDelete() {
-    if (isDeleting) {
-      return;
-    }
-
+    if (isDeleting) return;
     setIsDeleting(true);
     const deleted = await deleteCategory(category.id);
     setIsDeleting(false);
-
-    if (deleted) {
-      onClose();
-    }
+    if (deleted) onClose();
   }
 
   return createPortal(
     <div className="delete-modal-backdrop" data-testid={`category-delete-modal-${category.id}`} onClick={onClose}>
-      <section className="delete-modal" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId} onClick={stopPropagation}>
-        <h2 id={titleId}>카테고리를 삭제할까요?</h2>
+      <section className="delete-modal" role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId} onClick={(e) => e.stopPropagation()}>
+        <h2 id={titleId}>폴더를 삭제할까요?</h2>
         <p id={descriptionId}>{description}</p>
         {category.description ? <p className="category-delete-confirm__description">{category.description}</p> : null}
         <div className="delete-modal-actions">
-          <button className="paper-button" type="button" data-testid={`category-delete-cancel-${category.id}`} disabled={isDeleting} onClick={onClose}>
-            취소
-          </button>
-          <button className="paper-button paper-button-danger" type="button" data-testid={`category-delete-confirm-${category.id}-button`} disabled={isDeleting || isMutationLocked} onClick={() => void confirmDelete()}>
-            정말 삭제
-          </button>
+          <button className="paper-button" type="button" data-testid={`category-delete-cancel-${category.id}`} disabled={isDeleting} onClick={onClose}>취소</button>
+          <button className="paper-button paper-button-danger" type="button" data-testid={`category-delete-confirm-${category.id}-button`} disabled={isDeleting || isMutationLocked} onClick={() => void confirmDelete()}>정말 삭제</button>
         </div>
       </section>
     </div>,
@@ -497,10 +486,7 @@ function CategoryDeleteModal({ category, count, isMutationLocked, deleteCategory
   );
 }
 
-function stopPropagation(event: MouseEvent) {
-  event.stopPropagation();
-}
-
+/* ── Sidebar surfaces ── */
 function SidebarSurface(props: SidebarProps) {
   if (props.activeSidebarSurface === "ai-context") {
     return <ContextSearchPanel {...props} />;
@@ -574,10 +560,10 @@ function ContextSearchResults({ activeNote, contextSearch, openNoteFromContextSe
 
 function NotesSurface(props: SidebarProps) {
   return (
-    <>
+    <div className="sidebar-surface">
       <SidebarSectionHeading {...props} />
       <NotesListOrEmpty {...props} />
-    </>
+    </div>
   );
 }
 
@@ -699,7 +685,7 @@ function getSidebarEmptyTitle(props: SidebarProps) {
 
 function getSidebarEmptyText({ categoryFilter, hasQuery, isCollectionEmpty, sidebarView }: SidebarProps) {
   if (isCollectionEmpty) return "새 메모를 만들면 바로 목록에 나타나요.";
-  if (categoryFilter !== "all" && !hasQuery) return "해당 카테고리로 분류된 메모가 아직 없어요.";
+  if (categoryFilter !== "all" && !hasQuery) return "해당 폴더로 분류된 메모가 아직 없어요.";
   if (sidebarView === "favorites" && !hasQuery) return "메모 오른쪽 위 별 버튼을 누르면 즐겨찾기 목록에 모아볼 수 있어요.";
   return "다른 검색어를 입력하거나 검색을 해제해 주세요.";
 }

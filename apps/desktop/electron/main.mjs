@@ -200,7 +200,11 @@ function normalizeMemoCategoryCreateInput(value) {
     return null;
   }
 
-  return { label, description: normalizeMemoCategoryDescription(value.description) };
+  return {
+    label,
+    description: normalizeMemoCategoryDescription(value.description),
+    parentId: typeof value.parentId === "string" ? value.parentId : null
+  };
 }
 
 function normalizeMemoCategoryUpdateInput(value) {
@@ -216,6 +220,10 @@ function normalizeMemoCategoryUpdateInput(value) {
 
   if (typeof value.description === "string") {
     patch.description = value.description;
+  }
+
+  if ("parentId" in value) {
+    patch.parentId = typeof value.parentId === "string" ? value.parentId : null;
   }
 
   return patch;

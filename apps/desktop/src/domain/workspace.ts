@@ -1,6 +1,6 @@
 import type { ContextSearchResult } from "./search";
 
-export type SidebarView = "all" | "favorites";
+export type SidebarView = "all" | "favorites" | "folders";
 
 export type ContextSearchState = {
   query: string;

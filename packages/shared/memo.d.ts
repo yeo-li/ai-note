@@ -7,6 +7,7 @@ export type MemoCategoryDefinition = {
   label: string;
   description: string;
   builtin: boolean;
+  parentId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -62,11 +63,13 @@ export type MemoCreateInput = {
 export type MemoCategoryCreateInput = {
   label: string;
   description?: string;
+  parentId?: string | null;
 };
 
 export type MemoCategoryUpdateInput = {
   label?: string;
   description?: string;
+  parentId?: string | null;
 };
 
 export type MemoUpdateInput = {

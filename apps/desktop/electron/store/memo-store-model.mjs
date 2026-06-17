@@ -100,12 +100,13 @@ export function normalizeCategoryDefinition(input = {}) {
     label: label ?? id,
     description: normalizeMemoCategoryDescription(input.description),
     builtin: input.builtin === true,
+    parentId: typeof input.parentId === "string" ? input.parentId : null,
     createdAt: normalizeTimestamp(input.createdAt),
     updatedAt: normalizeTimestamp(input.updatedAt)
   };
 }
 
-export function createCategoryDefinitionFromLabel(label, { description = "", builtin = false, now = new Date().toISOString() } = {}) {
+export function createCategoryDefinitionFromLabel(label, { description = "", builtin = false, parentId = null, now = new Date().toISOString() } = {}) {
   const normalizedLabel = normalizeCategoryLabel(label);
 
   if (!normalizedLabel || RESERVED_CATEGORY_IDS.has(normalizedLabel)) {
@@ -117,6 +118,7 @@ export function createCategoryDefinitionFromLabel(label, { description = "", bui
     label: normalizedLabel,
     description: normalizeMemoCategoryDescription(description),
     builtin,
+    parentId: typeof parentId === "string" ? parentId : null,
     createdAt: now,
     updatedAt: now
   };
@@ -184,6 +186,10 @@ export function normalizeCategoryUpdateInput(value = {}) {
 
   if (typeof value.description === "string") {
     patch.description = normalizeMemoCategoryDescription(value.description);
+  }
+
+  if ("parentId" in value) {
+    patch.parentId = typeof value.parentId === "string" ? value.parentId : null;
   }
 
   return patch;

@@ -94,9 +94,14 @@ function ensureSchema(db) {
 
   const categoryColumns = db.prepare("PRAGMA table_info(memo_categories)").all();
   const hasDescriptionColumn = categoryColumns.some((column) => column.name === "description");
+  const hasParentIdColumn = categoryColumns.some((column) => column.name === "parent_id");
 
   if (!hasDescriptionColumn) {
     db.exec("ALTER TABLE memo_categories ADD COLUMN description TEXT NOT NULL DEFAULT '';");
+  }
+
+  if (!hasParentIdColumn) {
+    db.exec("ALTER TABLE memo_categories ADD COLUMN parent_id TEXT DEFAULT NULL;");
   }
 
   db.exec("CREATE INDEX IF NOT EXISTS idx_memos_category ON memos(category);");
@@ -130,6 +135,7 @@ function rowToCategory(row) {
     label: row.label,
     description: row.description ?? "",
     builtin: row.builtin === 1,
+    parentId: row.parent_id ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -198,10 +204,12 @@ function createMemoInsertStatement(db) {
 function createCategoryUpsertStatement(db) {
   return db.prepare(
     `
-      INSERT INTO memo_categories (id, label, description, builtin, created_at, updated_at)
-      VALUES (@id, @label, @description, @builtin, @createdAt, @updatedAt)
+      INSERT INTO memo_categories (id, label, description, builtin, parent_id, created_at, updated_at)
+      VALUES (@id, @label, @description, @builtin, @parentId, @createdAt, @updatedAt)
       ON CONFLICT(id) DO UPDATE SET
         label = excluded.label,
+        description = excluded.description,
+        parent_id = excluded.parent_id,
         builtin = CASE WHEN memo_categories.builtin = 1 THEN 1 ELSE excluded.builtin END,
         updated_at = excluded.updated_at
     `
@@ -230,6 +238,7 @@ function toCategoryRow(category) {
     label: category.label,
     description: category.description ?? "",
     builtin: category.builtin ? 1 : 0,
+    parentId: category.parentId ?? null,
     createdAt: category.createdAt,
     updatedAt: category.updatedAt
   };
@@ -245,6 +254,7 @@ function createCategoryFromMemo(memo) {
     label: memo.category,
     description: "",
     builtin: false,
+    parentId: null,
     createdAt: memo.createdAt,
     updatedAt: memo.updatedAt
   };
@@ -515,8 +525,8 @@ function createStatements(db) {
     ),
     insertCategory: db.prepare(
       `
-        INSERT INTO memo_categories (id, label, description, builtin, created_at, updated_at)
-        VALUES (@id, @label, @description, @builtin, @createdAt, @updatedAt)
+        INSERT INTO memo_categories (id, label, description, builtin, parent_id, created_at, updated_at)
+        VALUES (@id, @label, @description, @builtin, @parentId, @createdAt, @updatedAt)
       `
     ),
     updateCategory: db.prepare(
@@ -524,6 +534,7 @@ function createStatements(db) {
         UPDATE memo_categories
         SET label = @label,
             description = @description,
+            parent_id = @parentId,
             updated_at = @updatedAt
         WHERE id = @id
       `
@@ -719,7 +730,7 @@ export function createMemoSqliteStore({ userDataPath, dbPath } = {}) {
 
     async createCategory(input = {}) {
       return runSerialized(async () => {
-        const category = createCategoryDefinitionFromLabel(input.label, { description: input.description });
+        const category = createCategoryDefinitionFromLabel(input.label, { description: input.description, parentId: input.parentId ?? null });
 
         if (!category) {
           throw new Error("카테고리 이름을 확인해 주세요.");
@@ -755,6 +766,7 @@ export function createMemoSqliteStore({ userDataPath, dbPath } = {}) {
           id: updatedCategory.id,
           label: updatedCategory.label,
           description: updatedCategory.description,
+          parentId: updatedCategory.parentId ?? null,
           updatedAt: updatedCategory.updatedAt
         });
         return updatedCategory;

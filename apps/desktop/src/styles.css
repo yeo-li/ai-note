@@ -586,6 +586,50 @@ a {
   box-shadow: var(--focus-ring);
 }
 
+/* ── Sidebar tab nav: 전체 | 즐겨찾기 | 폴더 ── */
+.sidebar-tab-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px 4px;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-tab-nav__tab {
+  flex: 1;
+  height: 28px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--ink-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--ease),
+    color var(--motion-fast) var(--ease);
+  white-space: nowrap;
+}
+
+.sidebar-tab-nav__tab:hover:not(:disabled) {
+  background: var(--hover-fill);
+  color: var(--ink);
+}
+
+.sidebar-tab-nav__tab.is-active {
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  .sidebar-tab-nav__tab.is-active {
+    background: rgba(255,255,255,0.1);
+    box-shadow: none;
+  }
+}
+
 /* ── Folder list (replaces sidebar-nav + category-dropdown) ── */
 .folder-list {
   display: flex;
@@ -757,6 +801,257 @@ a {
   display: flex;
   align-items: center;
   gap: 2px;
+}
+
+/* folder tree surface fills remaining space and scrolls */
+.folder-tree-surface {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.folder-tree-surface .folder-tree {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* ── Folder tree ── */
+.folder-tree {
+  list-style: none;
+  padding: 4px 6px;
+  margin: 0;
+  flex: 1;
+  overflow-y: auto;
+  -webkit-app-region: no-drag;
+}
+
+.folder-tree__item,
+.folder-tree__item-row {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+  transition: background var(--motion-fast) var(--ease);
+}
+
+.folder-tree__item {
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.folder-tree__item:hover:not(:disabled) {
+  background: var(--hover-fill);
+}
+
+.folder-tree__item.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.folder-tree__item-row {
+  position: relative;
+  gap: 0;
+  height: 32px;
+}
+
+.folder-tree__item-row:hover {
+  background: var(--hover-fill);
+}
+
+.folder-tree__item-row.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.folder-tree__item-row:hover .folder-tree__add-sub {
+  opacity: 1;
+}
+
+.folder-tree__chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--ink-tertiary);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  transition: transform var(--motion-fast) var(--ease);
+}
+
+.folder-tree__chevron svg {
+  width: 10px;
+  height: 10px;
+  transition: transform var(--motion-fast) var(--ease);
+}
+
+.folder-tree__chevron.is-open svg {
+  transform: rotate(90deg);
+}
+
+.folder-tree__item-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  color: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.folder-tree__item-icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--ink-tertiary);
+}
+
+.folder-tree__item-row.is-active .folder-tree__item-icon,
+.folder-tree__item.is-active .folder-tree__item-icon {
+  color: var(--accent);
+}
+
+.folder-tree__item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-tree__item-count {
+  font-size: 11px;
+  color: var(--ink-tertiary);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  padding-right: 6px;
+}
+
+.folder-tree__add-sub {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-right: 4px;
+  border: none;
+  background: transparent;
+  color: var(--ink-tertiary);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease);
+}
+
+.folder-tree__add-sub:hover:not(:disabled) {
+  opacity: 1;
+  color: var(--ink);
+  background: var(--hover-fill);
+}
+
+.folder-tree__add-sub-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.folder-tree__children {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.folder-tree__empty-hint {
+  font-size: 11.5px;
+  color: var(--ink-tertiary);
+  padding: 4px 0 4px 28px;
+  font-style: italic;
+}
+
+/* Note rows inside tree */
+.folder-tree__note {
+  position: relative;
+  border-radius: var(--radius-sm);
+  margin: 1px 0;
+}
+
+.folder-tree__note-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  color: var(--ink-secondary);
+  font-size: 12.5px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
+  overflow: hidden;
+}
+
+.folder-tree__note-btn:hover:not(:disabled) {
+  background: var(--hover-fill);
+  color: var(--ink);
+}
+
+.folder-tree__note.is-selected .folder-tree__note-btn {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.folder-tree__note-icon {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  color: var(--ink-tertiary);
+}
+
+.folder-tree__note.is-selected .folder-tree__note-icon {
+  color: var(--accent);
+}
+
+.folder-tree__note-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-tree__note-date {
+  font-size: 11px;
+  color: var(--ink-tertiary);
+  flex-shrink: 0;
+  padding-right: 8px;
+}
+
+.folder-tree__create-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 6px 12px 8px;
+  border-top: 1px solid var(--hairline);
+  -webkit-app-region: no-drag;
 }
 
 /* context menu (shared between old + new) */

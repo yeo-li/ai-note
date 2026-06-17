@@ -1,5 +1,6 @@
 import type { Memo, MemoCategory, MemoId, MemoStickyColor, MemoUpdateInput } from "@ai-note/shared/memo";
 import { buildMemoTitleFromBody } from "../note-content";
+import type { SidebarView } from "./workspace";
 
 export type TransformMode = "default" | "organized";
 
@@ -148,7 +149,7 @@ export function resolveSelectedNoteId(params: {
   scopedNotes: Note[];
   selectedNote: Note | null | undefined;
   selectedNoteId: string;
-  sidebarView: "all" | "favorites";
+  sidebarView: SidebarView;
 }): string {
   if (params.notes.length === 0) return "";
   if (params.sidebarView === "favorites") return resolveFavoriteSelectedNoteId(params);
@@ -173,7 +174,7 @@ type DeleteSelectionParams = {
   currentVisibleNotes: Note[];
   deleteTargetNoteId: MemoId;
   selectedNoteId: string;
-  sidebarView: "all" | "favorites";
+  sidebarView: SidebarView;
   hasQuery: boolean;
   query: string;
 };

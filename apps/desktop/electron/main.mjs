@@ -14,6 +14,9 @@ import { createGeminiApiOrganizeProvider } from "./organize/gemini-api-organizer
 import { createOrganizeOrchestrator } from "./organize/organize-orchestrator.mjs";
 import { createMemoStore } from "./store/memo-store.mjs";
 import { createMemoSqliteStore } from "./store/memo-sqlite-store.mjs";
+import { createMemoSyncQueue, MEMO_SYNC_QUEUE_FILENAME } from "./store/memo-sync-queue.mjs";
+import { createMemoSyncStore } from "./store/memo-sync-store.mjs";
+import { createMemoServerClient, defaultMemoServerUrl } from "./memo-server-client.mjs";
 import { createPromptTemplateStore } from "./store/prompt-template-store.mjs";
 import { normalizeMemoCategoryDescription, normalizeMemoCategoryValue } from "@ai-note/shared/memo";
 
@@ -991,7 +994,40 @@ function createAppTray(openQuickCaptureWindow) {
 
 app.whenReady().then(() => {
   const primaryMemoStore = createPrimaryMemoStore(app.getPath("userData"));
-  const memoStore = primaryMemoStore.store;
+  const memoServerClient = createMemoServerClient({
+    baseUrl: process.env.AI_NOTE_MEMO_SERVER_URL?.trim() || defaultMemoServerUrl
+  });
+  const memoSyncQueue = createMemoSyncQueue({
+    filePath: join(app.getPath("userData"), MEMO_SYNC_QUEUE_FILENAME)
+  });
+  const memoStore = createMemoSyncStore({
+    memoStore: primaryMemoStore.store,
+    serverClient: memoServerClient,
+    queue: memoSyncQueue
+  });
+
+  function scheduleMemoServerPoll() {
+    const intervalMs = Number(process.env.AI_NOTE_MEMO_POLL_INTERVAL_MS) || 30_000;
+    let currentPull = null;
+
+    const pull = () => {
+      currentPull = memoStore.pullFromServer().catch((error) => {
+        console.error("[memo-store] Failed to pull memos from server.", error);
+      });
+    };
+
+    pull();
+    const intervalId = setInterval(pull, intervalMs);
+
+    app.on("before-quit", () => {
+      clearInterval(intervalId);
+    });
+
+    return { stop: () => { clearInterval(intervalId); return currentPull; } };
+  }
+
+  scheduleMemoServerPoll();
+
   const promptTemplateStore = createPromptTemplateStore({
     userDataPath: app.getPath("userData")
   });

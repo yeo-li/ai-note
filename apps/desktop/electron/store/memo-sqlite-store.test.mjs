@@ -352,3 +352,44 @@ test("sqlite memo store sorts updated memos ahead of older entries", async () =>
     );
   });
 });
+
+test("sqlite memo store replace inserts a memo with the given id and timestamps", async () => {
+  await withTempSqliteStore(async (store) => {
+    const memo = await store.replace({
+      id: "memo-1",
+      title: "원격 메모",
+      body: "서버에서 받아온 내용",
+      favorite: true,
+      category: null,
+      color: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-02T00:00:00.000Z"
+    });
+
+    assert.equal(memo.id, "memo-1");
+
+    const stored = await store.get("memo-1");
+    assert.equal(stored.title, "원격 메모");
+    assert.equal(stored.updatedAt, "2026-01-02T00:00:00.000Z");
+  });
+});
+
+test("sqlite memo store replace overwrites an existing memo with the same id", async () => {
+  await withTempSqliteStore(async (store) => {
+    const memo = await store.create({ title: "로컬 메모", body: "로컬 내용" });
+
+    await store.replace({
+      ...memo,
+      title: "서버 메모",
+      body: "서버 내용",
+      updatedAt: "2026-01-03T00:00:00.000Z"
+    });
+
+    const stored = await store.get(memo.id);
+    assert.equal(stored.title, "서버 메모");
+    assert.equal(stored.body, "서버 내용");
+
+    const listed = await store.list();
+    assert.equal(listed.length, 1);
+  });
+});

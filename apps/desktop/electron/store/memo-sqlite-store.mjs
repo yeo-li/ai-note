@@ -460,6 +460,12 @@ function createStatements(db) {
         VALUES (@id, @title, @body, @favorite, @category, @color, @createdAt, @updatedAt)
       `
     ),
+    replace: db.prepare(
+      `
+        INSERT OR REPLACE INTO memos (id, title, body, favorite, category, color, created_at, updated_at)
+        VALUES (@id, @title, @body, @favorite, @category, @color, @createdAt, @updatedAt)
+      `
+    ),
     update: db.prepare(
       `
         UPDATE memos
@@ -685,6 +691,25 @@ export function createMemoSqliteStore({ userDataPath, dbPath } = {}) {
       return runSerialized(async () => {
         const result = statements.delete.run({ id: memoId });
         return result.changes > 0;
+      });
+    },
+
+    async replace(memo) {
+      return runSerialized(async () => {
+        const normalized = normalizeMemo(memo);
+
+        statements.replace.run({
+          id: normalized.id,
+          title: normalized.title,
+          body: normalized.body,
+          favorite: normalized.favorite ? 1 : 0,
+          category: normalized.category,
+          color: normalized.color,
+          createdAt: normalized.createdAt,
+          updatedAt: normalized.updatedAt
+        });
+
+        return cloneMemo(normalized);
       });
     },
 

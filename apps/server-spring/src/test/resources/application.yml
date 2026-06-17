@@ -1,0 +1,9 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:ai-note-test;DB_CLOSE_DELAY=-1
+    username:
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update

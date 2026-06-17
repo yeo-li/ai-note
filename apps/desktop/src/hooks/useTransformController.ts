@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { MemoId } from "@ai-note/shared/memo";
+import { normalizeMemoCheckboxSyntax, serializeMemoCheckboxesForMarkdown } from "@ai-note/shared/memo";
 import { buildMemoTitleFromBody } from "../note-content";
 import { buildPreviewDiffSegments } from "../domain/diff";
 import type { Note, NoteBackup } from "../domain/note";
@@ -404,10 +405,12 @@ async function requestTransformPreview(context: TransformPreviewContext) {
 }
 
 function createTransformPreviewRequest(activeNote: Note, trimmedPrompt: string) {
+  const aiBody = serializeMemoCheckboxesForMarkdown(activeNote.body);
+
   return {
     memoId: activeNote.id,
-    title: buildMemoTitleFromBody(activeNote.body),
-    body: activeNote.body,
+    title: buildMemoTitleFromBody(aiBody),
+    body: aiBody,
     intent: deriveOrganizeIntent(trimmedPrompt),
     prompt: trimmedPrompt
   };
@@ -455,7 +458,7 @@ function createTransformDraft(
   return {
     noteId,
     prompt: trimmedPrompt,
-    previewBody: result.suggested,
+    previewBody: normalizeMemoCheckboxSyntax(result.suggested),
     provider: result.provider ?? null,
     fallbackErrorMessage: result.fallbackErrorMessage ?? null
   };

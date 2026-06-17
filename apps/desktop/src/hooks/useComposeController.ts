@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from "react";
 import type { MemoId } from "@ai-note/shared/memo";
+import { normalizeMemoCheckboxSyntax } from "@ai-note/shared/memo";
 import { buildMemoTitleFromBody } from "../note-content";
 import { getComposeRevealStep } from "../domain/ai-chat";
 import { createInitialComposeSession } from "../domain/compose-session";
@@ -275,13 +276,14 @@ function createRefusedComposeSession(currentSession: ComposeSession, trimmedProm
 }
 
 async function persistComposedResult(context: ComposeRunContext, result: CreatedComposeResult) {
-  const resultTitle = result.title || buildMemoTitleFromBody(result.body);
-  const createdMemo = await createMemo({ title: resultTitle, body: result.body });
+  const resultBody = normalizeMemoCheckboxSyntax(result.body);
+  const resultTitle = result.title || buildMemoTitleFromBody(resultBody);
+  const createdMemo = await createMemo({ title: resultTitle, body: resultBody });
   if (!isCurrentComposeRun(context)) return;
 
   const nextNote = toNoteFromMemo(createdMemo);
   saveComposedNote(context, nextNote);
-  beginComposeReveal(context, result, resultTitle, nextNote.id);
+  beginComposeReveal(context, { ...result, body: resultBody }, resultTitle, nextNote.id);
 }
 
 function saveComposedNote(context: ComposeRunContext, nextNote: Note) {

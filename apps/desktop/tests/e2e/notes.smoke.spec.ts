@@ -1,6 +1,9 @@
 import type { Page } from "@playwright/test";
 import { test, expect } from "./electron-fixture";
 
+const CHECKBOX_EDITOR_MARKER_UNCHECKED = "\u00a0     ";
+const CHECKBOX_EDITOR_MARKER_CHECKED = "\u00a0\u00a0    ";
+
 async function getMemoStoreKind(appWindow: Page) {
   return appWindow.evaluate(async () => {
     const health = await window.memoAPI?.health();
@@ -28,6 +31,253 @@ test.describe("AI Note desktop smoke", () => {
 
     await expect(bodyInput).toHaveValue("QA smoke note\nPlaywright smoke coverage for Electron.");
     await expect(noteList.locator('[data-testid^="note-list-item-"]').first()).toContainText("QA smoke note");
+  });
+
+  test("keeps note body text origin stable when inserting the first checkbox", async ({ appWindow }) => {
+    const createButton = appWindow.getByTestId("sidebar-create-note-button");
+    const bodyInput = appWindow.getByTestId("note-body-input");
+    const body = [
+      "정상 메모입니다. 정상 메모입니다. 정상 메모입니다.",
+      "정상 메모입니다. 정상 메모입니다. 정상 메모입니다.",
+      "",
+      "정상 메모입니다. 정상 메모입니다. 정상 메모입니다."
+    ].join("\n");
+
+    await createButton.click();
+    await expect(bodyInput).toHaveValue("");
+    await bodyInput.fill(body);
+
+    const beforeMetrics = await bodyInput.evaluate((element) => {
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+
+      return {
+        editorLeft: rect.left,
+        editorTop: rect.top,
+        lineHeight: style.lineHeight,
+        paddingLeft: style.paddingLeft,
+        paddingTop: style.paddingTop,
+        textLeft: rect.left + Number.parseFloat(style.paddingLeft)
+      };
+    });
+
+    await bodyInput.evaluate((element) => {
+      const textarea = element as HTMLTextAreaElement;
+      const blankLineOffset = textarea.value.indexOf("\n\n") + 1;
+
+      textarea.focus();
+      textarea.setSelectionRange(blankLineOffset, blankLineOffset);
+    });
+    await appWindow.getByTestId("insert-checkbox-button").click();
+    await expect(appWindow.getByTestId("note-body-renderer")).toBeVisible();
+
+    const afterMetrics = await appWindow.evaluate(() => {
+      const input = document.querySelector('[data-testid="note-body-input"]');
+      const renderer = document.querySelector('[data-testid="note-body-renderer"]');
+      const firstText = document.querySelector(".note-body-renderer__plain-text");
+
+      if (!(input instanceof HTMLElement) || !(renderer instanceof HTMLElement) || !(firstText instanceof HTMLElement)) {
+        throw new Error("note body editor elements are missing");
+      }
+
+      const inputStyle = window.getComputedStyle(input);
+      const rendererStyle = window.getComputedStyle(renderer);
+      const inputRect = input.getBoundingClientRect();
+      const rendererRect = renderer.getBoundingClientRect();
+      const firstTextRect = firstText.getBoundingClientRect();
+
+      return {
+        firstTextLeft: firstTextRect.left,
+        inputLeft: inputRect.left,
+        inputPaddingLeft: inputStyle.paddingLeft,
+        inputPaddingTop: inputStyle.paddingTop,
+        rendererLeft: rendererRect.left,
+        rendererPaddingLeft: rendererStyle.paddingLeft,
+        rendererPaddingTop: rendererStyle.paddingTop,
+        rendererTextLeft: rendererRect.left + Number.parseFloat(rendererStyle.paddingLeft)
+      };
+    });
+
+    expect(afterMetrics.inputLeft).toBeCloseTo(beforeMetrics.editorLeft, 1);
+    expect(afterMetrics.rendererLeft).toBeCloseTo(beforeMetrics.editorLeft, 1);
+    expect(afterMetrics.inputPaddingLeft).toBe(beforeMetrics.paddingLeft);
+    expect(afterMetrics.inputPaddingTop).toBe(beforeMetrics.paddingTop);
+    expect(afterMetrics.rendererPaddingLeft).toBe(beforeMetrics.paddingLeft);
+    expect(afterMetrics.rendererPaddingTop).toBe(beforeMetrics.paddingTop);
+    expect(afterMetrics.firstTextLeft).toBeCloseTo(beforeMetrics.textLeft, 1);
+    expect(afterMetrics.firstTextLeft).toBeCloseTo(afterMetrics.rendererTextLeft, 1);
+  });
+
+  test("keeps the lower checkbox marker when deleting an empty checkbox line above it", async ({ appWindow }) => {
+    const createButton = appWindow.getByTestId("sidebar-create-note-button");
+    const bodyInput = appWindow.getByTestId("note-body-input");
+    const renderer = appWindow.getByTestId("note-body-renderer");
+    const checkboxes = appWindow.locator(".note-body-renderer__checkbox");
+
+    await createButton.click();
+    await expect(bodyInput).toHaveValue("");
+    await bodyInput.fill(["일반 위", "- [ ] ", "- [ ] 아래 내용"].join("\n"));
+
+    await expect(renderer).toBeVisible();
+    await expect(checkboxes).toHaveCount(2);
+
+    await bodyInput.evaluate((element) => {
+      const textarea = element as HTMLTextAreaElement;
+      const marker = "\u00a0     ";
+      const emptyCheckboxOffset = textarea.value.indexOf(`${marker}\n`);
+
+      textarea.focus();
+      textarea.setSelectionRange(emptyCheckboxOffset + marker.length, emptyCheckboxOffset + marker.length);
+    });
+    await bodyInput.press("Delete");
+    await expect(bodyInput).toHaveValue(`일반 위\n\n${CHECKBOX_EDITOR_MARKER_UNCHECKED}아래 내용`);
+    await expect(checkboxes).toHaveCount(1);
+
+    await bodyInput.press("Delete");
+
+    await expect(renderer).toBeVisible();
+    await expect(checkboxes).toHaveCount(1);
+    await expect(renderer.locator(".note-body-renderer__checkbox-line")).toContainText("아래 내용");
+    await expect(bodyInput).toHaveValue(`일반 위\n${CHECKBOX_EDITOR_MARKER_UNCHECKED}아래 내용`);
+  });
+
+  test("keeps following checkboxes when clearing text from a middle checkbox", async ({ appWindow }) => {
+    const createButton = appWindow.getByTestId("sidebar-create-note-button");
+    const bodyInput = appWindow.getByTestId("note-body-input");
+    const renderer = appWindow.getByTestId("note-body-renderer");
+    const checkboxes = appWindow.locator(".note-body-renderer__checkbox");
+    const marker = CHECKBOX_EDITOR_MARKER_UNCHECKED;
+
+    await createButton.click();
+    await expect(bodyInput).toHaveValue("");
+    await bodyInput.fill(
+      [
+        "- [ ] 첫 번째 체크박스",
+        "- [ ] 두 번째 체크박스",
+        "- [ ] 지울 내용",
+        "- [ ] 네 번째 체크박스",
+        "- [ ] 다섯 번째 체크박스"
+      ].join("\n")
+    );
+
+    await expect(renderer).toBeVisible();
+    await expect(checkboxes).toHaveCount(5);
+
+    await bodyInput.evaluate((element) => {
+      const textarea = element as HTMLTextAreaElement;
+      const marker = "\u00a0     ";
+      const targetText = "지울 내용";
+      const targetStart = textarea.value.indexOf(`${marker}${targetText}`) + marker.length;
+
+      textarea.focus();
+      textarea.setSelectionRange(targetStart, targetStart + targetText.length);
+    });
+    await bodyInput.press("Backspace");
+
+    await expect(checkboxes).toHaveCount(5);
+    await expect(bodyInput).toHaveValue(
+      [
+        `${marker}첫 번째 체크박스`,
+        `${marker}두 번째 체크박스`,
+        marker,
+        `${marker}네 번째 체크박스`,
+        `${marker}다섯 번째 체크박스`
+      ].join("\n")
+    );
+    await expect(renderer.locator(".note-body-renderer__checkbox-line").nth(3)).toContainText("네 번째 체크박스");
+    await expect(renderer.locator(".note-body-renderer__checkbox-line").nth(4)).toContainText("다섯 번째 체크박스");
+  });
+
+  test("keeps following checkboxes when a middle checkbox selection includes the hidden marker", async ({ appWindow }) => {
+    const createButton = appWindow.getByTestId("sidebar-create-note-button");
+    const bodyInput = appWindow.getByTestId("note-body-input");
+    const renderer = appWindow.getByTestId("note-body-renderer");
+    const checkboxes = appWindow.locator(".note-body-renderer__checkbox");
+    const marker = CHECKBOX_EDITOR_MARKER_UNCHECKED;
+
+    await createButton.click();
+    await expect(bodyInput).toHaveValue("");
+    await bodyInput.fill(
+      [
+        "- [ ] ㅁㄴㅇㄹㅁㄴㅇㄹ",
+        "- [ ] ㅁㄴㅇㄹㅁㄴㅇㄹ",
+        "- [ ] ㅁㄴㅇㄹ",
+        "- [ ] ㅁㄴㅇㄹ",
+        "- [ ] ㅁㄴㅇㄹㅁㄴㅇㄹ"
+      ].join("\n")
+    );
+
+    await expect(renderer).toBeVisible();
+    await expect(checkboxes).toHaveCount(5);
+
+    await bodyInput.evaluate((element) => {
+      const textarea = element as HTMLTextAreaElement;
+      const lines = textarea.value.split("\n");
+      const targetLineStart = lines[0].length + 1 + lines[1].length + 1;
+      const targetLineEnd = targetLineStart + lines[2].length;
+
+      textarea.focus();
+      textarea.setSelectionRange(targetLineStart, targetLineEnd);
+    });
+    await bodyInput.press("Backspace");
+
+    await expect(checkboxes).toHaveCount(5);
+    await expect(bodyInput).toHaveValue(
+      [
+        `${marker}ㅁㄴㅇㄹㅁㄴㅇㄹ`,
+        `${marker}ㅁㄴㅇㄹㅁㄴㅇㄹ`,
+        marker,
+        `${marker}ㅁㄴㅇㄹ`,
+        `${marker}ㅁㄴㅇㄹㅁㄴㅇㄹ`
+      ].join("\n")
+    );
+    await expect(renderer.locator(".note-body-renderer__checkbox-line").nth(3)).toContainText("ㅁㄴㅇㄹ");
+    await expect(renderer.locator(".note-body-renderer__checkbox-line").nth(4)).toContainText("ㅁㄴㅇㄹㅁㄴㅇㄹ");
+  });
+
+  test("moves checked state with its checkbox line when text is inserted above it", async ({ appWindow }) => {
+    const createButton = appWindow.getByTestId("sidebar-create-note-button");
+    const bodyInput = appWindow.getByTestId("note-body-input");
+    const renderer = appWindow.getByTestId("note-body-renderer");
+    const checkedCheckbox = appWindow.locator(".note-body-renderer__checkbox:checked");
+
+    await createButton.click();
+    await expect(bodyInput).toHaveValue("");
+    await bodyInput.fill(
+      [
+        "오늘 할 일",
+        "",
+        "- [ ] sdfsdf",
+        "- [ ] asdfa",
+        "- [x] 완료 항목",
+        "- [ ] 아래 항목"
+      ].join("\n")
+    );
+
+    await expect(renderer).toBeVisible();
+    await expect(checkedCheckbox).toHaveAttribute("aria-label", "완료 항목");
+
+    await bodyInput.evaluate((element) => {
+      const textarea = element as HTMLTextAreaElement;
+      const insertionPoint = "오늘 할 일\n".length;
+
+      textarea.focus();
+      textarea.setSelectionRange(insertionPoint, insertionPoint);
+    });
+    await bodyInput.type("새 줄\n");
+
+    await expect(checkedCheckbox).toHaveAttribute("aria-label", "완료 항목");
+    await expect(bodyInput).toHaveValue(
+      [
+        "오늘 할 일",
+        "새 줄",
+        "",
+        `${CHECKBOX_EDITOR_MARKER_UNCHECKED}sdfsdf`,
+        `${CHECKBOX_EDITOR_MARKER_UNCHECKED}asdfa`,
+        `${CHECKBOX_EDITOR_MARKER_CHECKED}완료 항목`,
+        `${CHECKBOX_EDITOR_MARKER_UNCHECKED}아래 항목`
+      ].join("\n")
+    );
   });
 
   test("syncs sticky-note edits to the main window without delay", async ({ electronApp, appWindow }) => {

@@ -1,6 +1,10 @@
 import { createJsonApiClient, defaultTimeoutMs } from "./ai-api-client.mjs";
 import { OrganizeProviderError } from "./organize/organize-provider.mjs";
-import { normalizeMemoCategoryValue } from "@ai-note/shared/memo";
+import {
+  normalizeMemoCategoryValue,
+  normalizeMemoCheckboxSyntax,
+  serializeMemoCheckboxesForMarkdown
+} from "@ai-note/shared/memo";
 
 function buildSearchInstruction({ query, memos, currentDate = formatLocalDate() }) {
   return [
@@ -20,8 +24,8 @@ function buildSearchInstruction({ query, memos, currentDate = formatLocalDate() 
     JSON.stringify(
       memos.map((memo) => ({
         id: memo.id,
-        title: memo.title,
-        body: memo.body,
+        title: serializeMemoCheckboxesForMarkdown(memo.title),
+        body: serializeMemoCheckboxesForMarkdown(memo.body),
         category: memo.categoryLabel ?? null,
         updatedAt: memo.updatedAt
       }))
@@ -115,8 +119,8 @@ function buildComposeInstruction({ prompt, memos, currentDate = formatLocalDate(
     JSON.stringify(
       memos.map((memo) => ({
         id: memo.id,
-        title: memo.title,
-        body: memo.body,
+        title: serializeMemoCheckboxesForMarkdown(memo.title),
+        body: serializeMemoCheckboxesForMarkdown(memo.body),
         updatedAt: memo.updatedAt
       }))
     ),
@@ -143,7 +147,10 @@ function buildCategorizeInstruction({ title, body, categories }) {
     "Existing categories:",
     categoryDescriptions,
     "<memo>",
-    JSON.stringify({ title, body }),
+    JSON.stringify({
+      title: serializeMemoCheckboxesForMarkdown(title),
+      body: serializeMemoCheckboxesForMarkdown(body)
+    }),
     "</memo>"
   ].join("\n");
 }
@@ -185,7 +192,11 @@ function buildCategorizeAllInstruction({ memos, categories }) {
     "Existing categories:",
     categoryDescriptions,
     "<memos>",
-    JSON.stringify(memos.map((memo) => ({ id: memo.id, title: memo.title, body: memo.body }))),
+    JSON.stringify(memos.map((memo) => ({
+      id: memo.id,
+      title: serializeMemoCheckboxesForMarkdown(memo.title),
+      body: serializeMemoCheckboxesForMarkdown(memo.body)
+    }))),
     "</memos>"
   ].join("\n");
 }
@@ -279,7 +290,7 @@ export function createAiMemoProvider({ apiClient, apiKey, apiUrl, model, timeout
       return {
         kind: "composed",
         title: String(parsed.title),
-        body: String(parsed.body),
+        body: normalizeMemoCheckboxSyntax(parsed.body),
         sourceMemoIds: Array.isArray(parsed.sourceMemoIds) ? parsed.sourceMemoIds.map(String) : []
       };
     },

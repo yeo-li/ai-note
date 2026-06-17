@@ -1,7 +1,7 @@
-import { useState } from "react";
 import type { Dispatch, FormEvent, KeyboardEvent, RefObject, SetStateAction } from "react";
-import type { MemoCategory, MemoCategoryDefinition, MemoId } from "@ai-note/shared/memo";
-import { IconExternalWindow, IconSearch, IconSidebarPanel, IconSparkles, IconStar, IconTag } from "./icons";
+import { insertMemoCheckbox, type MemoCategory, type MemoCategoryDefinition, type MemoId } from "@ai-note/shared/memo";
+import { IconCheckbox, IconExternalWindow, IconSearch, IconSidebarPanel, IconSparkles, IconStar, IconTag } from "./icons";
+import { NoteBodyEditor } from "./NoteBodyEditor";
 import { getCategoryDisplayLabel } from "../domain/categories";
 import type { PromptTemplate } from "../shared/prompt-template-bridge";
 import type { DiffSegment } from "../domain/diff";
@@ -121,6 +121,7 @@ function EditorToolbar(props: EditorWorkspaceProps) {
         <div className="paper-toolbar-editor__group paper-toolbar-editor__group--right">
           <CategorySelector {...props} />
           <AiCategorizeButton {...props} />
+          <InsertCheckboxButton {...props} />
           <OpenStickyButton {...props} />
           <FavoriteButton {...props} />
           <OrganizeButton {...props} />
@@ -136,6 +137,17 @@ function SidebarToggleButton({ isSidebarOpen, toggleSidebar }: EditorWorkspacePr
     <button className="paper-button paper-button-icon" type="button" data-testid="editor-toggle-sidebar-button" aria-label={isSidebarOpen ? "목록 닫기" : "목록 열기"} title={isSidebarOpen ? "목록 닫기" : "목록 열기"} aria-controls="memo-sidebar" aria-expanded={isSidebarOpen} onClick={toggleSidebar}>
       <IconSidebarPanel open={isSidebarOpen} className="button-icon" />
       <span className="visually-hidden">{isSidebarOpen ? "목록 닫기" : "목록 열기"}</span>
+    </button>
+  );
+}
+
+function InsertCheckboxButton(props: EditorWorkspaceProps) {
+  const disabled = !props.activeNote || props.isEditorLocked || props.isMutationLocked || Boolean(props.activeDraft);
+
+  return (
+    <button className="paper-button paper-button-icon" type="button" data-testid="insert-checkbox-button" aria-label="체크박스 추가" title="체크박스 추가" disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={() => insertCheckboxIntoEditor(props)}>
+      <IconCheckbox className="button-icon" />
+      <span className="visually-hidden">체크박스 추가</span>
     </button>
   );
 }
@@ -562,95 +574,20 @@ function OriginalPanel({ activeNote }: { activeNote: Note | null }) {
   );
 }
 
-const CHECKBOX_LINE_RE = /^- \[([ xX])\] (.*)$/;
-
-function hasCheckboxSyntax(body: string) {
-  return CHECKBOX_LINE_RE.test(body);
-}
-
 function EditableNoteBody(props: EditorWorkspaceProps) {
-  const [isRawEditing, setIsRawEditing] = useState(false);
   const body = props.activeNote?.body ?? "";
-  const showRenderer = !isRawEditing && !props.isEditorLocked && hasCheckboxSyntax(body);
-
-  function handleCheckboxToggle(newBody: string) {
-    props.patchActiveNote(
-      { body: newBody, mode: props.hasBackup && props.activeNote ? props.activeNote.mode : "default" },
-      "체크박스를 변경했어요."
-    );
-  }
-
-  function activateEditor() {
-    setIsRawEditing(true);
-    setTimeout(() => props.noteBodyInputRef.current?.focus(), 0);
-  }
 
   return (
     <div className="editor-card">
-      {/* textarea는 항상 마운트 — find/ref 등에서 필요 */}
-      <label className={`editor-field editor-field-body${showRenderer ? " visually-hidden" : ""}`}>
-        <textarea
-          className="paper-editor"
-          data-testid="note-body-input"
-          ref={props.noteBodyInputRef}
-          value={body}
-          placeholder="여기에 메모를 적어 주세요."
-          disabled={props.isEditorLocked}
-          readOnly={props.isEditorLocked}
-          onFocus={() => setIsRawEditing(true)}
-          onBlur={() => setIsRawEditing(false)}
-          onChange={(event) => patchEditorBody(event.target.value, props)}
-        />
-      </label>
-      {showRenderer && (
-        <NoteBodyRenderer body={body} onToggle={handleCheckboxToggle} onClickText={activateEditor} />
-      )}
-    </div>
-  );
-}
-
-function NoteBodyRenderer({ body, onToggle, onClickText }: { body: string; onToggle: (newBody: string) => void; onClickText: () => void }) {
-  const lines = body.split("\n");
-
-  function toggleCheckbox(lineIndex: number, checked: boolean) {
-    const newLines = lines.map((line, i) => {
-      if (i !== lineIndex) return line;
-      const match = line.match(CHECKBOX_LINE_RE);
-      if (!match) return line;
-      return `- [${checked ? "x" : " "}] ${match[2]}`;
-    });
-    onToggle(newLines.join("\n"));
-  }
-
-  return (
-    <div className="note-body-renderer editor-field-body" onClick={onClickText} role="textbox" aria-multiline="true" aria-label="메모 내용">
-      {body.trim() === "" ? (
-        <span className="note-body-renderer__placeholder">여기에 메모를 적어 주세요.</span>
-      ) : (
-        lines.map((line, i) => {
-          const match = line.match(CHECKBOX_LINE_RE);
-          if (match) {
-            const isChecked = match[1].toLowerCase() === "x";
-            return (
-              <div key={i} className="note-body-renderer__line note-body-renderer__checkbox-line" onClick={(e) => e.stopPropagation()}>
-                <input
-                  type="checkbox"
-                  className="note-body-renderer__checkbox"
-                  checked={isChecked}
-                  onChange={(e) => toggleCheckbox(i, e.target.checked)}
-                  aria-label={match[2]}
-                />
-                <span className={`note-body-renderer__checkbox-text${isChecked ? " is-checked" : ""}`}>{match[2]}</span>
-              </div>
-            );
-          }
-          return (
-            <div key={i} className="note-body-renderer__line">
-              {line || "​"}
-            </div>
-          );
-        })
-      )}
+      <NoteBodyEditor
+        body={body}
+        fieldClassName="editor-field editor-field-body"
+        isLocked={props.isEditorLocked}
+        placeholder="여기에 메모를 적어 주세요."
+        textareaClassName="paper-editor"
+        textareaRef={props.noteBodyInputRef}
+        onChange={(nextBody) => patchEditorBody(nextBody, props)}
+      />
     </div>
   );
 }
@@ -663,6 +600,21 @@ function patchEditorBody(body: string, props: EditorWorkspaceProps) {
     },
     "메모 내용을 수정했어요."
   );
+}
+
+function insertCheckboxIntoEditor(props: EditorWorkspaceProps) {
+  if (!props.activeNote) {
+    return;
+  }
+
+  const textarea = props.noteBodyInputRef.current;
+  const insertion = insertMemoCheckbox(props.activeNote.body, textarea?.selectionStart, textarea?.selectionEnd);
+  patchEditorBody(insertion.body, props);
+  window.setTimeout(() => {
+    const nextTextarea = props.noteBodyInputRef.current;
+    nextTextarea?.focus();
+    nextTextarea?.setSelectionRange(insertion.selectionStart, insertion.selectionEnd);
+  }, 0);
 }
 
 function EditorEmptyState(props: EditorWorkspaceProps) {

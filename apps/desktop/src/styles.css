@@ -2175,9 +2175,12 @@ a {
 }
 
 .paper-editor {
+  display: block;
   width: 100%;
   height: 100%;
   min-height: 0;
+  margin: 0;
+  padding: 2px;
   font-family: var(--font-editor);
   font-size: 16px;
   line-height: 1.85;
@@ -2198,17 +2201,54 @@ a {
   color: var(--ink-tertiary);
 }
 
-/* ── Note body renderer (checkbox mode) ── */
-.note-body-renderer {
+.note-body-editor--checkbox-mode {
+  overflow: hidden;
+}
+
+.note-body-editor__surface {
+  position: relative;
   flex: 1;
   width: 100%;
+  height: 100%;
+  min-width: 0;
   min-height: 0;
+  overflow: hidden;
+}
+
+.note-body-editor__textarea-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  resize: none;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.note-body-editor__textarea-overlay::selection {
+  background: var(--accent-soft-strong);
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.note-body-editor__textarea-overlay::placeholder {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ── Note body renderer (checkbox mode) ── */
+.note-body-renderer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
   font-family: var(--font-editor);
   font-size: 16px;
   line-height: 1.85;
   letter-spacing: -0.005em;
   color: var(--ink);
-  overflow-y: auto;
   cursor: text;
   white-space: pre-wrap;
   word-break: break-word;
@@ -2216,33 +2256,91 @@ a {
 
 .note-body-renderer__line {
   display: block;
-  min-height: 1.85em;
+}
+
+.note-body-renderer__text-line {
+  display: block;
 }
 
 .note-body-renderer__checkbox-line {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
+  display: block;
   cursor: default;
-  white-space: normal;
+  white-space: pre-wrap;
+}
+
+.note-body-renderer__checkbox-marker {
+  position: relative;
+  display: inline-block;
+  white-space: pre;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  cursor: pointer;
+}
+
+.note-body-renderer__checkbox-marker-text {
+  visibility: hidden;
 }
 
 .note-body-renderer__checkbox {
-  flex-shrink: 0;
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  z-index: 3;
+  display: grid;
+  place-content: center;
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
   width: 15px;
   height: 15px;
   margin: 0;
-  accent-color: var(--accent);
+  padding: 0;
+  border-radius: 5px;
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface-translucent);
+  color: var(--on-accent);
   cursor: pointer;
-  position: relative;
-  top: 1px;
+  pointer-events: auto;
+  transform: translateY(-50%);
+  transition:
+    background var(--motion-fast) var(--ease),
+    border-color var(--motion-fast) var(--ease),
+    box-shadow var(--motion-fast) var(--ease);
+}
+
+.note-body-renderer__checkbox::before {
+  content: "";
+  width: 8px;
+  height: 4px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg) scale(0);
+  transform-origin: center;
+  transition: transform var(--motion-fast) var(--ease);
+}
+
+.note-body-renderer__checkbox:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.note-body-renderer__checkbox:checked::before {
+  transform: rotate(-45deg) scale(1);
+}
+
+.note-body-renderer__checkbox:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.note-body-renderer__checkbox:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .note-body-renderer__checkbox-text {
-  flex: 1;
-  min-width: 0;
   word-break: break-word;
   white-space: pre-wrap;
+  cursor: text;
 }
 
 .note-body-renderer__checkbox-text.is-checked {
